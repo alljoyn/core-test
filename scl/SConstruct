@@ -1,0 +1,78 @@
+# Copyright AllSeen Alliance. All rights reserved.
+#
+#    Permission to use, copy, modify, and/or distribute this software for any
+#    purpose with or without fee is hereby granted, provided that the above
+#    copyright notice and this permission notice appear in all copies.
+#
+#    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+#    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+#    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+#    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+#    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+#    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+#    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+import os
+
+# Generate an environment based on alljoyn/alljoyn_core/build_core/SConscript
+if os.environ.has_key('AJ_CORE_SRC_DIR'):
+    env = SConscript(os.environ['AJ_CORE_SRC_DIR'] + '/build_core/SConscript')
+    env['AJ_CORE_SRC_DIR'] = os.environ['AJ_CORE_SRC_DIR']
+else:
+    default_alljoyn_src_location = '../../../../../../allseen/core/alljoyn'
+    print 'Environment variable AJ_CORE_SRC_DIR is not set. Assuming it to be: ' + default_alljoyn_src_location 
+    env = SConscript(default_alljoyn_src_location + '/build_core/SConscript')
+    env['AJ_CORE_SRC_DIR'] = default_alljoyn_src_location
+
+vars = Variables()
+vars.Add(PathVariable('AJ_CORE_DIST_DIR', 'Location of the core sdk directory',
+                      env['AJ_CORE_SRC_DIR'] + '/build/' +
+                      env['OS'] + '/' + env['CPU'] + '/' + env['VARIANT'] + '/dist' , PathVariable.PathIsDir))
+
+vars.Update(env)
+Help(vars.GenerateHelpText(env))
+
+# TODO: Figure out how to get these C++ test programs to build on OSX
+#       without having to use xcodebuild.
+# Until then, bail out.
+if env['OS'] == 'darwin':
+    print 'OSX is not a currently supported platform for these test programs.'
+    Exit(1)
+
+if env.has_key('AJ_CORE_DIST_DIR'):
+    # Normalize AJ_DIST_CORE_DIR
+    env['AJ_CORE_DIST_DIR'] = env.Dir('$AJ_CORE_DIST_DIR')
+    # Update include and library paths
+    env.Append(CPPPATH = [ env.Dir('$AJ_CORE_DIST_DIR/cpp/inc'),
+                           env.Dir('$AJ_CORE_DIST_DIR/about/inc') ])
+    env.Append(LIBPATH = [ env.Dir('$AJ_CORE_DIST_DIR/cpp/lib'),
+                           env.Dir('$AJ_CORE_DIST_DIR/about/lib') ])
+
+# Setup libraries needed to link
+env.Append(LIBS = ['alljoyn'])
+
+# Android needs to explicitly link certain libraries
+if env['OS'] == 'android':
+    env.Append(LIBS = ['stdc++', 'crypto', 'gnustl_static'])
+    # Need Android native logging liblog.so for __android_log_vprint
+    env.Append(LIBS = ['log'])
+
+# Windows needs to explicitly link certain libraries
+if env['OS'] == 'win7':
+    env.Append(LIBS = ['ws2_32', 'iphlpapi', 'Secur32', 'crypt32', 'Bcrypt', 'Ncrypt'])
+
+bundled_router_obj_prefix = '/cpp/lib/BundledRouter'
+# Windows has a different naming convention for object files as compared
+# to other POSIX systems
+if env['OS'] == 'win7':
+    obj_file_extension = '.obj'
+else:
+    obj_file_extension = '.o'
+
+bundled_router_obj = env.subst('$AJ_CORE_DIST_DIR') + bundled_router_obj_prefix + obj_file_extension
+
+if env['BR'] == 'on':
+    env.Prepend(LIBS = [File(bundled_router_obj), 'ajrouter'])
+
+# Build the code
+env.SConscript('SConscript')
