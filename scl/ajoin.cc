@@ -194,7 +194,6 @@ static void usage(void)
     printf("   -f <prefix>  = FindAdvertisedName prefix\n");
     printf("   -u           = Advertise/Discover over UDP\n");
     printf("   -t           = Advertise/Discover over TCP\n");
-    printf("   -w           = Advertise/Discover over Wi-Fi Direct\n");
     printf("   -l           = Advertise/Discover over LOCAL\n");
     printf("   -dj <ms>     = Number of ms to delay between leaving and re-joining\n");
     printf("   -dl <ms>     = Number of ms to delay before leaving the session\n");
@@ -249,8 +248,6 @@ int main(int argc, char** argv)
             transportOpts |= TRANSPORT_UDP;
         } else if (0 == strcmp("-t", argv[i])) {
             transportOpts = TRANSPORT_TCP;
-        } else if (0 == strcmp("-w", argv[i])) {
-            transportOpts |= TRANSPORT_WFD;
         } else if (0 == strcmp("-l", argv[i])) {
             transportOpts |= TRANSPORT_LOCAL;
         } else if (0 == strcmp("-dj", argv[i])) {

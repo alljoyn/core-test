@@ -105,13 +105,13 @@ class R2RTest : public testing::Test {
 
     virtual void TearDown() {
         QStatus status = ER_OK;
-        status = BusPtrA->Disconnect("null:");
+        status = BusPtrA->Disconnect();
         ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
         BusPtrA->Stop();
         BusPtrA->Join();
         delete BusPtrA;
 
-        status = BusPtrB->Disconnect("unix:abstract=alljoyn");
+        status = BusPtrB->Disconnect();
         ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
         BusPtrB->Stop();
         BusPtrB->Join();

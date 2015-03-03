@@ -540,7 +540,7 @@ int main(const int argc, const char* argv[])
 
     delete g_allJoynObjIntf;
 
-    status = g_connectSpec.empty() ? g_ajBus->Disconnect() : g_ajBus->Disconnect(g_connectSpec.c_str());
+    status = g_ajBus->Disconnect();
     if (ER_OK != status) {
         QCC_LogError(status, ("BusAttachment::Disconnect failed"));
         return EXIT_SOFTWARE;

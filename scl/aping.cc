@@ -167,7 +167,6 @@ static void usage(void)
     "   -f <prefix>  = FindAdvertisedName prefix" << endl <<
     "   -u           = Advertise/Discover over UDP" << endl <<
     "   -t           = Advertise/Discover over TCP" << endl <<
-    "   -w           = Advertise/Discover over Wi-Fi Direct" << endl <<
     "   -l           = Advertise/Discover over LOCAL" << endl <<
     "   -dpr <ms>    = Number of ms to delay between two ping attempts" << endl <<
     "   -fa          = Retry ping even during failure" << endl <<
@@ -225,8 +224,6 @@ int main(int argc, char** argv)
             transportOpts = TRANSPORT_UDP;
         } else if (0 == strcmp("-t", argv[i])) {
             transportOpts = TRANSPORT_TCP;
-        } else if (0 == strcmp("-w", argv[i])) {
-            transportOpts = TRANSPORT_WFD;
         } else if (0 == strcmp("-l", argv[i])) {
             transportOpts = TRANSPORT_LOCAL;
         } else if (0 == strcmp("-dpr", argv[i])) {
