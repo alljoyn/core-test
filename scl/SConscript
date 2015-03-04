@@ -47,7 +47,7 @@ addnl_test_env.Program('nameChange_client', 'nameChange_client.cc')
 addnl_test_env.Program('signal_service', 'signal_service.cc')
 
 if addnl_test_env['OS_CONF'] == 'linux':
-    addnl_test_env.Program('mdns_fuzzer', 'mdns_fuzzer.cc')
+    addnl_test_env.Program('mdns_fuzzer', '../misc/mdns_fuzzer.cc')
 
 #if addnl_test_env['BR'] == 'on':
 #    addnl_test_env.Program('ardpstress', 'ardpstress.cc')
