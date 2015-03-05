@@ -179,8 +179,12 @@ TEST_F(R2RTest, Presence_DetectionAfterDiscovery) {
     ASSERT_TRUE(listener.nameFound) << "failed to find advertised name: " << listener.NameToMatch.c_str();
     ASSERT_TRUE(listener.nameMatched) << "failed to find advertised name: " << listener.NameToMatch.c_str();
 
-    // ping the name
+    // ping the well known name
     status = BusPtrB->Ping(listener.NameToMatch.c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // ping the unique name
+    status = BusPtrB->Ping(BusPtrA->GetUniqueName().c_str(), PING_DELAY_TIME);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
     // cancel find
@@ -429,9 +433,119 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesDurringSession) {
     status = BusPtrB->Ping(listener.NameToMatch.c_str(), PING_DELAY_TIME);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    // ping unique name with second bus
+    status = BusPtrB->Ping(BusPtrA->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // ping unique name with first bus
+    status = BusPtrA->Ping(BusPtrB->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
     // explicitly leave session to release resources for transports viz. UDP
     status = BusPtrB->LeaveSession(sessionId);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // cancel find
+    status = BusPtrB->CancelFindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // unregister
+    BusPtrB->UnregisterBusListener(listener);
+
+    // release name
+    status = BusPtrA->ReleaseName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // unbind port
+    status = BusPtrA->UnbindSessionPort(sessionPortListenerA.port);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+}
+//Negative Verify that Presence detection does not work between two routing nodes after leaving session
+TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
+    QStatus status = ER_OK;
+
+    // initialize listener callback
+    R2RTestFindNameListener listener;
+
+    // set unique name
+    listener.NameToMatch = "org.test.A" + BusPtrA->GetGlobalGUIDShortString();
+
+    // Set up SessionOpts
+    SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
+
+    // bind port
+    R2RTestSessionListener sessionPortListenerA;
+    sessionPortListenerA.port = sessionPortListenerA.port;
+
+    status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // request name
+    status = BusPtrA->RequestName(listener.NameToMatch.c_str(), DBUS_NAME_FLAG_DO_NOT_QUEUE);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // advertise name
+    status = BusPtrA->AdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // register second bus listener for 2nd routing node
+    BusPtrB->RegisterBusListener(listener);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // find advertised name
+    status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // wait for to find name
+    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+        if ((listener.nameFound) && (listener.nameMatched)) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+    ASSERT_TRUE(listener.nameFound) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+    ASSERT_TRUE(listener.nameMatched) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+
+    // join session with second bus
+    SessionId sessionId = 0;
+    status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+    // wait for to find name, 5 second max
+    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+        if (sessionPortListenerA.sessionJoined) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+
+    EXPECT_NE(static_cast<SessionId>(0), sessionId) << "  SessionID should not be '0'";
+    EXPECT_EQ(sessionPortListenerA.busSessionId, sessionId) << "  session ID's do not match";
+
+    // stop advertising the name
+    BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+
+    // wait for the found name signal to complete
+    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+        if (!listener.nameFound) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+    EXPECT_FALSE(listener.nameFound);
+
+    //Leave Session
+    status = BusPtrB->LeaveSession(sessionId);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    qcc::Sleep(1000);
+
+    // ping unique name with second bus
+    status = BusPtrB->Ping(BusPtrA->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // ping unique name with first bus
+    status = BusPtrA->Ping(BusPtrB->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
 
     // cancel find
     status = BusPtrB->CancelFindAdvertisedName(listener.NameToMatch.c_str());
@@ -671,3 +785,60 @@ TEST_F(R2RTest, DISABLED_Presence_DiscoveryAdvertiseUDPFindByAll) {
     status = BusPtrA->ReleaseName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 }
+//Negative test Verify that bogus unique names return failure
+TEST_F(R2RTest, Presence_BogusUniqueName) {
+    QStatus status = ER_OK;
+
+    // initialize listener callback
+    R2RTestFindNameListener listener;
+
+    // set bogus unique name
+    listener.NameToMatch = BusPtrA->GetUniqueName() + ".1";
+
+    // advertise name
+    status = BusPtrA->AdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // register second bus listener for 2nd bus attachment
+    BusPtrB->RegisterBusListener(listener);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // find advertised name
+    status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // wait for to find name
+    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+        if ((listener.nameFound) && (listener.nameMatched)) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+    ASSERT_TRUE(listener.nameFound) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+    ASSERT_TRUE(listener.nameMatched) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+
+    // ping bogus unique names on remote router test 16
+    status = BusPtrB->Ping(listener.NameToMatch.c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    status = BusPtrB->Ping(String(BusPtrA->GetUniqueName() + "0").c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // test 16
+    status = BusPtrB->Ping(String(BusPtrA->GetUniqueName() + ".lo").c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // cancel find
+    status = BusPtrB->CancelFindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // unregister
+    BusPtrB->UnregisterBusListener(listener);
+
+    // cancel advertise
+    status = BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+}
+
+
