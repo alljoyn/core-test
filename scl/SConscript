@@ -150,3 +150,5 @@ if env.has_key('GTEST_DIR'):
     # Thus, these are valid only for Linux and Android
     if addnl_unittest_env['BR'] == 'on' and (addnl_unittest_env['OS'] == 'android' or addnl_unittest_env['OS'] == 'linux'):
         addnl_unittest_env.Program('ajr2rtest', 'ajR2RTest.cc')
+        addnl_unittest_env.Program('namepropagationtest', 'NamePropagationTest.cc')
+
