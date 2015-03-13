@@ -19,7 +19,7 @@ if os.environ.has_key('AJ_CORE_SRC_DIR'):
     env = SConscript(os.environ['AJ_CORE_SRC_DIR'] + '/build_core/SConscript')
     env['AJ_CORE_SRC_DIR'] = os.environ['AJ_CORE_SRC_DIR']
 else:
-    default_alljoyn_src_location = '../../../../../../allseen/core/alljoyn'
+    default_alljoyn_src_location = '../../alljoyn'
     print 'Environment variable AJ_CORE_SRC_DIR is not set. Assuming it to be: ' + default_alljoyn_src_location 
     env = SConscript(default_alljoyn_src_location + '/build_core/SConscript')
     env['AJ_CORE_SRC_DIR'] = default_alljoyn_src_location
