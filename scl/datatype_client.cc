@@ -206,7 +206,7 @@ int main(int argc, char** argv)
     }
 
     /* Create the remote object that will be called */
-    ProxyBusObject*remoteObj;
+    ProxyBusObject*remoteObj = NULL;
     if (ER_OK == status) {
         remoteObj = new ProxyBusObject(*g_msgBus, g_WellKnownName, g_ObjectPath, g_busListener->GetSessionId());
         status = remoteObj->IntrospectRemoteObject();
