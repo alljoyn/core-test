@@ -36,11 +36,12 @@
 #include <qcc/time.h>
 #include <qcc/Util.h>
 
+#include <alljoyn/AllJoynStd.h>
 #include <alljoyn/BusAttachment.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
-#include <alljoyn/AllJoynStd.h>
 #include <alljoyn/MsgArg.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/version.h>
 
 #include <alljoyn/Status.h>
@@ -122,8 +123,9 @@ static MyBusListener* g_myBusListener = NULL;
 
 static bool g_cancelAdvertise = false;
 
-static Event g_object1_registeredEvent;
-static Event g_object2_registeredEvent;
+
+static Event* g_object1_registeredEvent = NULL;
+static Event* g_object2_registeredEvent = NULL;
 
 static volatile sig_atomic_t g_interrupt = false;
 
@@ -410,7 +412,7 @@ class LocalTestObject1 : public BusObject {
 
         QCC_SyncPrintf("1st bus object registered \n");
 
-        g_object1_registeredEvent.SetEvent();
+        g_object1_registeredEvent->SetEvent();
 
     }
     /* signal handler from a_signal */
@@ -793,7 +795,7 @@ class LocalTestObject2 : public BusObject {
 
         QCC_SyncPrintf("2nd bus object registered \n");
 
-        g_object2_registeredEvent.SetEvent();
+        g_object2_registeredEvent->SetEvent();
 
 
     }
@@ -1000,7 +1002,6 @@ static void usage(void)
     printf("   -n <well-known name>  = Well-known name to advertise\n");
     printf("   -t                    = Advertise over TCP (enables selective advertising)\n");
     printf("   -l                    = Advertise locally (enables selective advertising)\n");
-    printf("   -w                    = Advertise over Wi-Fi Direct (enables selective advertising)\n");
     printf("   -a                    = Cancel advertising while servicing a single client (causes rediscovery between iterations)\n");
     printf("   -sn                   = Interface security is not applicable\n");
     printf("   -sr                   = Interface security is required\n");
@@ -1010,6 +1011,16 @@ static void usage(void)
 /** Main entry point */
 int main(int argc, char** argv)
 {
+    if (AllJoynInit() != ER_OK) {
+        return 1;
+    }
+#ifdef ROUTER
+    if (AllJoynRouterInit() != ER_OK) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
 #ifdef _WIN32
     _CrtMemDumpAllObjectsSince(NULL);
 #endif
@@ -1052,11 +1063,9 @@ int main(int argc, char** argv)
         } else if (0 == strcmp("-m", argv[i])) {
             opts.isMultipoint = true;
         } else if (0 == strcmp("-t", argv[i])) {
-            opts.transports |= TRANSPORT_WLAN;
+            opts.transports |= TRANSPORT_TCP;
         } else if (0 == strcmp("-l", argv[i])) {
             opts.transports |= TRANSPORT_LOCAL;
-        } else if (0 == strcmp("-w", argv[i])) {
-            opts.transports |= TRANSPORT_WFD;
         } else if (0 == strcmp("-a", argv[i])) {
             g_cancelAdvertise = true;
         } else if (0 == strcmp("-sn", argv[i])) {
@@ -1087,6 +1096,9 @@ int main(int argc, char** argv)
     if (clientArgs.empty()) {
         clientArgs = env->Find("BUS_ADDRESS");
     }
+
+    g_object1_registeredEvent = new Event();
+    g_object2_registeredEvent = new Event();
 
     /* Create message bus */
     g_msgBus = new BusAttachment("bbservice", true);
@@ -1163,8 +1175,8 @@ int main(int argc, char** argv)
     g_myBusListener = new MyBusListener(*g_msgBus, opts);
 
     /* prepare to register both bus objects */
-    g_object1_registeredEvent.ResetEvent();
-    g_object2_registeredEvent.ResetEvent();
+    g_object1_registeredEvent->ResetEvent();
+    g_object2_registeredEvent->ResetEvent();
 
     /* Register local objects and connect to the daemon */
     LocalTestObject1 testObj1(*g_msgBus, ::abcd::ObjectPath, reportInterval, opts);
@@ -1203,8 +1215,8 @@ int main(int argc, char** argv)
 
         qcc::Event timerEvent(100, 100);
         vector<qcc::Event*> checkEvents, signaledEvents;
-        checkEvents.push_back(&g_object1_registeredEvent);
-        checkEvents.push_back(&g_object2_registeredEvent);
+        checkEvents.push_back(g_object1_registeredEvent);
+        checkEvents.push_back(g_object2_registeredEvent);
 
         checkEvents.push_back(&timerEvent);
         status = qcc::Event::Wait(checkEvents, signaledEvents);
@@ -1213,9 +1225,9 @@ int main(int argc, char** argv)
         }
 
         for (vector<qcc::Event*>::iterator i = signaledEvents.begin(); i != signaledEvents.end(); ++i) {
-            if (*i == &g_object1_registeredEvent) {
+            if (*i == g_object1_registeredEvent) {
                 obj1_registered = true;
-            } else if (*i == &g_object2_registeredEvent) {
+            } else if (*i == g_object2_registeredEvent) {
                 obj2_registered = true;
             }
 
@@ -1310,7 +1322,23 @@ int main(int argc, char** argv)
     delete g_msgBus;
     delete g_myBusListener;
 
+    if (g_object1_registeredEvent) {
+        delete g_object1_registeredEvent;
+        g_object1_registeredEvent = NULL;
+    }
+
+    if (g_object2_registeredEvent) {
+        delete g_object2_registeredEvent;
+        g_object2_registeredEvent = NULL;
+    }
+
     printf("%s exiting with status %d (%s)\n", argv[0], status, QCC_StatusText(status));
+
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
 
     return (int) status;
 }
