@@ -81,7 +81,7 @@ class NamePropagationTest : public testing::Test {
         BusPtrB = new BusAttachment("busAttachmentB", true);
         BusPtrC = new BusAttachment("busAttachmentC", true);
         BusPtrD = new BusAttachment("busAttachmentD", true);
-        BusPtrE = new BusAttachment("busAttachmentD", true);
+        BusPtrE = new BusAttachment("busAttachmentE", true);
 
         // start second bus attachmetn on unix abstract first so local bus
         // attachement does not bind port 9955
@@ -255,20 +255,18 @@ class NamePropTestSessionListener : public SessionPortListener, SessionListener 
     }
 };
 
-TransportMask transportMasks[2] = { TRANSPORT_UDP, TRANSPORT_TCP };
+TransportMask transportMasks[2] = { TRANSPORT_TCP, TRANSPORT_TCP };
+#define EXCHANGE_ALL_NAMES 0
 #if (ALLJOYN_PROTOCOL_VERSION < 12)
-int nameTransferTypesP2P[1] = { -1 };
-int nameTransferTypesHost[1] = { -1 };
-int nameTransferTypesJoiner[1] = { -1 };
-int nameTransferTypesMP[1] = { -1 };
+
+int nameTransferTypes[1] = { -1 };
 #else
-int nameTransferTypesP2P[3] = { -1, SessionOpts::P2P_NAMES, SessionOpts::ALL_NAMES };
-int nameTransferTypesHost[5] = { -1, SessionOpts::P2P_NAMES, SessionOpts::ALL_NAMES, SessionOpts::MP_NAMES };
-int nameTransferTypesJoiner[5] = { -1, SessionOpts::P2P_NAMES, SessionOpts::ALL_NAMES, SessionOpts::MP_NAMES };
-int nameTransferTypesMP[3] = { -1, SessionOpts::MP_NAMES, SessionOpts::ALL_NAMES };
+
+#define EXCHANGE_SESSION_NAMES 1
+int nameTransferTypes[3] = { -1, EXCHANGE_ALL_NAMES, EXCHANGE_SESSION_NAMES };
 #endif
 /* TwoRoutingNodeP2PSessionTest1:
- * Perform test for UDP and TCP and for nameTransferType P2P_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * P2P session
  * (B)-(SR)         (BR)-(A)
  *      |
@@ -279,13 +277,13 @@ int nameTransferTypesMP[3] = { -1, SessionOpts::MP_NAMES, SessionOpts::ALL_NAMES
  * A finds and joins the session.
  * Check session IDs match.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * C finds and joins the session.
  * C leaves session
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
  */
@@ -297,12 +295,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
 
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
@@ -369,7 +383,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
             String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -381,7 +395,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
                     listenerC.GotPresenceNOCFor(bundledRouter) &&
                     listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()))) {
                     break;
                 }
@@ -391,7 +405,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -453,14 +467,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
             /* BusAttachment A: Gets Absence NOC for B, SR.
-             * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Absence NOC for A, BR.
              * BusAttachment C: Gets Absence NOC for A, BR.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotAbsenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotAbsenceNOCFor(bundledRouter) &&
@@ -473,7 +487,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
@@ -512,7 +526,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
 
 /* TwoRoutingNodeP2PSessionTest2:
  * Difference is in the order of JoinSessions.
- * Perform test for UDP and TCP and for nameTransferType P2P_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -524,12 +538,12 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
  * A finds and joins the session.
  * Check session IDs match.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * C leaves session
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Absence NOC for A and BR.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
@@ -539,13 +553,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
 
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
 
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -642,7 +671,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
             String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -654,7 +683,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
                     listenerC.GotPresenceNOCFor(bundledRouter) &&
                     listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotPresenceNOCFor(standaloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()))) {
                     break;
                 }
@@ -662,7 +691,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
             }
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standaloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -695,12 +724,12 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
             /* BusAttachment A: Gets Absence NOC for B, SR.
-             * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Absence NOC for A, BR.
              * BusAttachment C: Gets Absence NOC for A, BR.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
-                if (((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                if (((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()))  &&
                     listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotAbsenceNOCFor(bundledRouter) &&
@@ -710,7 +739,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
                 }
                 qcc::Sleep(WAIT_TIME);
             }
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
@@ -743,7 +772,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
 /*
  * TwoRoutingNodeP2PSessionTest3:
  * Difference is in the direction of JoinSession.
- * Perform test for UDP and TCP and for nameTransferType P2P_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -753,11 +782,11 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
  * B finds and joins the session.
  * Check session IDs match.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Absence NOC for A and BR.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
@@ -768,13 +797,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
 
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -837,7 +881,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -845,7 +889,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotPresenceNOCFor(bundledRouter) &&
@@ -857,7 +901,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             }
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -891,14 +935,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
             /* BusAttachment A: Gets Absence NOC for B, SR.
-             * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Absence NOC for A, BR.
              * BusAttachment C: Gets Absence NOC for A, BR.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotAbsenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotAbsenceNOCFor(bundledRouter) &&
@@ -910,7 +954,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             }
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
@@ -942,7 +986,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
 /*
  * P2P_ValidateResultantNameTransferType:
  * Validate the resultant Name transfer type for various combination of inputs.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES, MP_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -952,13 +996,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
  * A finds and joins the session.
  * Check session IDs match.
  * Validate resultant nameTransfer Type:
- * If both are default or both are P2P, resultant is P2P. otherwise if any is ALL_NAMES, result is ALL_NAMES.
+ * If both are default or both are EXCHANGE_SESSION_NAMES, resultant is EXCHANGE_SESSION_NAMES.
+ * otherwise if any is EXCHANGE_ALL_NAMES, result is EXCHANGE_ALL_NAMES.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Absence NOC for A and BR.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
@@ -972,17 +1017,34 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesHost) / sizeof(SessionOpts::NameTransferType); j++) {
-            for (size_t k = 0; k < sizeof(nameTransferTypesJoiner) / sizeof(SessionOpts::NameTransferType); k++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
+            for (size_t k = 0; k < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); k++) {
                 SessionOpts optsHost(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
                 SessionOpts optsJoiner(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
 
-                if (nameTransferTypesHost[j] != -1) {
-                    optsHost.nameTransfer = static_cast<SessionOpts::NameTransferType>(nameTransferTypesHost[j]);
-                }
-                if (nameTransferTypesJoiner[k] != -1) {
+                switch (nameTransferTypes[j]) {
+                case EXCHANGE_ALL_NAMES:
+                    optsHost.SetAllNames();
+                    break;
 
-                    optsJoiner.nameTransfer = static_cast<SessionOpts::NameTransferType>(nameTransferTypesJoiner[k]);
+                case EXCHANGE_SESSION_NAMES:
+                    optsHost.SetSessionNames();
+                    break;
+
+                default:
+                    break;
+                }
+                switch (nameTransferTypes[k]) {
+                case EXCHANGE_ALL_NAMES:
+                    optsJoiner.SetAllNames();
+                    break;
+
+                case EXCHANGE_SESSION_NAMES:
+                    optsJoiner.SetSessionNames();
+                    break;
+
+                default:
+                    break;
                 }
                 /* Set up bus listeners */
                 NamePropTestFindNameListener listenerA("busAttachmentA");
@@ -1042,19 +1104,23 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                 EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
                 /* Validate resultant nameTransfer Type:
-                 * If both are default or both are P2P, resultant is P2P. otherwise if any is ALL_NAMES, result is ALL_NAMES.
+                 * If both are default or both are EXCHANGE_SESSION_NAMES, resultant is EXCHANGE_SESSION_NAMES.
+                 * otherwise if any is EXCHANGE_ALL_NAMES, result is EXCHANGE_ALL_NAMES.
                  */
-                if ((nameTransferTypesHost[j] == SessionOpts::ALL_NAMES) || (nameTransferTypesJoiner[k] == SessionOpts::ALL_NAMES)) {
-                    EXPECT_EQ(optsJoiner.nameTransfer, SessionOpts::ALL_NAMES);
+                if ((nameTransferTypes[j] == EXCHANGE_ALL_NAMES) ||
+                    (nameTransferTypes[k] == EXCHANGE_ALL_NAMES)) {
+                    EXPECT_TRUE(optsJoiner.IsAllNames());
+                    EXPECT_FALSE(optsJoiner.IsSessionNames());
                 } else {
-                    EXPECT_EQ(optsJoiner.nameTransfer, SessionOpts::P2P_NAMES);
+                    EXPECT_TRUE(optsJoiner.IsSessionNames());
+                    EXPECT_FALSE(optsJoiner.IsAllNames());
                 }
 
                 String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
                 String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
                 /* BusAttachment A: Gets Presence NOC for B, SR.
-                 * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+                 * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
                  * BusAttachment B: Gets Presence NOC for A, BR.
                  * BusAttachment C: Gets Presence NOC for A, BR.
                  * No Absence NOCs must be received at this point.
@@ -1062,7 +1128,7 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                 for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                     if (listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                         listenerA.GotPresenceNOCFor(standaloneRouter) &&
-                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.IsSessionNames())) ||
                          listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName())) &&
                         listenerB.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                         listenerB.GotPresenceNOCFor(bundledRouter) &&
@@ -1074,7 +1140,7 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                 }
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(standaloneRouter));
-                if (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES) {
+                if (optsJoiner.IsSessionNames()) {
                     EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 } else {
                     EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -1108,14 +1174,14 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                 EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
                 /* BusAttachment A: Gets Absence NOC for B, SR.
-                 * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+                 * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
                  * BusAttachment B: Gets Absence NOC for A, BR.
                  * BusAttachment C: Gets Absence NOC for A, BR.
                  */
                 for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                     if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                         listenerA.GotAbsenceNOCFor(standaloneRouter) &&
-                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.IsSessionNames())) ||
                          listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName())) &&
                         listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                         listenerB.GotAbsenceNOCFor(bundledRouter) &&
@@ -1127,7 +1193,7 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                 }
 
                 EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
-                if (ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) {
+                if (ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.IsSessionNames())) {
                     EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                     EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
                 } else {
@@ -1160,7 +1226,7 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
 /*
  * TwoRoutingNodeP2PWellKnownNames:
  * Verify that NOCs for well known names are received only when there is a session.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -1172,21 +1238,21 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
  * Check session IDs match.
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
- * A does not get Presence NOC for BusAttachment C's wellknown name. i.e. wknC unless ALL_NAMES
+ * A does not get Presence NOC for BusAttachment C's wellknown name. i.e. wknC unless EXCHANGE_ALL_NAMES
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  * C gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
  * A, B and C release the wellknown names.
  *
  * Expected: A gets Absence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
- * A does not get Presence or Absence NOC for BusAttachment C's wellknown name. i.e. wknC unless ALL_NAMES
+ * A does not get Presence or Absence NOC for BusAttachment C's wellknown name. i.e. wknC unless EXCHANGE_ALL_NAMES
  * B gets Absence NOC for BusAttachment A's wellknown name. i.e. wknA
  * C gets Absence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
  * A, B and C re-request new wellknown names.
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. wknB
- * A does not get Presence NOC for BusAttachment C's wellknown name. i.e. wknC unless ALL_NAMES
+ * A does not get Presence NOC for BusAttachment C's wellknown name. i.e. wknC unless EXCHANGE_ALL_NAMES
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  * C gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
@@ -1197,18 +1263,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
-            /* Set up bus listeners */
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif            /* Set up bus listeners */
             String wknB = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = wknB;
@@ -1285,7 +1361,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(listenerA.NameToMatch) && listenerB.GotPresenceNOCFor(wknA) &&
                     listenerC.GotPresenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(wknC))) {
                     break;
                 }
@@ -1293,7 +1369,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(listenerA.NameToMatch));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknC));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknC));
@@ -1323,7 +1399,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(wknB) && listenerB.GotAbsenceNOCFor(wknA) &&
                     listenerC.GotAbsenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotAbsenceNOCFor(wknC))) {
                     break;
                 }
@@ -1331,7 +1407,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(wknB));
-            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknC));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(wknC));
             } else {
@@ -1354,14 +1430,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
             /* BusAttachment A: Gets Presence NOC for wknB
-             * BusAttachment A does not get Presence NOC for wknC unless this is an ALL_NAMES session.
+             * BusAttachment A does not get Presence NOC for wknC unless this is an EXCHANGE_ALL_NAMES session.
              * BusAttachment B: Gets Presence NOC for wknA
              * BusAttachment C: Gets Presence NOC for wknA
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(wknB) && listenerB.GotPresenceNOCFor(wknA) &&
                     listenerC.GotPresenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(wknC))) {
                     break;
                 }
@@ -1369,7 +1445,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknB));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknC));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknC));
@@ -1383,13 +1459,13 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
 
             /* Wait for session to be torn down completely
              * BusAttachment A: Gets Absence NOC for B, SR.
-             * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Absence NOC for A, BR.
              * BusAttachment C: Gets Absence NOC for A, BR.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerC.GotAbsenceNOCFor(BusPtrA->GetUniqueName())) {
@@ -1399,7 +1475,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
@@ -1433,7 +1509,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
 }
 
 /* TwoRoutingNodeMPSessionTest1:
- * Perform test for UDP and TCP and for nameTransferType MP_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * P2P session
  * (B)-(SR)         (BR)-(A)
  *      |
@@ -1444,14 +1520,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PWellKnownNames) {
  * A finds and joins the session.
  * Check session IDs match.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * C finds and joins the session.
  * Expected: A gets Presence NOC for C
  * C leaves session
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
  */
@@ -1462,17 +1538,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
 
         TransportMask tm = transportMasks[i];
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesMP[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -1535,7 +1622,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
             String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -1544,7 +1631,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotPresenceNOCFor(bundledRouter) &&
@@ -1557,7 +1644,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standAloneRouter));
-            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -1687,7 +1774,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
 
 /* TwoRoutingNodeMPSessionTest2:
  * The order of JoinSession is different.
- * Perform test for UDP and TCP and for nameTransferType MP_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * P2P session
  * (B)-(SR)         (BR)-(A)
  *      |
@@ -1714,17 +1801,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest2) {
 
         TransportMask tm = transportMasks[i];
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesMP[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -1821,7 +1919,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest2) {
             String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -1924,7 +2022,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest2) {
 
 /* TwoRoutingNodeMPSessionTest3:
  * The direction of JoinSession is different.
- * Perform test for UDP and TCP and for nameTransferType MP_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * P2P session
  * (B)-(SR)         (BR)-(A)
  *      |
@@ -1935,7 +2033,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest2) {
  * B finds and joins the session.
  * Check session IDs match.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C if ALL_NAMES session.
+ *           A gets Presence NOC for C if EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * C finds and joins the session
@@ -1953,17 +2051,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
 
         TransportMask tm = transportMasks[i];
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesMP[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -2026,7 +2135,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
             String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
-             * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+             * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * BusAttachment C: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -2035,7 +2144,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerA.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName())) &&
                     listenerB.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                     listenerB.GotPresenceNOCFor(bundledRouter) &&
@@ -2048,7 +2157,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standAloneRouter));
-            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -2178,7 +2287,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
 /*
  * MP_ValidateResultantNameTransferType:
  * Validate the resultant Name transfer type for various combination of inputs.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES, MP_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -2188,13 +2297,14 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
  * A finds and joins the session.
  * Check session IDs match.
  * Validate resultant nameTransfer Type:
- * If both are default or both are P2P, resultant is P2P. otherwise if any is ALL_NAMES, result is ALL_NAMES.
+ * If both are default or both are EXCHANGE_SESSION_NAMES, resultant is EXCHANGE_SESSION_NAMES.
+ * otherwise if any is EXCHANGE_ALL_NAMES, result is EXCHANGE_ALL_NAMES.
  * Expected: A gets Presence NOC for B and the SR.
- *           A gets Presence NOC for C only if this is an ALL_NAMES session.
+ *           A gets Presence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Presence NOC for A and BR.
  *               C gets Presence NOC for A and BR.
  * A leaves session
- * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an ALL_NAMES session.
+ * Expected: A gets Absence NOC for B and the SR. A gets Absence NOC for C only if this is an EXCHANGE_ALL_NAMES session.
  *               B gets Absence NOC for A and BR.
  *               C gets Absence NOC for A and BR.
  *               C does not get Absence NOC for B.
@@ -2209,20 +2319,36 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesHost) / sizeof(SessionOpts::NameTransferType); j++) {
-            for (size_t k = 0; k < sizeof(nameTransferTypesJoiner) / sizeof(SessionOpts::NameTransferType); k++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
+            for (size_t k = 0; k < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); k++) {
                 SessionOpts optsHost(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
                 /* Note: optsJoiner.isMultipoint is set to false to test this combination, this is not an error. */
                 SessionOpts optsJoiner(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
 
-                if (nameTransferTypesHost[j] != -1) {
-                    optsHost.nameTransfer = static_cast<SessionOpts::NameTransferType>(nameTransferTypesHost[j]);
-                }
-                if (nameTransferTypesJoiner[k] != -1) {
+                switch (nameTransferTypes[j]) {
+                case EXCHANGE_ALL_NAMES:
+                    optsHost.SetAllNames();
+                    break;
 
-                    optsJoiner.nameTransfer = static_cast<SessionOpts::NameTransferType>(nameTransferTypesJoiner[k]);
-                }
+                case EXCHANGE_SESSION_NAMES:
+                    optsHost.SetSessionNames();
+                    break;
 
+                default:
+                    break;
+                }
+                switch (nameTransferTypes[k]) {
+                case EXCHANGE_ALL_NAMES:
+                    optsJoiner.SetAllNames();
+                    break;
+
+                case EXCHANGE_SESSION_NAMES:
+                    optsJoiner.SetSessionNames();
+                    break;
+
+                default:
+                    break;
+                }
                 /* Set up bus listeners */
                 NamePropTestFindNameListener listenerA("busAttachmentA");
                 listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -2281,19 +2407,21 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                 EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
                 /* Validate resultant nameTransfer Type:
-                 * If both are default or both are MP, resultant is MP. otherwise if any is ALL_NAMES, result is ALL_NAMES.
+                 * If both are default or both are MP, resultant is MP. otherwise if any is EXCHANGE_ALL_NAMES, result is EXCHANGE_ALL_NAMES.
                  */
-                if ((nameTransferTypesHost[j] == SessionOpts::ALL_NAMES) || (nameTransferTypesJoiner[k] == SessionOpts::ALL_NAMES)) {
-                    EXPECT_EQ(optsJoiner.nameTransfer, SessionOpts::ALL_NAMES);
+                if ((nameTransferTypes[j] == EXCHANGE_ALL_NAMES) || (nameTransferTypes[k] == EXCHANGE_ALL_NAMES)) {
+                    EXPECT_TRUE(optsJoiner.IsAllNames());
+                    EXPECT_FALSE(optsJoiner.IsSessionNames());
                 } else {
-                    EXPECT_EQ(optsJoiner.nameTransfer, SessionOpts::MP_NAMES);
+                    EXPECT_FALSE(optsJoiner.IsAllNames());
+                    EXPECT_TRUE(optsJoiner.IsSessionNames());
                 }
 
                 String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
                 String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
 
                 /* BusAttachment A: Gets Presence NOC for B, SR.
-                 * Gets Presence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+                 * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
                  * BusAttachment B: Gets Presence NOC for A, BR.
                  * BusAttachment C: Gets Presence NOC for A, BR.
                  * No Absence NOCs must be received at this point.
@@ -2301,7 +2429,7 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                 for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                     if (listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                         listenerA.GotPresenceNOCFor(standaloneRouter) &&
-                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                        ((optsJoiner.IsSessionNames()) ||
                          listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName())) &&
                         listenerB.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                         listenerB.GotPresenceNOCFor(bundledRouter) &&
@@ -2313,7 +2441,7 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                 }
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(standaloneRouter));
-                if (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES) {
+                if (optsJoiner.IsSessionNames()) {
                     EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                 } else {
                     EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
@@ -2347,14 +2475,14 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                 EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
                 /* BusAttachment A: Gets Absence NOC for B, SR.
-                 * Gets Absence NOC for C if protocol version <12 or ALL_NAMES nameTransfer was used.
+                 * Gets Absence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
                  * BusAttachment B: Gets Absence NOC for A, BR.
                  * BusAttachment C: Gets Absence NOC for A, BR.
                  */
                 for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                     if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                         listenerA.GotAbsenceNOCFor(standaloneRouter) &&
-                        ((ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                        (((optsJoiner.IsSessionNames())) ||
                          listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName())) &&
                         listenerB.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                         listenerB.GotAbsenceNOCFor(bundledRouter) &&
@@ -2366,7 +2494,7 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                 }
 
                 EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
-                if (ALLJOYN_PROTOCOL_VERSION >= 12 && (optsJoiner.nameTransfer != SessionOpts::ALL_NAMES)) {
+                if (optsJoiner.IsSessionNames()) {
                     EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrC->GetUniqueName()));
                     EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrC->GetUniqueName()));
                 } else {
@@ -2399,7 +2527,7 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
 /*
  * TwoRoutingNodeMPWellKnownNames:
  * Verify that NOCs for well known names are received only when there is a session.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *      |
  *     (C)
@@ -2437,17 +2565,28 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPWellKnownNames) {
     for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
         TransportMask tm = transportMasks[i];
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             String wknB = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
             NamePropTestFindNameListener listenerA("busAttachmentA");
@@ -2671,7 +2810,7 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPWellKnownNames) {
 }
 
 /* ThreeRoutingNodeP2PSessionTest1:
- * Perform test for UDP and TCP and for nameTransferType P2P_NAMES and ALL_NAMES
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES
  * P2P session
  * (B)-(SR)         (BR)-(A)
  *
@@ -2688,16 +2827,16 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPWellKnownNames) {
  *           B gets Presence NOC for A and BR.
  * D finds and joins the session.
  * Expected:
- *           A gets presence NOC for SR2, D and E only if this is an ALL_NAMES session.
+ *           A gets presence NOC for SR2, D and E only if this is an EXCHANGE_ALL_NAMES session.
  *           B gets Presence NOC for D and SR2.
  *           D gets presence NOC for B and SR.
- *           D gets Presence NOC for A and BR only if this is an ALL_NAMES session.
+ *           D gets Presence NOC for A and BR only if this is an EXCHANGE_ALL_NAMES session.
  * D leaves session
  * Expected:
- *           A gets Absence NOC for SR2, D and E only if this is an ALL_NAMES session.
+ *           A gets Absence NOC for SR2, D and E only if this is an EXCHANGE_ALL_NAMES session.
  *           B gets Absence NOC for D and SR2.
  *           D gets Absence NOC for B and SR.
- *           D gets Absence NOC for A and BR only if this is an ALL_NAMES session.
+ *           D gets Absence NOC for A and BR only if this is an EXCHANGE_ALL_NAMES session.
  * A leaves session
  * Expected: A gets Absence NOC for B and the SR.
  *           B gets Absence NOC for A and BR.
@@ -2710,12 +2849,28 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -2843,7 +2998,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
                     listenerB.GotPresenceNOCFor(standAloneRouter2) &&
                     listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(standAloneRouter2) &&
                       listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()) &&
                       listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()) &&
@@ -2858,7 +3013,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
             EXPECT_TRUE(listenerB.GotPresenceNOCFor(standAloneRouter2));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(standAloneRouter2));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
@@ -2890,7 +3045,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerD.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotAbsenceNOCFor(standAloneRouter) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) ||
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) && listenerA.GotAbsenceNOCFor(standAloneRouter2) &&
                       listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) && listenerD.GotAbsenceNOCFor(bundledRouter))) &&
@@ -2904,7 +3059,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
             EXPECT_TRUE(listenerD.GotAbsenceNOCFor(standAloneRouter));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(standAloneRouter2));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(standAloneRouter2));
@@ -2957,7 +3112,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
 }
 
 /* ThreeRoutingNodeP2PSessionTest2:
- * Perform test for UDP and TCP and for nameTransferType P2P_NAMES and ALL_NAMES.
+ * Perform test for UDP and TCP and for nameTransferType EXCHANGE_SESSION_NAMES and EXCHANGE_ALL_NAMES.
  * The difference is the direction of JoinSessions.
  * P2P session
  * (B)-(SR)         (BR)-(A)
@@ -2976,13 +3131,13 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
  * D requests, advertises a name and binds a P2P session.
  * B finds and joins the session.
  * Expected:
- *           A gets presence NOC for SR2, D and E only if this is an ALL_NAMES session.
+ *           A gets presence NOC for SR2, D and E only if this is an EXCHANGE_ALL_NAMES session.
  *           B gets Presence NOC for D and SR2.
  *           D gets presence NOC for B and SR.
- *           D gets Presence NOC for A and BR only if this is an ALL_NAMES session.
+ *           D gets Presence NOC for A and BR only if this is an EXCHANGE_ALL_NAMES session.
  * D leaves session
  * Expected:
- *           A gets Absence NOC for SR2 and D only if this is an ALL_NAMES session.
+ *           A gets Absence NOC for SR2 and D only if this is an EXCHANGE_ALL_NAMES session.
  *           B gets Absence NOC for D and SR2.
  *           D gets Absence NOC for B and SR.
  *           D gets Absence NOC for A and BR only if this is an ALL_NAMES session.
@@ -2998,12 +3153,28 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
 
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
@@ -3137,17 +3308,17 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdB) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerD.busSessionId, sessionIdB) << "  session ID's do not match";
 
-            /* BusAttachment A gets presence NOC for SR2, D and E only if this is an ALL_NAMES session.
+            /* BusAttachment A gets presence NOC for SR2, D and E only if this is an EXCHANGE_ALL_NAMES session.
              * BusAttachment B gets Presence NOC for D and SR2.
              * BusAttachment D gets presence NOC for B and SR.
-             * BusAttachment D gets Presence NOC for A and BR only if this is an ALL_NAMES session.
+             * BusAttachment D gets Presence NOC for A and BR only if this is an EXCHANGE_ALL_NAMES session.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerB.GotPresenceNOCFor(BusPtrD->GetUniqueName()) &&
                     listenerB.GotPresenceNOCFor(standAloneRouter2) &&
                     listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(standAloneRouter2) &&
                       listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()) &&
                       listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()) &&
@@ -3163,7 +3334,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
             EXPECT_TRUE(listenerB.GotPresenceNOCFor(standAloneRouter2));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(standAloneRouter2));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
@@ -3188,15 +3359,15 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
             status = BusPtrD->LeaveSession(sessionPortListenerD.busSessionId);
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
-            /* BusAttachment A gets Absence NOC for SR2, D and E only if this is an ALL_NAMES session.
+            /* BusAttachment A gets Absence NOC for SR2, D and E only if this is an EXCHANGE_ALL_NAMES session.
              * BusAttachment B gets Absence NOC for D and SR2.
              * BusAttachment D gets Absence NOC for B and SR.
-             * BusAttachment D gets Absence NOC for A and BR only if this is an ALL_NAMES session.
+             * BusAttachment D gets Absence NOC for A and BR only if this is an EXCHANGE_ALL_NAMES session.
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerD.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotAbsenceNOCFor(standAloneRouter) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) ||
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) && listenerA.GotAbsenceNOCFor(standAloneRouter2) &&
                       listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) && listenerD.GotAbsenceNOCFor(bundledRouter))) &&
@@ -3210,7 +3381,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
             EXPECT_TRUE(listenerD.GotAbsenceNOCFor(standAloneRouter));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(standAloneRouter2));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(standAloneRouter2));
@@ -3310,12 +3481,28 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesMP[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -3432,7 +3619,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdD) << "  session ID's do not match";
 
             /* BusAttachment A gets presence NOC for SR2 and D.
-             *                 gets presence NOC for E only if ALL_NAMES
+             *                 gets presence NOC for E only if EXCHANGE_ALL_NAMES
              * BusAttachment B gets Presence NOC for D and SR2.
              * BusAttachment D gets presence NOC for B and SR, A and BR.
              */
@@ -3443,7 +3630,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
                     listenerD.GotPresenceNOCFor(standAloneRouter) &&
                     listenerA.GotPresenceNOCFor(standAloneRouter2) &&
                     listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) ||
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotPresenceNOCFor(BusPtrA->GetUniqueName()) &&
                       listenerD.GotPresenceNOCFor(bundledRouter)))) {
@@ -3459,7 +3646,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(standAloneRouter));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(standAloneRouter2));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
@@ -3478,7 +3665,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
             status = BusPtrD->LeaveSession(sessionIdD);
             EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
             /* BusAttachment A gets Absence NOC for SR2 and D.
-             *                 gets absence NOC for E only if ALL_NAMES
+             *                 gets absence NOC for E only if EXCHANGE_ALL_NAMES
              * BusAttachment B gets Absence NOC for D and SR2.
              * BusAttachment D gets Absence NOC for B and SR, A and BR.
              */
@@ -3487,7 +3674,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
                     listenerD.GotAbsenceNOCFor(standAloneRouter) &&
                     listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) &&
                     listenerA.GotAbsenceNOCFor(standAloneRouter2) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) ||
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(bundledRouter) &&
@@ -3504,7 +3691,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(standAloneRouter2));
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(standAloneRouter2));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()));
             } else {
@@ -3587,12 +3774,29 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesMP[j];
+            int nm = nameTransferTypes[j];
+
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             NamePropTestFindNameListener listenerA("busAttachmentA");
             listenerA.NameToMatch = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
@@ -3729,7 +3933,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
                     listenerB.GotPresenceNOCFor(standAloneRouter2) &&
                     listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotPresenceNOCFor(standAloneRouter) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(standAloneRouter2) &&
                       listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()) &&
                       listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()) &&
@@ -3744,7 +3948,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
             EXPECT_TRUE(listenerB.GotPresenceNOCFor(standAloneRouter2));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(BusPtrB->GetUniqueName()));
             EXPECT_TRUE(listenerD.GotPresenceNOCFor(standAloneRouter));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(standAloneRouter2));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
@@ -3776,7 +3980,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerD.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
                     listenerD.GotAbsenceNOCFor(standAloneRouter) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) ||
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) && listenerA.GotAbsenceNOCFor(standAloneRouter2) &&
                       listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) && listenerD.GotAbsenceNOCFor(bundledRouter))) &&
@@ -3790,7 +3994,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
             EXPECT_TRUE(listenerD.GotAbsenceNOCFor(standAloneRouter));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
             EXPECT_TRUE(listenerB.GotAbsenceNOCFor(standAloneRouter2));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(standAloneRouter2));
@@ -3855,7 +4059,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
 /*
  * ThreeRoutingNodeP2PWellKnownNames:
  * Verify that NOCs for well known names are received only when there is a session.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *
  *     (SR2)
@@ -3871,23 +4075,23 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
  * Check session IDs match.
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
- * A does not get Presence NOC for BusAttachment D's and E's wellknown name. unless ALL_NAMES
+ * A does not get Presence NOC for BusAttachment D's and E's wellknown name. unless EXCHANGE_ALL_NAMES
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
- * D does not get Presence NOC for BusAttachment A's wellknown name. i.e. wknA unless ALL_NAMES
+ * D does not get Presence NOC for BusAttachment A's wellknown name. i.e. wknA unless EXCHANGE_ALL_NAMES
  *
  * A, B and D release the wellknown names.
  *
  * Expected: A gets Absence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
- * A does not get Presence or Absence NOC for BusAttachment D's and E's wellknown name. unless ALL_NAMES
+ * A does not get Presence or Absence NOC for BusAttachment D's and E's wellknown name. unless EXCHANGE_ALL_NAMES
  * B gets Absence NOC for BusAttachment A's wellknown name. i.e. wknA
- * D does not get Absence NOC for BusAttachment A's wellknown name. i.e. wknA unless ALL_NAMES
+ * D does not get Absence NOC for BusAttachment A's wellknown name. i.e. wknA unless EXCHANGE_ALL_NAMES
  *
  * A, B and D re-request new wellknown names.
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. wknB
- * A does not get Presence NOC for BusAttachment D's and E's wellknown name. unless ALL_NAMES
+ * A does not get Presence NOC for BusAttachment D's and E's wellknown name. unless EXCHANGE_ALL_NAMES
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
- * D does not get Presence NOC for BusAttachment A's wellknown name. i.e. wknA unless ALL_NAMES
+ * D does not get Presence NOC for BusAttachment A's wellknown name. i.e. wknA unless EXCHANGE_ALL_NAMES
  *
  */
 TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
@@ -3897,17 +4101,28 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
         TransportMask tm = transportMasks[i];
 
 
-        for (size_t j = 0; j < sizeof(nameTransferTypesP2P) / sizeof(SessionOpts::NameTransferType); j++) {
+        for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
             SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-            int nm = nameTransferTypesP2P[j];
+            int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
             if (nm != -1) {
-                if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                    /* Only run test once for lower protocol versions */
-                    break;
-                } else {
-                    opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-                }
+                /* Only run test once for lower protocol versions */
+                break;
             }
+#else
+            switch (nm) {
+            case EXCHANGE_ALL_NAMES:
+                opts.SetAllNames();
+                break;
+
+            case EXCHANGE_SESSION_NAMES:
+                opts.SetSessionNames();
+                break;
+
+            default:
+                break;
+            }
+#endif
             /* Set up bus listeners */
             String wknB = "org.test.F" + BusPtrA->GetGlobalGUIDShortString();
             NamePropTestFindNameListener listenerA("busAttachmentA");
@@ -4023,7 +4238,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(listenerA.NameToMatch) && listenerB.GotPresenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(wknD) && listenerA.GotPresenceNOCFor(wknE) &&
                       listenerD.GotPresenceNOCFor(wknA)))) {
                     break;
@@ -4032,7 +4247,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(listenerA.NameToMatch));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknD));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
                 EXPECT_FALSE(listenerD.GotPresenceNOCFor(wknA));
@@ -4071,7 +4286,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(wknB) && listenerB.GotAbsenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(wknD) && listenerA.GotAbsenceNOCFor(wknE) &&
                       listenerD.GotAbsenceNOCFor(wknA)))) {
                     break;
@@ -4080,7 +4295,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(wknB));
-            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if ((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknD));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(wknD));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
@@ -4119,7 +4334,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(wknB) && listenerB.GotPresenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotPresenceNOCFor(wknD) && listenerA.GotPresenceNOCFor(wknE) &&
                       listenerD.GotPresenceNOCFor(wknA)))) {
                     break;
@@ -4128,7 +4343,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknB));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (opts.nameTransfer != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknD));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
                 EXPECT_FALSE(listenerD.GotPresenceNOCFor(wknA));
@@ -4155,7 +4370,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
              */
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) ||
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) &&
                       listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()))) &&
@@ -4166,7 +4381,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
             }
 
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(BusPtrB->GetUniqueName()));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()));
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(BusPtrE->GetUniqueName()));
@@ -4212,7 +4427,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
 /*
  * ThreeRoutingNodeMPWellKnownNames:
  * Verify that NOCs for well known names are received only when there is a session.
- * Perform test for UDP and TCP for nameTransfer type values: default, P2P_NAMES, ALL_NAMES.
+ * Perform test for UDP and TCP for nameTransfer type values: default, EXCHANGE_SESSION_NAMES, EXCHANGE_ALL_NAMES.
  * (B)-(SR)         (BR)-(A)
  *
  *     (SR2)
@@ -4229,7 +4444,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
  * A gets Presence NOC for BusAttachment D's wellknown name.
- * A gets Presence NOC for BusAttachment E's wellknown name if ALL_NAMES.
+ * A gets Presence NOC for BusAttachment E's wellknown name if EXCHANGE_ALL_NAMES.
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  * D gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
@@ -4237,7 +4452,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
  *
  * Expected: A gets Absence NOC for BusAttachment B's wellknown name. i.e. listenerA.NameToMatch
  * A gets Absence NOC for BusAttachment D's wellknown name.
- * A does not get Absence NOC for BusAttachment E's wellknown name unless ALL_NAMES.
+ * A does not get Absence NOC for BusAttachment E's wellknown name unless EXCHANGE_ALL_NAMES.
  * B gets Absence NOC for BusAttachment A's wellknown name. i.e. wknA
  * D gets Absence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
@@ -4245,7 +4460,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
  *
  * Expected: A gets Presence NOC for BusAttachment B's wellknown name. i.e. wknB
  * A gets Presence NOC for BusAttachment D's wellknown name.
- * A gets Presence NOC for BusAttachment E's wellknown name if ALL_NAMES.
+ * A gets Presence NOC for BusAttachment E's wellknown name if EXCHANGE_ALL_NAMES.
  * B gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  * D gets Presence NOC for BusAttachment A's wellknown name. i.e. wknA
  *
@@ -4253,17 +4468,28 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PWellKnownNames) {
 TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
     QStatus status = ER_OK;
 
-    for (size_t j = 0; j < sizeof(nameTransferTypesMP) / sizeof(SessionOpts::NameTransferType); j++) {
+    for (size_t j = 0; j < sizeof(nameTransferTypes) / sizeof(SessionOpts::NameTransferType); j++) {
         SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, true, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-        int nm = nameTransferTypesP2P[j];
+        int nm = nameTransferTypes[j];
+#if (ALLJOYN_PROTOCOL_VERSION < 12)
         if (nm != -1) {
-            if (ALLJOYN_PROTOCOL_VERSION < 12) {
-                /* Only run test once for lower protocol versions */
-                break;
-            } else {
-                opts.nameTransfer = static_cast<SessionOpts::NameTransferType>(nm);
-            }
+            /* Only run test once for lower protocol versions */
+            break;
         }
+#else
+        switch (nm) {
+        case EXCHANGE_ALL_NAMES:
+            opts.SetAllNames();
+            break;
+
+        case EXCHANGE_SESSION_NAMES:
+            opts.SetSessionNames();
+            break;
+
+        default:
+            break;
+        }
+#endif
         for (size_t i = 0; i < sizeof(transportMasks) / sizeof(TransportMask); i++) {
 
             TransportMask tm = transportMasks[i];
@@ -4384,7 +4610,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(listenerA.NameToMatch) && listenerB.GotPresenceNOCFor(wknA) &&
                     listenerA.GotPresenceNOCFor(wknD) && listenerD.GotPresenceNOCFor(wknA) &&
-                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) || listenerA.GotPresenceNOCFor(wknE))) {
+                    ((ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) || listenerA.GotPresenceNOCFor(wknE))) {
                     break;
                 }
                 qcc::Sleep(WAIT_TIME);
@@ -4392,7 +4618,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(listenerA.NameToMatch));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknD));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknE));
@@ -4430,14 +4656,14 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotAbsenceNOCFor(wknB) && listenerB.GotAbsenceNOCFor(wknA) &&
                     listenerA.GotAbsenceNOCFor(wknD) && listenerD.GotAbsenceNOCFor(wknA) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) || listenerA.GotAbsenceNOCFor(wknE))) {
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) || listenerA.GotAbsenceNOCFor(wknE))) {
                     break;
                 }
                 qcc::Sleep(WAIT_TIME);
             }
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(wknB));
             EXPECT_TRUE(listenerA.GotAbsenceNOCFor(wknD));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
                 EXPECT_FALSE(listenerA.GotAbsenceNOCFor(wknE));
             } else {
@@ -4472,7 +4698,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
             for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
                 if (listenerA.GotPresenceNOCFor(wknB) && listenerB.GotPresenceNOCFor(wknA) &&
                     listenerA.GotPresenceNOCFor(wknD) && listenerD.GotPresenceNOCFor(wknA) &&
-                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != SessionOpts::ALL_NAMES)) || listenerA.GotPresenceNOCFor(wknE))) {
+                    (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) || listenerA.GotPresenceNOCFor(wknE))) {
                     break;
                 }
                 qcc::Sleep(WAIT_TIME);
@@ -4480,7 +4706,7 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeMPWellKnownNames) {
 
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknB));
             EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknD));
-            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != SessionOpts::ALL_NAMES)) {
+            if (ALLJOYN_PROTOCOL_VERSION >= 12 && (nm != EXCHANGE_ALL_NAMES)) {
                 EXPECT_FALSE(listenerA.GotPresenceNOCFor(wknE));
             } else {
                 EXPECT_TRUE(listenerA.GotPresenceNOCFor(wknE));
