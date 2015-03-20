@@ -320,11 +320,13 @@ TEST_F(R2RTest, Presence_NegativeDetectionNameRequested) {
 class R2RTestSessionListener : public SessionPortListener, SessionListener {
   public:
 
-    R2RTestSessionListener() : sessionAccepted(0), sessionJoined(0),
+    R2RTestSessionListener(BusAttachment* bus = NULL) : bus(bus),
+        sessionAccepted(0), sessionJoined(0),
         sessionLost(0), busSessionId(0) {
         // set random 16-bit port number on construction
         port = qcc::Rand16();
     }
+    BusAttachment* bus;
 
     SessionPort port;
     bool sessionAccepted;
@@ -350,6 +352,9 @@ class R2RTestSessionListener : public SessionPortListener, SessionListener {
         if (sessionPort == port) {
             busSessionId = id;
             sessionJoined = true;
+            if (bus) {
+                bus->SetSessionListener(id, this);
+            }
         } else {
             sessionJoined = false;
         }
@@ -545,6 +550,141 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
 
     // ping unique name with first bus
     status = BusPtrA->Ping(BusPtrB->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // cancel find
+    status = BusPtrB->CancelFindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // unregister
+    BusPtrB->UnregisterBusListener(listener);
+
+    // release name
+    status = BusPtrA->ReleaseName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // unbind port
+    status = BusPtrA->UnbindSessionPort(sessionPortListenerA.port);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+}
+
+TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
+    QStatus status = ER_OK;
+
+    BusAttachment* BusPtrC = new BusAttachment("busAttachmentC", true);
+
+
+    // start busC connection external sample daemon
+    status = BusPtrC->Start();
+    ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+    status = BusPtrC->Connect("unix:abstract=alljoyn");
+    ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+
+    // initialize listener callback
+    R2RTestFindNameListener listener;
+
+    // set unique name
+    listener.NameToMatch = "org.test.A" + BusPtrA->GetGlobalGUIDShortString();
+
+    // Set up SessionOpts
+    SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
+
+    // bind port
+    R2RTestSessionListener sessionPortListenerA(BusPtrA);
+    sessionPortListenerA.port = sessionPortListenerA.port;
+
+    status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // request name
+    status = BusPtrA->RequestName(listener.NameToMatch.c_str(), DBUS_NAME_FLAG_DO_NOT_QUEUE);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // advertise name
+    status = BusPtrA->AdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // register second bus listener for 2nd routing node
+    BusPtrB->RegisterBusListener(listener);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // find advertised name
+    status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // wait for to find name
+    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+        if ((listener.nameFound) && (listener.nameMatched)) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+    ASSERT_TRUE(listener.nameFound) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+    ASSERT_TRUE(listener.nameMatched) << "failed to find advertised name: " << listener.NameToMatch.c_str();
+
+    // join session with second bus
+    SessionId sessionId = 0;
+    status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+    // wait for to find name, 5 second max
+    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+        if (sessionPortListenerA.sessionJoined) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+
+    EXPECT_NE(static_cast<SessionId>(0), sessionId) << "  SessionID should not be '0'";
+    EXPECT_EQ(sessionPortListenerA.busSessionId, sessionId) << "  session ID's do not match";
+
+    // join session from C to A.
+    sessionId = 0;
+    sessionPortListenerA.sessionJoined = false;
+    status = BusPtrC->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+    // wait for to find name, 5 second max
+    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+        if (sessionPortListenerA.sessionJoined) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+
+    EXPECT_NE(static_cast<SessionId>(0), sessionId) << "  SessionID should not be '0'";
+    EXPECT_EQ(sessionPortListenerA.busSessionId, sessionId) << "  session ID's do not match";
+
+    // stop advertising the name
+    BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
+
+    // wait for the found name signal to complete
+    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+        if (!listener.nameFound) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+    EXPECT_FALSE(listener.nameFound);
+
+    String uqnC = BusPtrC->GetUniqueName();
+
+    BusPtrC->Stop();
+    BusPtrC->Join();
+    delete BusPtrC;
+
+    //Wait for SessionLost on A
+    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+        if (sessionPortListenerA.sessionLost) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
+
+    status = BusPtrA->Ping(BusPtrB->GetUniqueName().c_str(), PING_DELAY_TIME);
+    EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
+    // ping unique name for BusPtrC ASACORE-1628
+    status = BusPtrA->Ping(uqnC.c_str(), PING_DELAY_TIME);
     EXPECT_EQ(ER_ALLJOYN_PING_REPLY_UNKNOWN_NAME, status) << "  Actual Status: " << QCC_StatusText(status);
 
     // cancel find
