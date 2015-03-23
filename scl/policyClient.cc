@@ -34,9 +34,10 @@
 #include <qcc/Util.h>
 #include <qcc/time.h>
 
+#include <alljoyn/AllJoynStd.h>
 #include <alljoyn/BusAttachment.h>
 #include <alljoyn/DBusStd.h>
-#include <alljoyn/AllJoynStd.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/version.h>
 
 #include <alljoyn/Status.h>
@@ -668,46 +669,19 @@ static void getErrorMethod(uint8_t wkNameIndex, uint8_t ifcIndex, uint8_t errorI
 
 }
 
-/* Calculate signal name from passed-in parameters */
-static void getSignalName(uint8_t wkNameIndex, uint8_t ifcIndex, uint8_t signalIndex)
-{
-    printf("Client want signal from name/interface %d %d \n", wkNameIndex, ifcIndex);
-
-    if (1 == wkNameIndex) {
-        if (1 == ifcIndex) {
-            if (1 == signalIndex) {
-                g_signalName = ::abcd::SignalName1;
-            } else {
-                g_signalName = ::abcd::SignalName2;
-            }
-        } else {
-            if (1 == signalIndex) {
-                g_signalName = ::abcd::SignalName3;
-            } else {
-                g_signalName = ::abcd::SignalName4;
-            }
-        }
-    } else if (2 == wkNameIndex) {
-        if (1 == ifcIndex) {
-            if (1 == signalIndex) {
-                g_signalName = ::efgh::SignalName1;
-            } else {
-                g_signalName = ::efgh::SignalName2;
-            }
-        } else {
-            if (1 == signalIndex) {
-                g_signalName = ::efgh::SignalName3;
-            } else {
-                g_signalName = ::efgh::SignalName4;
-            }
-        }
-    }
-
-}
-
 /** Main entry point */
 int main(int argc, char** argv)
 {
+    if (AllJoynInit() != ER_OK) {
+        return 1;
+    }
+#ifdef ROUTER
+    if (AllJoynRouterInit() != ER_OK) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
     QStatus status = ER_OK;
     bool useIntrospection = false;
     InterfaceSecurityPolicy secPolicy = AJ_IFC_SECURITY_INHERIT;
@@ -716,10 +690,8 @@ int main(int argc, char** argv)
     qcc::String pbusConnect;
     qcc::String userId;
     const char* keyStore = NULL;
-    unsigned long pingCount = 1;
     unsigned long repCount = 1;
     unsigned long authCount = 1000;
-    uint64_t runTime = 0;
     Environ* env;
 
     bool discoverRemote = false;
@@ -859,13 +831,6 @@ int main(int argc, char** argv)
     qcc::String connectArgs = env->Find("BUS_ADDRESS");
 
     for (unsigned long i = 0; i < repCount && !g_interrupt; i++) {
-        unsigned long pings;
-        if (runTime > 0) {
-            pings = 1;
-            pingCount = 0;
-        } else {
-            pings = pingCount;
-        }
 
         /* Create message bus */
         g_msgBus = new BusAttachment("policyClient", true);
@@ -1199,6 +1164,11 @@ int main(int argc, char** argv)
             break;
         }
     }
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
 
     printf("policyClient exiting with status %d (%s)\n", status, QCC_StatusText(status));
 

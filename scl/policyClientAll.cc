@@ -33,9 +33,10 @@
 #include <qcc/Util.h>
 #include <qcc/time.h>
 
+#include <alljoyn/AllJoynStd.h>
 #include <alljoyn/BusAttachment.h>
 #include <alljoyn/DBusStd.h>
-#include <alljoyn/AllJoynStd.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/version.h>
 
 #include <alljoyn/Status.h>
@@ -590,6 +591,16 @@ static QStatus CallAll(LocalTestObject1* testObj1,
 /** Main entry point */
 int main(int argc, char** argv)
 {
+    if (AllJoynInit() != ER_OK) {
+        return 1;
+    }
+#ifdef ROUTER
+    if (AllJoynRouterInit() != ER_OK) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
     QStatus status = ER_OK;
     bool useIntrospection = false;
     InterfaceSecurityPolicy secPolicy = AJ_IFC_SECURITY_INHERIT;
@@ -738,7 +749,12 @@ int main(int argc, char** argv)
         }
     }
 
-    printf("policyClient exiting with status %d (%s)\n", status, QCC_StatusText(status));
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    printf("policyClientAll exiting with status %d (%s)\n", status, QCC_StatusText(status));
 
     return (int) status;
 }
