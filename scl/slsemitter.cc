@@ -66,7 +66,6 @@ const char* ObjectPath = "/org/alljoyn/alljoyn_test";
 static BusAttachment* g_msgBus = NULL;
 static String g_ObjectPath = ::org::alljoyn::alljoyn_test::ObjectPath;
 
-static bool compress = false;
 static bool bothSenderReceiver = false;
 static unsigned long timeToLive = 0;
 static bool g_debug = false;
@@ -135,9 +134,6 @@ class LocalTestObject : public BusObject {
         arg[0].Set("u", count);
         arg[1].Set("t", ts.seconds);
         arg[2].Set("q", ts.mseconds);
-        if (compress) {
-            flags |= ALLJOYN_FLAG_COMPRESSED;
-        }
         if (g_debug) {
             std::cout << "Sec is" << ts.seconds << ", ms is " << ts.mseconds << std::endl;
         }
@@ -175,13 +171,12 @@ class SignalReceiver : public MessageReceiver {
 
 static void usage(void)
 {
-    printf("Usage: slsemitter  [-h] [-?] [-r #] [-t #] [-x] [-o <obj path>]\n\n");
+    printf("Usage: slsemitter  [-h] [-?] [-r #] [-t #] [-o <obj path>]\n\n");
     printf("Options:\n");
     printf("   -h              = Print this help message\n");
     printf("   -?              = Print this help message\n");
     printf("   -r #            = Signal rate (delay in ms between signals sent; default = 0)\n");
     printf("   -t #            = TTL for the signals (in s)\n");
-    printf("   -x              = Compress headers\n");
     printf("   -o <objectpath> = OjectPath to be used.\n");
     printf("   -b              = Sender and Receiver both.\n");
     printf("   -d              = put debug timer prints.\n");
@@ -224,8 +219,6 @@ int main(int argc, char** argv)
             } else {
                 timeToLive = strtoul(argv[i], NULL, 10);
             }
-        } else if (0 == strcmp("-x", argv[i])) {
-            compress = true;
         } else if (0 == strcmp("-o", argv[i])) {
             ++i;
             if (i == argc) {

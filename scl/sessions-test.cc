@@ -995,15 +995,6 @@ int main(int argc, char** argv)
                 continue;
             }
             sessionTestObj1.SendChatSignal(id, chatMsg.c_str(), flags);
-        } else if (cmd == "cchat") {
-            uint8_t flags = ALLJOYN_FLAG_COMPRESSED;
-            SessionId id = NextTokAsSessionId(line);
-            String chatMsg = Trim(line);
-            if ((id == 0) || chatMsg.empty()) {
-                printf("Usage: cchat <sessionId> <msg>\n");
-                continue;
-            }
-            sessionTestObj1.SendChatSignal(id, chatMsg.c_str(), flags);
         } else if (cmd == "autochat") {
             SessionId id = NextTokAsSessionId(line);
             uint32_t count = StringToU32(NextTok(line), 0, 0);
@@ -1133,7 +1124,6 @@ int main(int argc, char** argv)
             printf("join <name> <port> [isMultipoint] [traffic] [proximity] [transports] - Join a session\n");
             printf("leave <sessionId>                                             - Leave a session\n");
             printf("chat <sessionId> <msg>                                        - Send a message over a given session\n");
-            printf("cchat <sessionId> <msg>                                       - Send a message over a given session with compression\n");
             printf("schat1.1.1 <msg>                                              - Send a SLS using BusObject 1, Interface 1, Member 1\n");
             printf("schat1.1.2 <msg>                                              - Send a SLS using BusObject 1, Interface 1, Member 2\n");
             printf("schat1.2.1 <msg>                                              - Send a SLS using BusObject 1, Interface 2, Member 1\n");

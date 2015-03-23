@@ -61,7 +61,6 @@ static String g_Prefix = "sigtest";
 /** Static top level message bus object */
 static BusAttachment* g_msgBus = NULL;
 
-static bool compress = false;
 static unsigned long g_timeToLive = 30;
 static bool g_debug = false;
 static TransportMask g_transport = TRANSPORT_IP;
@@ -237,9 +236,7 @@ class LocalTestObject : public BusObject {
         arg[3].Set("ay", tbufsize, buf);
         arg[4].Set("u", ttimeToLive);
         arg[5].Set("u", count_infinite_ttl);
-        if (compress) {
-            flags |= ALLJOYN_FLAG_COMPRESSED;
-        }
+
         if (g_debug) { printf("Sec is %lu, ms is %u \n", ts.seconds, ts.mseconds); }
         printf("SendSignal #: %u %x\n", count, count);
         fflush(stdout);
@@ -329,7 +326,6 @@ static void usage(void)
     printf("   -r #            = Signal rate (delay in ms between signals sent; default = 0)\n");
     printf("   -payload #      = Payload will be between 50 and <payload> bytes \n");
     printf("   -t #            = TTL for the signals (in s)\n");
-    printf("   -x              = Compress headers\n");
     printf("   -n <wkn>        = WKN to be used.\n");
     printf("   -d              = put debug timer prints.\n");
     printf("   -f              = prefix for discovery\n");
@@ -386,8 +382,6 @@ int main(int argc, char** argv)
                 g_payload = qcc::StringToU32(argv[i], 0, 50);
             }
 
-        } else if (0 == strcmp("-x", argv[i])) {
-            compress = true;
         } else if (0 == strcmp("-n", argv[i])) {
             ++i;
             if (i == argc) {

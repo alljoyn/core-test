@@ -456,14 +456,12 @@ class LocalTestObject : public BusObject {
             while (get_data(tempDest) == NULL) ;
             if (tempDest[0] != '\0') { dest = tempDest; }
 
-            printf("Enter flags - Compression(H), encryption (E), sessionless (S), broadcast (G): HESG [0] :");
+            printf("Enter flags - encryption (E), sessionless (S), broadcast (G): ESG [0] :");
             fflush(stdout);
             while (get_data(tempflags) == NULL) ;
             if (tempflags[0] != '\0') {
                 String tstr(tempflags);
-                size_t temp = tstr.find_first_of("H");
-                if (temp != String::npos) { flags |= ALLJOYN_FLAG_COMPRESSED; }
-                temp = tstr.find_first_of("E");
+                size_t temp = tstr.find_first_of("E");
                 if (temp != String::npos) { flags |= ALLJOYN_FLAG_ENCRYPTED; }
                 temp = tstr.find_first_of("S");
                 if (temp != String::npos) { flags |= ALLJOYN_FLAG_SESSIONLESS; }
@@ -489,7 +487,7 @@ class LocalTestObject : public BusObject {
             }
         }
 
-        printf("\nSignal params: \nSession id=%u\nDestination=%s\nflags=%c %c %c %c \nttl=%u \n", tsessionid, dest, (tflags & ALLJOYN_FLAG_COMPRESSED) ? 'H' : '.',
+        printf("\nSignal params: \nSession id=%u\nDestination=%s\nflags=%c %c %c \nttl=%u \n", tsessionid, dest, 
                (tflags & ALLJOYN_FLAG_ENCRYPTED)  ? 'E' : '.',
                (tflags & ALLJOYN_FLAG_SESSIONLESS) ? 'S' : '.',
                (tflags & ALLJOYN_FLAG_GLOBAL_BROADCAST) ? 'G' : '.', ttl);
@@ -1294,11 +1292,7 @@ int main(int argc, char** argv)
                             temp = strtok(tempOptions, " ");
                             if (temp) {
                                 String tstr(temp);
-                                size_t temp = tstr.find_first_of("H");
-                                if (temp != String::npos) {
-                                    flags |= ALLJOYN_FLAG_COMPRESSED;
-                                }
-                                temp = tstr.find_first_of("E");
+                                size_t temp = tstr.find_first_of("E");
                                 if (temp != String::npos) {
                                     flags |= ALLJOYN_FLAG_ENCRYPTED;
                                 }
