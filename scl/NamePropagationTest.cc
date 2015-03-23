@@ -165,6 +165,11 @@ class NamePropagationTest : public testing::Test {
         BusPtrD->Join();
         delete BusPtrD;
 
+        status = BusPtrE->Disconnect();
+        ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+        BusPtrE->Stop();
+        BusPtrE->Join();
+        delete BusPtrE;
     }
 
 };
