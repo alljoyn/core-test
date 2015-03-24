@@ -47,7 +47,8 @@ int main(int argc, char**argv, char**envArg)
 }
 
 static const uint32_t waitTimeoutMs = 4000;
-static const SessionPort sessionPort = 80;
+static const SessionPort allNamesSessionPort = 80;
+static const SessionPort slsNamesSessionPort = 90;
 
 class OtherBusListener : public BusListener, public SessionPortListener {
   public:
@@ -61,6 +62,16 @@ class OtherBusListener : public BusListener, public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
         return true;
+    }
+};
+
+class NOCSessionOpts : public SessionOpts {
+  public:
+    NOCSessionOpts() : SessionOpts() {
+    }
+
+    NOCSessionOpts(SessionOpts::TrafficType traffic, bool isMultipoint, SessionOpts::Proximity proximity, TransportMask transports, NameTransferType nameType) :
+        SessionOpts(traffic, isMultipoint, proximity, transports, nameType) {
     }
 };
 
@@ -84,9 +95,14 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
         bus->RegisterBusListener(*this);
         EXPECT_EQ(ER_OK, bus->Start());
         EXPECT_EQ(ER_OK, bus->Connect("null:"));
-        SessionPort port = sessionPort;
-        SessionOpts opts;
+        SessionPort port = allNamesSessionPort;
+        NOCSessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, SessionOpts::ALL_NAMES);
         EXPECT_EQ(ER_OK, bus->BindSessionPort(port, opts, *this));
+
+        SessionPort port2 = slsNamesSessionPort;
+        NOCSessionOpts opts2(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, SessionOpts::SLS_NAMES);
+        EXPECT_EQ(ER_OK, bus->BindSessionPort(port2, opts2, *this));
+
         EXPECT_EQ(ER_OK, bus->RequestName("bus.alias", DBUS_NAME_FLAG_DO_NOT_QUEUE));
         EXPECT_EQ(ER_OK, bus->AdvertiseName("bus.alias", TRANSPORT_ANY));
         FlushNameOwnerChangedSignals();
@@ -135,14 +151,14 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
         printf("NameOwnerChanged flushed\n");
     }
 
-    QStatus ConnectOtherBus(const char* connectSpec = "null:") {
+    QStatus ConnectOtherBus(const char* connectSpec = "null:", SessionOpts::NameTransferType nameTransfer = SessionOpts::ALL_NAMES) {
         QStatus status = otherBus->Start();
         if (ER_OK == status) {
             status = otherBus->Connect(connectSpec);
         }
         if (ER_OK == status) {
-            SessionPort port = sessionPort;
-            SessionOpts opts;
+            SessionPort port = (nameTransfer == SessionOpts::ALL_NAMES) ? allNamesSessionPort : slsNamesSessionPort;
+            NOCSessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, nameTransfer);
             status = otherBus->BindSessionPort(port, opts, *otherBusListener);
         }
         if (ER_OK == status) {
@@ -151,6 +167,15 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
         if (ER_OK == status) {
             status = otherBus->AdvertiseName("other.bus.alias", TRANSPORT_ANY);
         }
+        return status;
+    }
+
+    QStatus BindAdditionalPortOnOtherBus(SessionOpts::NameTransferType nameTransfer = SessionOpts::ALL_NAMES) {
+
+        SessionPort port = (nameTransfer == SessionOpts::ALL_NAMES) ? allNamesSessionPort : slsNamesSessionPort;
+        NOCSessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, nameTransfer);
+        QStatus status = otherBus->BindSessionPort(port, opts, *otherBusListener);
+
         return status;
     }
 
@@ -163,19 +188,18 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
             status = found ? ER_OK : ER_TIMEOUT;
         }
         if (ER_OK == status) {
-            SessionPort port = sessionPort;
-            SessionOpts opts;
-            opts.nameTransfer = nameTransfer;
-            printf("JoinSession(name=%s,opts={nameTransfer=%s,...})\n", otherBus->GetUniqueName().c_str(),
-                   (opts.nameTransfer == SessionOpts::ALL_NAMES) ? "ALL_NAMES" : "DAEMON_NAMES");
+            SessionPort port = (nameTransfer == SessionOpts::ALL_NAMES) ? allNamesSessionPort : slsNamesSessionPort;
+            NOCSessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, nameTransfer);
+            printf("JoinSession(name=%s,opts={nameTransfer=%s,%d...})\n", otherBus->GetUniqueName().c_str(),
+                   (opts.IsAllNames()) ? "ALL_NAMES" : "SLS_NAMES", port);
             status = bus->JoinSession("other.bus.alias", port, NULL, sid, opts);
         }
         return status;
     }
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
-        printf("AcceptSession(name=%s,opts={nameTransfer=%s,...})\n", joiner,
-               (opts.nameTransfer == SessionOpts::ALL_NAMES) ? "ALL_NAMES" : "DAEMON_NAMES");
+        printf("AcceptSession(name=%s,port=%d,opts={nameTransfer=%s,...})\n", joiner, sessionPort,
+               (opts.IsAllNames()) ? "ALL_NAMES" : "SLS_NAMES");
         return true;
     }
 
@@ -193,10 +217,9 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
             status = otherBusListener->found ? ER_OK : ER_TIMEOUT;
         }
         if (ER_OK == status) {
-            SessionPort port = sessionPort;
+            SessionPort port = (nameTransfer == SessionOpts::ALL_NAMES) ? allNamesSessionPort : slsNamesSessionPort;
             SessionId id;
-            SessionOpts opts;
-            opts.nameTransfer = nameTransfer;
+            NOCSessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY, nameTransfer);
             status = otherBus->JoinSession("bus.alias", port, NULL, id, opts);
         }
         return status;
@@ -253,9 +276,9 @@ TEST_F(NameOwnerChangedTest, AllNames_LocalAcceptSessionDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_LocalJoinSessionDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus());
+    EXPECT_EQ(ER_OK, ConnectOtherBus("null:", SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
     EXPECT_EQ(ER_OK, LeaveSession());
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
@@ -263,9 +286,9 @@ TEST_F(NameOwnerChangedTest, DaemonNames_LocalJoinSessionDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_LocalAcceptSessionDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus());
+    EXPECT_EQ(ER_OK, ConnectOtherBus("null:", SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
-    EXPECT_EQ(ER_OK, AcceptSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, AcceptSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
     EXPECT_EQ(ER_OK, LeaveSession());
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
@@ -324,8 +347,8 @@ TEST_F(NameOwnerChangedTest, AllNames_RemoteAcceptSessionTriggersNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteConnectDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
     BusAttachment* remoteOtherBus = new BusAttachment("NameOwnerChangedTestRemoteOther", true);
     EXPECT_EQ(ER_OK, remoteOtherBus->Start());
@@ -336,8 +359,8 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteConnectDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteRequestNameDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
     EXPECT_EQ(ER_OK, otherBus->RequestName("other.bus.name", DBUS_NAME_FLAG_DO_NOT_QUEUE));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged());
@@ -345,8 +368,8 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteRequestNameDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteReleaseNameDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_OK, otherBus->RequestName("other.bus.name", DBUS_NAME_FLAG_DO_NOT_QUEUE));
     FlushNameOwnerChangedSignals();
     EXPECT_EQ(ER_OK, otherBus->ReleaseName("other.bus.name"));
@@ -355,9 +378,9 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteReleaseNameDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteJoinSessionDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
     EXPECT_EQ(ER_OK, LeaveSession());
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
@@ -365,9 +388,9 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteJoinSessionDoesNotTriggerNOC)
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteAcceptSessionDoesNotTriggerNOC)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
-    EXPECT_EQ(ER_OK, AcceptSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, AcceptSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
     EXPECT_EQ(ER_OK, LeaveSession());
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
@@ -376,7 +399,7 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteAcceptSessionDoesNotTriggerNOC)
 /* This is to test part of the ASACORE-713 fix.  It's disabled due to needing manual setup and verification. */
 TEST_F(NameOwnerChangedTest, DISABLED_DaemonNames_DoesNotExchangeRemoteNames)
 {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
 
     BusAttachment* remoteOtherBus = new BusAttachment("NameOwnerChangedTestRemoteOther", true);
     OtherBusListener* remoteOtherBusListener = new OtherBusListener();
@@ -386,10 +409,11 @@ TEST_F(NameOwnerChangedTest, DISABLED_DaemonNames_DoesNotExchangeRemoteNames)
     EXPECT_EQ(ER_OK, remoteOtherBus->FindAdvertisedName("other.bus.alias"));
     for (uint32_t i = 0; !remoteOtherBusListener->found && (i < waitTimeoutMs); i += 100) qcc::Sleep(100);
     EXPECT_EQ(true, remoteOtherBusListener->found);
-    SessionPort port = sessionPort; SessionOpts opts;
+    SessionPort port = allNamesSessionPort;
+    SessionOpts opts;
     EXPECT_EQ(ER_OK, remoteOtherBus->JoinSession("other.bus.alias", port, NULL, sid, opts));
 
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_OK, LeaveSession());
 
     remoteOtherBus->UnregisterBusListener(*remoteOtherBusListener);
@@ -398,16 +422,16 @@ TEST_F(NameOwnerChangedTest, DISABLED_DaemonNames_DoesNotExchangeRemoteNames)
 }
 
 TEST_F(NameOwnerChangedTest, DaemonNames_LocalOldOwnerIsAllNewOwnerIsDaemon) {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
     /* The bus.alias remote owner is masked by the local owner */
     EXPECT_EQ(ER_OK, otherBus->RequestName("bus.alias", DBUS_NAME_FLAG_DO_NOT_QUEUE));
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
     /* Unmask the remote owner */
     EXPECT_EQ(ER_OK, bus->ReleaseName("bus.alias"));
     /*
-     * Since newOwner is DAEMON_NAMES, then we should not see it in the
-     * NameOwnerChanged signal.
+     * Since newOwner is SLS_NAMES, then we should see a
+     * NameOwnerChanged signal with newOwner blank.
      */
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
     EXPECT_STREQ("bus.alias", alias.c_str());
@@ -416,27 +440,31 @@ TEST_F(NameOwnerChangedTest, DaemonNames_LocalOldOwnerIsAllNewOwnerIsDaemon) {
 }
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteOldOwnerIsAllNewOwnerIsDaemon) {
+
     /* Request remote name, twice (second one is queued) */
     EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, BindAdditionalPortOnOtherBus(SessionOpts::SLS_NAMES));
+
     EXPECT_EQ(ER_OK, otherBus->RequestName("other.bus.name", 0));
     BusAttachment* remoteOtherBus = new BusAttachment("NameOwnerChangedTestRemoteOther", true);
     EXPECT_EQ(ER_OK, remoteOtherBus->Start());
     EXPECT_EQ(ER_OK, remoteOtherBus->Connect("unix:abstract=alljoyn"));
     EXPECT_EQ(ER_DBUS_REQUEST_NAME_REPLY_IN_QUEUE, remoteOtherBus->RequestName("other.bus.name", 0));
     FlushNameOwnerChangedSignals();
+
     /* Join remote session ALL, newOwner of other.bus.name is otherBus */
     EXPECT_EQ(ER_OK, JoinSession());
     SessionId a = sid;
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged()); // TODO check explicitly for other.bus.name alias
     FlushNameOwnerChangedSignals();
     /* Join remote session DAEMON and leave remote session ALL */
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged());
     EXPECT_EQ(ER_OK, bus->LeaveSession(a));
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
     FlushNameOwnerChangedSignals();
     /*
-     * Since newOwner is DAEMON_NAMES, then we should not see it in the
+     * Since newOwner is SLS_NAMES, then we should not see it in the
      * NameOwnerChanged signal.
      */
     EXPECT_EQ(ER_OK, otherBus->ReleaseName("other.bus.name"));
@@ -445,14 +473,14 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteOldOwnerIsAllNewOwnerIsDaemon) {
 }
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteOldOwnerIsDaemonLocalNewOwnerIsAll) {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_OK, otherBus->RequestName("other.bus.name", 0));
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
     EXPECT_EQ(ER_OK, bus->RequestName("other.bus.name", 0));
     /*
-     * Since oldOwner is DAEMON_NAMES, then we should not it in the
-     * NameOwnerChanged signal.
+     * Since oldOwner is SLS_NAMES, then we should see a
+     * NameOwnerChanged signal with oldOwner blank.
      */
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
     EXPECT_STREQ("other.bus.name", alias.c_str());
@@ -466,17 +494,18 @@ TEST_F(NameOwnerChangedTest, DISABLED_DaemonNames_RemoteOldOwnerIsDaemonRemoteNe
 
 TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessions) {
     EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, BindAdditionalPortOnOtherBus(SessionOpts::SLS_NAMES));
     FlushNameOwnerChangedSignals();
 
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     SessionId a = sid;
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
 
     EXPECT_EQ(ER_OK, JoinSession());
     SessionId b = sid;
     /*
-     * Since oldOwner is DAEMON_NAMES, then we should not it in the
-     * NameOwnerChanged signal.
+     * Since oldOwner is SLS_NAMES, we should see a
+     * NameOwnerChanged signal with oldOwner blank.
      */
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
     EXPECT_STREQ("other.bus.alias", alias.c_str());
@@ -488,7 +517,7 @@ TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessions) {
     SessionId c = sid;
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
 
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     SessionId d = sid;
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
 
@@ -509,8 +538,8 @@ TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessions) {
     EXPECT_EQ(ER_OK, JoinSession());
     b = sid;
     /*
-     * Since oldOwner is DAEMON_NAMES, then we should not get it in the
-     * NameOwnerChanged signal.
+     * Since oldOwner is SLS_NAMES, we should see a
+     * NameOwnerChanged signal with oldOwner blank.
      */
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
     EXPECT_STREQ("other.bus.alias", alias.c_str());
@@ -529,7 +558,7 @@ TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessions) {
 }
 
 TEST_F(NameOwnerChangedTest, DaemonNames_RemoteDaemonChangeOwner) {
-    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn", SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_OK, otherBus->RequestName("other.bus.name", 0));
     BusAttachment* remoteOtherBus = new BusAttachment("NameOwnerChangedTestRemoteOther", true);
     EXPECT_EQ(ER_OK, remoteOtherBus->Start());
@@ -537,7 +566,7 @@ TEST_F(NameOwnerChangedTest, DaemonNames_RemoteDaemonChangeOwner) {
     EXPECT_EQ(ER_DBUS_REQUEST_NAME_REPLY_IN_QUEUE, remoteOtherBus->RequestName("other.bus.name", 0));
     FlushNameOwnerChangedSignals();
 
-    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::DAEMON_NAMES));
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
     EXPECT_EQ(ER_OK, otherBus->ReleaseName("other.bus.name"));
     EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
