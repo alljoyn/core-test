@@ -296,8 +296,8 @@ int main(const int argc, const char* argv[])
     QStatus status = ER_FAIL;
 
     std::cout << "AllJoyn Library version: " << ajn::GetVersion() <<
-    std::endl << "AllJoyn Library build info: " << ajn::GetBuildInfo() <<
-    std::endl;
+        std::endl << "AllJoyn Library build info: " << ajn::GetBuildInfo() <<
+        std::endl;
 
     // Install Ctrl-C (SIGINT) handler
     signal(SIGINT, ctrlCHandler);
@@ -305,11 +305,11 @@ int main(const int argc, const char* argv[])
     parseCmdLineArgs(argc, argv);
 
     std::cout << "INFO: Running in " << ((RM_ADVERTISE == g_runMode) ? "advertising" : "discovering") << " mode" <<
-    std::endl << "INFO: Prefix for well-known name is " << g_wellKnownNamePrefix.c_str() <<
-    std::endl << "INFO: Number of names to " << ((RM_ADVERTISE == g_runMode) ? "advertise" : "discover") << " is " << (uint16_t) g_numNames <<
-    std::endl << "INFO: Time-Offset is " << g_timeCorrectionOffset <<
-    std::endl << "INFO: The duration for which names are advertised / discovered is " <<
-    g_advtdiscovTTL << "ms" << std::endl;
+        std::endl << "INFO: Prefix for well-known name is " << g_wellKnownNamePrefix.c_str() <<
+        std::endl << "INFO: Number of names to " << ((RM_ADVERTISE == g_runMode) ? "advertise" : "discover") << " is " << (uint16_t) g_numNames <<
+        std::endl << "INFO: Time-Offset is " << g_timeCorrectionOffset <<
+        std::endl << "INFO: The duration for which names are advertised / discovered is " <<
+        g_advtdiscovTTL << "ms" << std::endl;
 
     if (!g_connectSpec.empty()) {
         std::cout << "INFO: The connect spec is " << g_connectSpec.c_str() << std::endl;
@@ -340,13 +340,13 @@ int main(const int argc, const char* argv[])
     if (RM_ADVERTISE == g_runMode) {
         std::cout << "INFO: Flag to advertise sequentially is " <<
         (g_advertiseSequentially ? "enabled" : "disabled") << std::endl <<
-        "INFO: Flag to advertise prefix as-is is " <<
+            "INFO: Flag to advertise prefix as-is is " <<
         (g_fixedNameAdvertisement ? "enabled" : "disabled") << std::endl <<
-        "INFO: Flag to linger for 45s before exiting is " <<
+            "INFO: Flag to linger for 45s before exiting is " <<
         (g_hangAround ? "enabled" : "disabled") << std::endl <<
-        "INFO: Flag to advertise quietly is " <<
+            "INFO: Flag to advertise quietly is " <<
         (g_advertiseQuietly ? "enabled" : "disabled") << std::endl <<
-        std::endl;
+            std::endl;
 
         // Store the timestamps at which each name is advertised
         // to be able to correctly determine when the names should be cancelled.
@@ -385,7 +385,7 @@ int main(const int argc, const char* argv[])
             }
 
             std::cout << "Advertising the name (index = " << (uint16_t) i << "): " << nameToAdvertise.c_str() <<
-            std::endl;
+                std::endl;
 
             if (g_advertiseSequentially) {
                 // Wait time-to-live milliseconds for the name to expire, or
@@ -468,7 +468,7 @@ int main(const int argc, const char* argv[])
         // Linger, if asked
         if (g_hangAround) {
             std::cout << "Option '-linger' was specified. Waiting for 45s before exiting..." <<
-            " (will not respond to Ctrl-C during these 45s)" << std::endl;
+                " (will not respond to Ctrl-C during these 45s)" << std::endl;
             qcc::Sleep(45000);
             std::cout << "Done." << std::endl;
         }
@@ -485,8 +485,8 @@ int main(const int argc, const char* argv[])
             std::cout << "INFO: Ping timeout is set as " << g_pingTimeout << std::endl;
         }
         std::cout << "INFO: Flag to exit after finding desired number of names (and not wait for LostAdvertisedName) is " << (g_dontWaitForLost ? "true" : "false") << std::endl <<
-        "INFO: Number of BusAttachment threads is " << (uint16_t) numThreads <<
-        std::endl;
+            "INFO: Number of BusAttachment threads is " << (uint16_t) numThreads <<
+            std::endl;
 
         g_NameTimestamps = new nameTimestamp_t[g_numNames];
         memset(g_NameTimestamps, 0, sizeof(nameTimestamp_t) * g_numNames);
@@ -519,8 +519,8 @@ int main(const int argc, const char* argv[])
             qcc::Sleep(sleepTime);
             numMsToWait -= sleepTime;
             std::cout << "Found " << (uint16_t)g_numFoundNames << " names" <<
-            " and Lost " << (uint16_t) g_numLostNames << " names so far..." <<
-            std::endl;
+                " and Lost " << (uint16_t) g_numLostNames << " names so far..." <<
+                std::endl;
         }
         if (g_interrupted) {
             std::cout << "Interrupted by Ctrl-C..." << std::endl;
@@ -571,33 +571,33 @@ int main(const int argc, const char* argv[])
 static void displayUsage(void)
 {
     std::cout << "USAGE: advtdiscov [OPTIONS]" <<
-    std::endl << std::endl << "OPTIONS:" << std::endl <<
-    std::endl << "  -m <advertise | discover>  \tMode of the run (advertise or discover)" << std::endl <<
-    std::endl << "  -n <well-known-name-prefix>\tWell-known-name prefix advertised/discovered" <<
-    std::endl << "                             \t(max length: " << (uint16_t) c_maxWKNPrefixLength << " characters)" <<
-    std::endl << "  -cn <number-of-names>      \tNumber of names to advertise / discover (max: 255)" <<
-    std::endl << "  -nopresence                \tDon't 'ping' the remote name" <<
-    std::endl << "                             \t(valid only in discovering mode.)" <<
-    std::endl << "  -presence-timeout <ms>     \tTimeout to pass to presence query" <<
-    std::endl << "                             \t(valid only in discovering mode. min: 0 & max: 65535)" <<
-    std::endl << "  -cbath <number-of-threads> \tNumber of BusAttachment threads to use" <<
-    std::endl << "                             \t(valid only in discovering mode. min: 1 & max: 255)" <<
-    std::endl << "  -ttl                       \tDuration for which the name is advertised / discovered" <<
-    std::endl << "                             \t(min: 500ms max: 4294967295ms)" <<
-    std::endl << "  -advtseq                   \tAdvertise the names one after another (instead of the default all-at-once)" <<
-    std::endl << "                             \t(valid only in advertising mode)" <<
-    std::endl << "  -fixed-name                \tDon't append timestamp to prefix before advertising" <<
-    std::endl << "                             \t(valid only in advertising mode)" <<
-    std::endl << "  -linger                    \tWait for 45s before exiting" <<
-    std::endl << "                             \t(valid only in advertising mode)" <<
-    std::endl << "  -quiet-advt                \tAdvertise the name quietly" <<
-    std::endl << "                             \t(valid only in advertising mode)" <<
-    std::endl << "  -dont-wait-for-lost        \tExit when all the names are found (don't wait for lost)" <<
-    std::endl << "                             \t(valid only in discovering mode)" <<
-    std::endl << "  -time-offset <miliseconds> \tOffset generated timestamps (min: - 32768ms & max: 32767ms)" <<
-    std::endl << "  -connect-spec <spec>       \tExplicitly connect to the spec provided" <<
-    std::endl << "  -h                         \tDisplay usage" <<
-    std::endl;
+        std::endl << std::endl << "OPTIONS:" << std::endl <<
+        std::endl << "  -m <advertise | discover>  \tMode of the run (advertise or discover)" << std::endl <<
+        std::endl << "  -n <well-known-name-prefix>\tWell-known-name prefix advertised/discovered" <<
+        std::endl << "                             \t(max length: " << (uint16_t) c_maxWKNPrefixLength << " characters)" <<
+        std::endl << "  -cn <number-of-names>      \tNumber of names to advertise / discover (max: 255)" <<
+        std::endl << "  -nopresence                \tDon't 'ping' the remote name" <<
+        std::endl << "                             \t(valid only in discovering mode.)" <<
+        std::endl << "  -presence-timeout <ms>     \tTimeout to pass to presence query" <<
+        std::endl << "                             \t(valid only in discovering mode. min: 0 & max: 65535)" <<
+        std::endl << "  -cbath <number-of-threads> \tNumber of BusAttachment threads to use" <<
+        std::endl << "                             \t(valid only in discovering mode. min: 1 & max: 255)" <<
+        std::endl << "  -ttl                       \tDuration for which the name is advertised / discovered" <<
+        std::endl << "                             \t(min: 500ms max: 4294967295ms)" <<
+        std::endl << "  -advtseq                   \tAdvertise the names one after another (instead of the default all-at-once)" <<
+        std::endl << "                             \t(valid only in advertising mode)" <<
+        std::endl << "  -fixed-name                \tDon't append timestamp to prefix before advertising" <<
+        std::endl << "                             \t(valid only in advertising mode)" <<
+        std::endl << "  -linger                    \tWait for 45s before exiting" <<
+        std::endl << "                             \t(valid only in advertising mode)" <<
+        std::endl << "  -quiet-advt                \tAdvertise the name quietly" <<
+        std::endl << "                             \t(valid only in advertising mode)" <<
+        std::endl << "  -dont-wait-for-lost        \tExit when all the names are found (don't wait for lost)" <<
+        std::endl << "                             \t(valid only in discovering mode)" <<
+        std::endl << "  -time-offset <miliseconds> \tOffset generated timestamps (min: - 32768ms & max: 32767ms)" <<
+        std::endl << "  -connect-spec <spec>       \tExplicitly connect to the spec provided" <<
+        std::endl << "  -h                         \tDisplay usage" <<
+        std::endl;
 }
 
 static void STDCALL ctrlCHandler(int sig)
@@ -626,7 +626,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_runMode = (0 != strcmp("advertise", argv[i])) ? RM_DISCOVER : RM_ADVERTISE;
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a " <<
-                "parameter (advertise or discover)" << std::endl << std::endl;
+                    "parameter (advertise or discover)" << std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -636,7 +636,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_connectSpec = argv[i];
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a " <<
-                "parameter" << std::endl << std::endl;
+                    "parameter" << std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -646,20 +646,20 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_wellKnownNamePrefix = argv[i];
                 if (c_maxWKNPrefixLength < g_wellKnownNamePrefix.length()) {
                     std::cout << "\tWARN: Length of well known name prefix: " <<
-                    g_wellKnownNamePrefix.length() << ", is more " <<
-                    "than max allowed (" << (uint16_t)c_maxWKNPrefixLength << ")" <<
-                    std::endl << std::endl;
+                        g_wellKnownNamePrefix.length() << ", is more " <<
+                        "than max allowed (" << (uint16_t)c_maxWKNPrefixLength << ")" <<
+                        std::endl << std::endl;
 
                     g_wellKnownNamePrefix = ('.' == g_wellKnownNamePrefix[c_maxWKNPrefixLength - 1]) ?
                                             g_wellKnownNamePrefix.substr(0, c_maxWKNPrefixLength - 1) :
                                             g_wellKnownNamePrefix.substr(0, c_maxWKNPrefixLength);
 
                     std::cout << "\tWARN: Truncating and using the name..." <<
-                    std::endl;
+                        std::endl;
                 }
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -669,7 +669,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_numNames = (uint16_t) ((UINT16_MAX >= strtoul(argv[i], NULL, 10)) ? strtoul(argv[i], NULL, 10) : UINT16_MAX);
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -683,7 +683,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_pingTimeout = (uint16_t) ((UINT16_MAX >= strtoul(argv[i], NULL, 10)) ? strtoul(argv[i], NULL, 10) : UINT16_MAX);
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -694,7 +694,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_numDiscoverThreads = (1 >= g_numDiscoverThreads) ? 1 : g_numDiscoverThreads;
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -706,7 +706,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 g_advtdiscovTTL = (500 <= g_advtdiscovTTL) ? g_advtdiscovTTL : 500; // 500ms is the min TTL
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -720,7 +720,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
                 }
             } else {
                 std::cout << "Option " << argv[i - 1] << " requires a parameter" <<
-                std::endl << std::endl;
+                    std::endl << std::endl;
                 displayUsage();
                 exit(EXIT_USAGE);
             }
@@ -746,7 +746,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
             (g_dontPingRemoteName ? " -nopresence" : "") <<
             (g_dontWaitForLost ? " -dont-wait-for-lost" : "") <<
             ((4 != g_numDiscoverThreads) ? " -cbath" : "") <<
-            std::endl;
+                std::endl;
         }
     } else {
         if (g_advertiseSequentially || g_fixedNameAdvertisement || g_hangAround || g_advertiseQuietly) {
@@ -755,7 +755,7 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
             ((g_fixedNameAdvertisement) ? " -fixed-name" : "") <<
             ((g_hangAround) ? " -linger" : "") <<
             ((g_advertiseQuietly) ? " -quiet-advt" : "") <<
-            std::endl;
+                std::endl;
         }
     }
 }
@@ -949,9 +949,9 @@ void DisplayStats(void)
             if (nameAdvertisedAtTimestamp > g_NameTimestamps[i].foundAdvertisementTimestamp) {
                 // This indicates a clock sync problem
                 std::cout << "\n\tWARN: Name " << g_NameTimestamps[i].name <<
-                " discovered timestamp (" << g_NameTimestamps[i].foundAdvertisementTimestamp <<
-                ") is earlier than name advertised timestamp (" << nameAdvertisedAtTimestamp <<
-                "). Ignoring..." << std::endl;
+                    " discovered timestamp (" << g_NameTimestamps[i].foundAdvertisementTimestamp <<
+                    ") is earlier than name advertised timestamp (" << nameAdvertisedAtTimestamp <<
+                    "). Ignoring..." << std::endl;
 
                 continue;
             }
@@ -969,9 +969,9 @@ void DisplayStats(void)
                 if (cancelAdvertisedAtTimestamp >= g_NameTimestamps[i].lostAdvertisementTimestamp) {
                     // This indicates a clock sync problem
                     std::cout << "\n\tWARN: Name " << g_NameTimestamps[i].name <<
-                    " lost timestamp (" << g_NameTimestamps[i].lostAdvertisementTimestamp <<
-                    ") is earlier than name cancelled timestamp (" << cancelAdvertisedAtTimestamp <<
-                    "). Ignoring...\n" << std::endl;
+                        " lost timestamp (" << g_NameTimestamps[i].lostAdvertisementTimestamp <<
+                        ") is earlier than name cancelled timestamp (" << cancelAdvertisedAtTimestamp <<
+                        "). Ignoring...\n" << std::endl;
 
                     continue;
                 }
@@ -981,7 +981,7 @@ void DisplayStats(void)
             }
         } else {
             std::cout << "\n\tWARN: Name " << g_NameTimestamps[i].name << " is "
-            "not in an expected format. Skipping it" << std::endl;
+                "not in an expected format. Skipping it" << std::endl;
 
             continue;
         }
@@ -994,7 +994,7 @@ void DisplayStats(void)
         // the names that were discovered.
         if (0 != findApiDuration && 0 == lostAdvLatency) {
             std::cout << "\n\tWARN: Name " << g_NameTimestamps[i].name << " does "
-            "not seem to have complete stats. Skipping it from computation of averages ..." << std::endl;
+                "not seem to have complete stats. Skipping it from computation of averages ..." << std::endl;
 
             continue;
         } else {
@@ -1035,27 +1035,27 @@ void DisplayStats(void)
     }
 
     std::cout << "Summary" <<
-    std::endl << "-------" << std::endl;
+        std::endl << "-------" << std::endl;
 
     avgFindApiDuration = sumFindApiDuration / (numNamesForWhichWeHaveCompleteDiscoveryStats * 1.0);
     std::cout << "FindApiDuration (min/avg/max): " << minFindApiDuration <<
-    "/" << avgFindApiDuration << "/" << maxFindApiDuration << " ms" << std::endl;
+        "/" << avgFindApiDuration << "/" << maxFindApiDuration << " ms" << std::endl;
 
     if (!g_dontPingRemoteName) {
         std::cout << "Number of names successfully queried: " << (uint16_t) g_numSuccessfullyPingedNames <<
-        " out of " << (uint16_t) g_numFoundNames << std::endl;
+            " out of " << (uint16_t) g_numFoundNames << std::endl;
         avgPingApiDuration = sumPingApiDuration / (g_numSuccessfullyPingedNames * 1.0);
         std::cout << "\tPingApiDuration (min/avg/max): " << minPingApiDuration <<
-        "/" << avgPingApiDuration << "/" << maxPingApiDuration << " ms" << std::endl;
+            "/" << avgPingApiDuration << "/" << maxPingApiDuration << " ms" << std::endl;
     }
 
     avgFoundAdvLatency = sumFoundAdvLatency / (numNamesForWhichWeHaveCompleteDiscoveryStats * 1.0);
     std::cout << "FoundAdvLatency (min/avg/max): " << minFoundAdvLatency << "/" <<
-    avgFoundAdvLatency << "/" << maxFoundAdvLatency << " ms" << std::endl;
+        avgFoundAdvLatency << "/" << maxFoundAdvLatency << " ms" << std::endl;
 
     avgLostAdvLatency = sumLostAdvLatency / (numNamesForWhichWeHaveCompleteDiscoveryStats * 1.0);
     std::cout << "LostAdvLatency (min/avg/max): " << minLostAdvLatency << "/" <<
-    avgLostAdvLatency << "/" << maxLostAdvLatency << " ms" << std::endl;
+        avgLostAdvLatency << "/" << maxLostAdvLatency << " ms" << std::endl;
 
     std::cout << "HLD - Number of names found within 1.25s  = " << (uint16_t) hld_countFoundWithin1250ms << std::endl;
     std::cout << "HLD - Number of names found within 10.25s = " << (uint16_t) hld_countFoundWithin10250ms << std::endl;

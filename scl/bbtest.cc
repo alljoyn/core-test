@@ -448,17 +448,17 @@ class LocalTestObject : public BusObject {
         printf("Done ? else press 'm' [enter]: ");
         fflush(stdout);
 
-        while (get_data(option) == NULL) ;
+        while (get_data(option) == NULL);
 
         if (option[0] == 'm') {
             printf("Enter the destination id [NULL] :");
             fflush(stdout);
-            while (get_data(tempDest) == NULL) ;
+            while (get_data(tempDest) == NULL);
             if (tempDest[0] != '\0') { dest = tempDest; }
 
             printf("Enter flags - encryption (E), sessionless (S), broadcast (G): ESG [0] :");
             fflush(stdout);
-            while (get_data(tempflags) == NULL) ;
+            while (get_data(tempflags) == NULL);
             if (tempflags[0] != '\0') {
                 String tstr(tempflags);
                 size_t temp = tstr.find_first_of("E");
@@ -470,7 +470,7 @@ class LocalTestObject : public BusObject {
             }
             printf("Done ? else press 'm' [enter]: ");
             fflush(stdout);
-            while (get_data(option) == NULL) ;
+            while (get_data(option) == NULL);
 
             tflags = flags;
 
@@ -487,7 +487,7 @@ class LocalTestObject : public BusObject {
             }
         }
 
-        printf("\nSignal params: \nSession id=%u\nDestination=%s\nflags=%c %c %c \nttl=%u \n", tsessionid, dest, 
+        printf("\nSignal params: \nSession id=%u\nDestination=%s\nflags=%c %c %c \nttl=%u \n", tsessionid, dest,
                (tflags & ALLJOYN_FLAG_ENCRYPTED)  ? 'E' : '.',
                (tflags & ALLJOYN_FLAG_SESSIONLESS) ? 'S' : '.',
                (tflags & ALLJOYN_FLAG_GLOBAL_BROADCAST) ? 'G' : '.', ttl);
@@ -1288,7 +1288,7 @@ int main(int argc, char** argv)
                             printf("Enter flags(HESN) ttl  :");
                             fflush(stdout);
                             char tempOptions[50];
-                            while (get_data(tempOptions) == NULL) ;
+                            while (get_data(tempOptions) == NULL);
                             temp = strtok(tempOptions, " ");
                             if (temp) {
                                 String tstr(temp);

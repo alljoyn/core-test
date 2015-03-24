@@ -94,7 +94,7 @@ class Receiver : public MessageReceiver {
         InterfaceDescription* intf = CreateInterface(bus);
 
         size_t numMembers = intf->GetMembers();
-        const ajn::InterfaceDescription::Member** members = new const ajn::InterfaceDescription::Member *[numMembers];
+        const ajn::InterfaceDescription::Member** members = new const ajn::InterfaceDescription::Member* [numMembers];
         intf->GetMembers(members, numMembers);
         for (size_t i = 0; i < numMembers; ++i) {
             bus->RegisterSignalHandler(this, static_cast<MessageReceiver::SignalHandler>(&Receiver::SignalHandler),

@@ -159,20 +159,20 @@ class MyBusListener : public BusListener,  public BusAttachment::PingAsyncCB {
 static void usage(void)
 {
     cout << endl << "Usage: aping " << endl << endl <<
-    "Options:" << endl <<
-    "   -?           = Print this help message" << endl <<
-    "   -h           = Print this help message" << endl <<
-    "   -n <name>    = Well-known name to advertise" << endl <<
-    "   -s           = Send pings continuously (stress mode)" << endl <<
-    "   -f <prefix>  = FindAdvertisedName prefix" << endl <<
-    "   -u           = Advertise/Discover over UDP" << endl <<
-    "   -t           = Advertise/Discover over TCP" << endl <<
-    "   -l           = Advertise/Discover over LOCAL" << endl <<
-    "   -dpr <ms>    = Number of ms to delay between two ping attempts" << endl <<
-    "   -fa          = Retry ping even during failure" << endl <<
-    "   -ct  #       = Set concurrency level" << endl <<
-    "   -sleep  #    = Sleep Time" << endl <<
-    "   -timeout  #  = AsyncPing timeout" << endl;
+        "Options:" << endl <<
+        "   -?           = Print this help message" << endl <<
+        "   -h           = Print this help message" << endl <<
+        "   -n <name>    = Well-known name to advertise" << endl <<
+        "   -s           = Send pings continuously (stress mode)" << endl <<
+        "   -f <prefix>  = FindAdvertisedName prefix" << endl <<
+        "   -u           = Advertise/Discover over UDP" << endl <<
+        "   -t           = Advertise/Discover over TCP" << endl <<
+        "   -l           = Advertise/Discover over LOCAL" << endl <<
+        "   -dpr <ms>    = Number of ms to delay between two ping attempts" << endl <<
+        "   -fa          = Retry ping even during failure" << endl <<
+        "   -ct  #       = Set concurrency level" << endl <<
+        "   -sleep  #    = Sleep Time" << endl <<
+        "   -timeout  #  = AsyncPing timeout" << endl;
 }
 
 /** Main entry point */

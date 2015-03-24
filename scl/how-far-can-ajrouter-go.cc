@@ -43,8 +43,8 @@ enum retval_t {
 int main(const int argc, const char* argv[])
 {
     std::cout << "AllJoyn Library version: " << ajn::GetVersion() <<
-    std::endl << "AllJoyn Library build info: " << ajn::GetBuildInfo() <<
-    std::endl;
+        std::endl << "AllJoyn Library build info: " << ajn::GetBuildInfo() <<
+        std::endl;
 
     ajn::BusAttachment bus("max-unique-address", false, 1);
 
