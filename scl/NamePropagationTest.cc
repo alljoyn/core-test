@@ -3679,12 +3679,12 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
                     listenerD.GotAbsenceNOCFor(standAloneRouter) &&
                     listenerA.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) &&
                     listenerA.GotAbsenceNOCFor(standAloneRouter2) &&
+                    listenerB.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) &&
+                    listenerB.GotAbsenceNOCFor(standAloneRouter2) &&
                     (((ALLJOYN_PROTOCOL_VERSION >= 12) && (nm != EXCHANGE_ALL_NAMES)) ||
                      (listenerA.GotAbsenceNOCFor(BusPtrE->GetUniqueName()) &&
                       listenerD.GotAbsenceNOCFor(BusPtrA->GetUniqueName()) &&
-                      listenerD.GotAbsenceNOCFor(bundledRouter) &&
-                      listenerB.GotAbsenceNOCFor(BusPtrD->GetUniqueName()) &&
-                      listenerB.GotAbsenceNOCFor(standAloneRouter2)))) {
+                      listenerD.GotAbsenceNOCFor(bundledRouter)))) {
                     break;
                 }
                 qcc::Sleep(WAIT_TIME);
