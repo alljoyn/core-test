@@ -61,18 +61,8 @@ if env['OS'] == 'android':
 if env['OS'] == 'win7':
     env.Append(LIBS = ['ws2_32', 'iphlpapi', 'Secur32', 'crypt32', 'Bcrypt', 'Ncrypt'])
 
-bundled_router_obj_prefix = '/cpp/lib/BundledRouter'
-# Windows has a different naming convention for object files as compared
-# to other POSIX systems
-if env['OS'] == 'win7':
-    obj_file_extension = '.obj'
-else:
-    obj_file_extension = '.o'
-
-bundled_router_obj = env.subst('$AJ_CORE_DIST_DIR') + bundled_router_obj_prefix + obj_file_extension
-
 if env['BR'] == 'on':
-    env.Prepend(LIBS = [File(bundled_router_obj), 'ajrouter'])
+    env.Prepend(LIBS = ['ajrouter'])
 
 # Build the code
 env.SConscript('SConscript')
