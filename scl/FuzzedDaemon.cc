@@ -25,6 +25,7 @@
 #include <qcc/ManagedObj.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/Message.h>
 #include <RemoteEndpoint.h>
 
@@ -208,7 +209,7 @@ static void Fuzz(TestPipe& stream)
     }
 }
 
-int main() {
+int TestAppMain() {
     QStatus status = ER_FAIL;
     qcc::SocketFd listenfd;
 
@@ -292,4 +293,28 @@ int main() {
     qcc::Close(connfd);
 
     return 0;
+}
+
+int main()
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain();
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

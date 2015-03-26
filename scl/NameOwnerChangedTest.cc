@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2014, AllSeen Alliance. All rights reserved.
+ * Copyright AllSeen Alliance. All rights reserved.
  *
  *    Permission to use, copy, modify, and/or distribute this software for any
  *    purpose with or without fee is hereby granted, provided that the above
@@ -20,6 +20,7 @@
 #include <qcc/platform.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <qcc/Thread.h>
 #include <qcc/time.h>
 #include <qcc/Util.h>
@@ -38,9 +39,22 @@ int main(int argc, char**argv, char**envArg)
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 
+    QStatus ajInitStatus = AllJoynInit();
+    if (ER_OK != ajInitStatus) {
+        return 1;
+    }
+    status = AllJoynRouterInit();
+    if (ER_OK != ajInitStatus) {
+        AllJoynShutdown();
+        return 1;
+    }
+
     std::cout << "\n Running common unit test " << std::endl;
     testing::InitGoogleTest(&argc, argv);
     status = RUN_ALL_TESTS();
+
+    AllJoynRouterShutdown();
+    AllJoynShutdown();
 
     std::cout << argv[0] << " exiting with status " << status << std::endl;
     return (int) status;

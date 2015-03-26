@@ -34,6 +34,7 @@
 #include <qcc/Util.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
@@ -43,7 +44,7 @@
 #include <alljoyn/Status.h>
 
 
-#define QCC_MODULE "ALLJOYN"
+#define QCC_MODULE "REGISTERBUSOBJECTS TEST PROGRAM"
 #define NO_OF_BUS_OBJECTS 20000
 
 using namespace std;
@@ -103,8 +104,7 @@ static void usage(void)
     printf("   -?                    = Print this help message\n");
 }
 
-/** Main entry point */
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
 
@@ -182,4 +182,29 @@ int main(int argc, char** argv)
     printf("%s exiting with status %d (%s)\n", argv[0], status, QCC_StatusText(status));
 
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

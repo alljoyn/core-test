@@ -19,8 +19,9 @@
 #include <qcc/SocketTypes.h>
 #include <qcc/Thread.h>
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 
-#define QCC_MODULE "IPNS"
+#define QCC_MODULE "MDNS FUZZER TEST PROGRAM"
 
 using namespace std;
 using namespace qcc;
@@ -51,7 +52,7 @@ class MyBusListener : public BusListener {
 };
 static MyBusListener g_busListener;
 
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
     size_t sent = 0;
@@ -216,4 +217,28 @@ int main(int argc, char** argv)
     // shutdown socket
     qcc::Close(sock);
     return 0;
+}
+
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }
