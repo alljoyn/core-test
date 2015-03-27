@@ -25,20 +25,34 @@
 #include <string.h>
 #include <time.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#define random() rand()
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 #include <vector>
 #include <queue>
-#include <qcc/Mutex.h>
-#include <qcc/Util.h>
+
 #include <qcc/Event.h>
+#include <qcc/Mutex.h>
 #include <qcc/Socket.h>
 #include <qcc/SocketTypes.h>
-#include <qcc/Thread.h>
+#include <qcc/String.h>
 #include <qcc/StringUtil.h>
-#include <alljoyn/Status.h>
+#include <qcc/Thread.h>
 #include <qcc/time.h>
+#include <qcc/Util.h>
+
+#include <alljoyn/Init.h>
+#include <alljoyn/Status.h>
+
 #include <ArdpProtocol.h>
 
-#define QCC_MODULE "ALLJOYN"
+#define QCC_MODULE "ARDP"
 
 using namespace std;
 using namespace qcc;
@@ -86,8 +100,7 @@ static bool g_fuzz = false;
 static volatile sig_atomic_t g_interrupt = false;
 uint32_t*PAYLOAD;
 
-
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
     g_interrupt = true;
 }
@@ -102,9 +115,10 @@ void GetData(ArdpRcvBuf* rcv) {
     uint16_t fragment = rcv->fcnt;
 
 
-    uint32_t*data = (uint32_t*)buf->data;
+    uint32_t data[((UDP_SEGBMAX + 3) >> 2) << 2];
+    memcpy((uint8_t*) data, buf->data, buf->datalen);
 
-    printf("RecvCB: Received count is %u, infinite_ttl_count=%u, ttl= %u, length is %u \n", htonl(data[3]), htonl(data[0]), htonl(data[2]), htonl(data[1]));
+    printf("RecvCB(conn %p, seq %u): Received count is %u, infinite_ttl_count=%u, ttl= %u, length is %u \n", g_conn, rcv->seq, htonl(data[3]), htonl(data[0]), htonl(data[2]), htonl(data[1]));
 
     /* Detect holes in the receiving side. */
     if (htonl(data[3]) > hole) {
@@ -147,7 +161,7 @@ void GetData(ArdpRcvBuf* rcv) {
 
 bool AcceptCb(ArdpHandle* handle, qcc::IPAddress ipAddr, uint16_t ipPort, ArdpConnRecord* conn, uint8_t* buf, uint16_t len, QStatus status)
 {
-    QCC_DbgPrintf(("Inside Accept callback, we received a SYN from %s:%d, the message is  %s, status %s \n", ipAddr.ToString().c_str(), ipPort, (char*)buf, QCC_StatusText(status)));
+    printf("Inside Accept callback(conn %p), we received a SYN from %s:%d, the message is  %s, status %s \n", conn, ipAddr.ToString().c_str(), ipPort, (char*)buf, QCC_StatusText(status));
     g_lock.Lock();
     status = ARDP_Accept(handle, conn, UDP_SEGMAX, UDP_SEGBMAX, (uint8_t* )g_ajnAcceptString, strlen(g_ajnAcceptString) + 1);
     g_lock.Unlock();
@@ -177,6 +191,7 @@ void DisconnectCb(ArdpHandle* handle, ArdpConnRecord* conn, QStatus status)
     while (!RecvQueue.empty()) {
         RecvQueue.pop();
     }
+    ARDP_ReleaseConnection(handle, conn);
     g_lock.Unlock(MUTEX_CONTEXT);
 }
 
@@ -246,6 +261,7 @@ class RecvClass : public Thread {
                 }
                 rcv = RecvQueue.front();
                 RecvQueue.pop();
+                printf("ARDP_RecvReady conn %p, rcv %p, seq %u\n", g_conn, rcv, rcv->seq);
                 QStatus status = ARDP_RecvReady(m_handle, g_conn, rcv);
                 g_lock.Unlock(MUTEX_CONTEXT);
                 if (status != ER_OK) {
@@ -401,6 +417,14 @@ static void usage() {
 
 int main(int argc, char** argv)
 {
+    if (AllJoynInit() != ER_OK) {
+        return 1;
+    }
+    if (AllJoynRouterInit() != ER_OK) {
+        AllJoynShutdown();
+        return 1;
+    }
+
     QStatus status = ER_OK;
     bool connector = false;
     bool sender = false;
@@ -489,7 +513,7 @@ int main(int argc, char** argv)
 
 
     //One time activity- Create a socket, set to blocking, bind it to local port, local address
-    qcc::SocketFd sock;
+    qcc::SocketFd sock = qcc::INVALID_SOCKET_FD;
 
     status = qcc::Socket(qcc::QCC_AF_INET, qcc::QCC_SOCK_DGRAM, sock);
     if (status != ER_OK) {
@@ -553,17 +577,17 @@ int main(int argc, char** argv)
     }
 
 
-    ThreadClass t1((char*)"t1", handle, sock);
-    t1.Start();
+    ThreadClass* t1 = new ThreadClass((char*)"t1", handle, sock);
+    t1->Start();
 
-    SendClass s1((char*)"s1", handle, sock);
+    SendClass* s1 = new SendClass((char*)"s1", handle, sock);
     if (sender) {
-        s1.Start();
+        s1->Start();
     }
 
-    RecvClass r1((char*)"r1", handle, sock);
+    RecvClass* r1 = new RecvClass((char*)"r1", handle, sock);
     if (receiver) {
-        r1.Start();
+        r1->Start();
     }
 
     uint32_t startTime = GetTimestamp();
@@ -578,14 +602,19 @@ int main(int argc, char** argv)
         qcc::Sleep(100);
     }
 
-    t1.Stop();
-    t1.Join();
+    t1->Stop();
+    t1->Join();
+    delete t1;
 
-    s1.Stop();
-    s1.Join();
+    s1->Stop();
+    s1->Join();
+    delete s1;
 
-    r1.Stop();
-    r1.Join();
+    r1->Stop();
+    r1->Join();
+    delete r1;
 
+    AllJoynRouterShutdown();
+    AllJoynShutdown();
     return 0;
 }
