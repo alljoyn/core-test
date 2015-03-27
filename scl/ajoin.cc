@@ -1,4 +1,4 @@
-/* bbjoin - will join any names on multipoint session port 26.*/
+/* ajoin - will join any names on multipoint session port 26.*/
 
 /******************************************************************************
  * Copyright AllSeen Alliance. All rights reserved.
@@ -31,6 +31,7 @@
 #include <qcc/Util.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
@@ -40,7 +41,7 @@
 #include <alljoyn/Status.h>
 
 
-#define QCC_MODULE "ALLJOYN"
+#define QCC_MODULE "AJOIN TEST PROGRAM"
 
 using namespace std;
 using namespace qcc;
@@ -206,8 +207,7 @@ static void usage(void)
     printf("\n");
 }
 
-/** Main entry point */
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     const uint64_t startTime = GetTimestamp64(); // timestamp in milliseconds
     QStatus status = ER_OK;
@@ -378,4 +378,29 @@ int main(int argc, char** argv)
     cout << "Elapsed time is " << (GetTimestamp64() - startTime) / 1000 << " seconds" << endl;
 
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

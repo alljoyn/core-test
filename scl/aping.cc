@@ -30,6 +30,7 @@
 #include <qcc/Mutex.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
@@ -175,8 +176,7 @@ static void usage(void)
         "   -timeout  #  = AsyncPing timeout" << endl;
 }
 
-/** Main entry point */
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     const uint64_t startTime = GetTimestamp64(); // timestamp in milliseconds
     QStatus status = ER_OK;
@@ -354,4 +354,29 @@ int main(int argc, char** argv)
     cout << "Elapsed time is " << (GetTimestamp() - startTime) << " milliseconds" << endl;
 
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

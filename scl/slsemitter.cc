@@ -34,6 +34,7 @@
 #include <qcc/time.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
@@ -46,7 +47,7 @@
 #include <time.h>
 #endif
 
-#define QCC_MODULE "ALLJOYN"
+#define QCC_MODULE "SLSEMITTER TEST PROGRAM"
 
 using namespace std;
 using namespace qcc;
@@ -185,7 +186,7 @@ static void usage(void)
 
 
 /** Main entry point */
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
     unsigned long signalDelay = 0;
@@ -305,4 +306,29 @@ int main(int argc, char** argv)
     std::cout << argv[0] << " exiting with " << status << "(" << QCC_StatusText(status) << ")" << std::endl;
 
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

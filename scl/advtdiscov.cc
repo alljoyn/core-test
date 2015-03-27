@@ -33,9 +33,10 @@
 #include <qcc/Util.h>
 #include <qcc/time.h>
 
-#include <alljoyn/BusAttachment.h>
-#include <alljoyn/Status.h>
 #include <alljoyn/AllJoynStd.h>
+#include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
+#include <alljoyn/Status.h>
 #include <alljoyn/version.h>
 
 #define QCC_MODULE "ADVTDISCOV TEST PROGRAM"
@@ -291,7 +292,7 @@ class DiscoverBL : public ajn::BusListener {
     }
 };
 
-int main(const int argc, const char* argv[])
+int TestAppMain(const int argc, const char* argv[])
 {
     QStatus status = ER_FAIL;
 
@@ -566,6 +567,30 @@ int main(const int argc, const char* argv[])
     }
 
     return EXIT_OK;
+}
+
+int main(const int argc, const char* argv[])
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return EXIT_SOFTWARE;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return EXIT_SOFTWARE;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }
 
 static void displayUsage(void)

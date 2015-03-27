@@ -35,6 +35,7 @@
 #include <qcc/String.h>
 
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/BusObject.h>
 #include <alljoyn/MsgArg.h>
 #include <alljoyn/DBusStd.h>
@@ -540,8 +541,7 @@ static void usage(void)
 }
 
 
-/** Main entry point */
-int main(int argc, char** argv, char** envArg)
+int TestAppMain(int argc, char** argv, char** envArg)
 {
     printf("AllJoyn Library version: %s.\n", ajn::GetVersion());
     printf("AllJoyn Library build info: %s.\n", ajn::GetBuildInfo());
@@ -639,4 +639,29 @@ int main(int argc, char** argv, char** envArg)
     printf("Signal service exiting with status 0x%04x (%s).\n", status, QCC_StatusText(status));
 
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv, char** envArg)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv, envArg);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }

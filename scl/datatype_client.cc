@@ -32,12 +32,13 @@
 #include <qcc/Util.h>
 #include <qcc/time.h>
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
 #include <alljoyn/version.h>
 #include <alljoyn/Status.h>
 
-#define QCC_MODULE "ALLJOYN"
+#define QCC_MODULE "DATATYPECLIENT TEST PROGRAM"
 
 using namespace std;
 using namespace qcc;
@@ -130,8 +131,7 @@ static void usage(void)
     printf("\n");
 }
 
-/** Main entry point */
-int main(int argc, char** argv)
+int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
     bool discoverRemote = false;
@@ -934,4 +934,29 @@ int main(int argc, char** argv)
     g_busListener = NULL;
     printf("datatype_lient exiting with status %d (%s)\n", status, QCC_StatusText(status));
     return (int) status;
+}
+
+/** Main entry point */
+int main(int argc, char** argv)
+{
+    QStatus status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    int ret = TestAppMain(argc, argv);
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
+
+    return ret;
 }
