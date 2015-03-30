@@ -77,13 +77,13 @@ static const char* nameChangedDescription[] =  { "Emitted when the name changes"
 static const char* nameChangedIdTest = "nameChangedTest";
 static const char* nameChangedDescriptionTest[] =  { "Emitted when the name changes and is sessionless", "Emittiert, wenn der Name andert sessionless", "Naam badalne pe emitte karen aur ye sessionless hai" };
 static const char* testMethodId = "testMethod";
-static const char* testMethodDescription[] = { "This is first method", "Este es el primer método", "Ye pehla method hai" };
+static const char* testMethodDescription[] = { "This is first method", "Este es el primer metodo", "Ye pehla method hai" };
 static const char* nameChangedId1 = "nameChanged1";
 static const char* nameChangedDescription1[] =  { "Emitted when the name changes 2nd interface", "Emittiert, wenn der Name andert 2nd interface", "Naam badalne pe emitte karen 2nd interface" };
 static const char* nameChangedIdTest1 = "nameChangedTest1";
 static const char* nameChangedDescriptionTest1[] =  { "Emitted when the name changes and is sessionless 2nd interface", "Emittiert, wenn der Name andert sessionless 2nd interface", "Naam badalne pe emitte karen aur ye sessionless hai 2nd interface" };
 static const char* testMethodId1 = "testMethod1";
-static const char* testMethodDescription1[] = { "This is first method 2nd interface", "Este es el primer método 2nd interface", "Ye pehla method hai 2nd interface" };
+static const char* testMethodDescription1[] = { "This is first method 2nd interface", "Este es el primer metodo 2nd interface", "Ye pehla method hai 2nd interface" };
 
 static const char* argId = "arg";
 static const char* nameChangedArgDescription[] =  { "This is the new name", "Dies ist der neue Name", "Ye naya naam hai" };
