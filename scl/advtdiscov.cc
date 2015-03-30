@@ -207,6 +207,7 @@ static qcc::Mutex g_lostAdvLock;
 // Listen to events informing that names have been discovered
 class DiscoverBL : public ajn::BusListener {
     void FoundAdvertisedName(const char* name, ajn::TransportMask transport, const char* namePrefix) {
+        QCC_UNUSED(namePrefix);
         if (ajn::TRANSPORT_ANY != c_transportToUse && c_transportToUse != transport) {
             // Got a FoundAdvertisedName for a transport that this test program
             // is not interested in. Ignore.
@@ -264,6 +265,7 @@ class DiscoverBL : public ajn::BusListener {
     }
 
     void LostAdvertisedName(const char* name, ajn::TransportMask transport, const char* prefix) {
+        QCC_UNUSED(prefix);
         if (ajn::TRANSPORT_ANY != c_transportToUse && c_transportToUse != transport) {
             // Got a LostAdvertisedName for a transport that this test program
             // is not interested in. Ignore.
@@ -627,6 +629,7 @@ static void displayUsage(void)
 
 static void STDCALL ctrlCHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupted = true;
 }
 
@@ -829,6 +832,7 @@ static inline qcc::String generateName(const qcc::String& wknPrefix, const qcc::
 
 static bool isPingApiAvailable(ajn::BusAttachment* bus)
 {
+    QCC_UNUSED(bus);
     // ASACORE-202 - Cannot use the following due to 'const' restrictions
     //return (bus->GetAllJoynProxyObj().GetInterface("org.alljoyn.Bus"))->HasMember("Ping", "su", "u");
 
