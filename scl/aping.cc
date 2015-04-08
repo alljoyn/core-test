@@ -83,6 +83,7 @@ uint32_t num_pings_failed = 0; // Number of times Ping failed due to othr errors
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -151,7 +152,7 @@ class MyBusListener : public BusListener,  public BusAttachment::PingAsyncCB {
         }
     }
 
-    void LostAdvertisedName(const char* name, const TransportMask transport, const char* prefix)
+    void LostAdvertisedName(const char* name, TransportMask transport, const char* prefix)
     {
         cout << "LostAdvertisedName(name=" << name << ", transport=0x" << hex << transport << dec << ",  prefix=" << prefix << ")" << endl;
     }

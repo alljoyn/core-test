@@ -62,6 +62,7 @@ static bool startFreeing = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -71,7 +72,7 @@ class LocalTestObject : public BusObject {
 
     LocalTestObject(BusAttachment& bus, const char* path) :
         BusObject(path), objPath(path)
-    { }
+    { QCC_UNUSED(bus); }
 
     void ObjectRegistered(void)
     {

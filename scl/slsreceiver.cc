@@ -85,6 +85,7 @@ static void GetMyTimeNow(Timespec* ts)
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -124,6 +125,7 @@ class LocalTestObject : public BusObject {
                        const char* sourcePath,
                        Message& msg)
     {
+        QCC_UNUSED(member);
         //g_msgBus->EnableConcurrentCallbacks();
         uint32_t c = 0;
         const MsgArg* arg((msg->GetArg(0)));

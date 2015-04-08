@@ -143,6 +143,7 @@ static volatile bool g_interrupt = false;
 /** Signal handler */
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -151,6 +152,7 @@ class MyMessageReceiver : public MessageReceiver {
   public:
     void MyResponseHandler(Message& message, void* context)
     {
+        QCC_UNUSED(context);
         if (message->GetType() == MESSAGE_METHOD_RET) {
             QCC_SyncPrintf("Method Call successfull. \n");
             fflush(stdout);
@@ -172,6 +174,7 @@ class MyAuthListener : public AuthListener {
   private:
 
     bool RequestCredentials(const char* authMechanism, const char* authPeer, uint16_t authCount, const char* userId, uint16_t credMask, Credentials& creds) {
+        QCC_UNUSED(userId);
 
         printf("Started authentication process for peer  [%s]\n", authPeer);
         if (authCount > 1) { return false; }
@@ -226,10 +229,14 @@ class MyAuthListener : public AuthListener {
     }
 
     bool VerifyCredentials(const char* authMechanism, const char* authPeer, const Credentials& creds) {
+        QCC_UNUSED(authMechanism);
+        QCC_UNUSED(authPeer);
+        QCC_UNUSED(creds);
         return false;
     }
 
     void AuthenticationComplete(const char* authMechanism, const char* authPeer, bool success) {
+        QCC_UNUSED(authPeer);
         printf("Authentication %s %s\n", authMechanism, success ? "succesful" : "failed");
         fflush(stdout);
     }
@@ -248,6 +255,7 @@ class MyBusListener : public BusListener {
     MyBusListener() : BusListener() { }
 
     void ListenerRegistered(BusAttachment* bus) {
+        QCC_UNUSED(bus);
         printf("BusListener registered  %p", this);
         fflush(stdout);
     }
@@ -272,7 +280,7 @@ class MyBusListener : public BusListener {
         fflush(stdout);
     }
 
-    void LostAdvertisedName(const char* name, const TransportMask transport, const char* prefix) {
+    void LostAdvertisedName(const char* name, TransportMask transport, const char* prefix) {
         printf("LostAdvertisedName(name=%s, transport=0x%x,  prefix=%s)\n", name, transport, prefix);
         fflush(stdout);
     }
@@ -292,10 +300,14 @@ static MyBusListener myBusListener1;
 class MySessionPortListener : public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
+        QCC_UNUSED(sessionPort);
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(opts);
         return true;
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner) {
+        QCC_UNUSED(sessionPort);
         printf("Session Established: joiner=%s, sessionId=%u\n", joiner, sessionId);
         fflush(stdout);
     }
@@ -308,6 +320,8 @@ static MySessionPortListener mySessionPortListener1;
 class MySessionPortListenerWithPrompt : public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
+        QCC_UNUSED(sessionPort);
+        QCC_UNUSED(opts);
         printf("Joiner  [%s] wants to join: y/n ?  ", joiner);
         fflush(stdout);
         char option;
@@ -323,6 +337,7 @@ class MySessionPortListenerWithPrompt : public SessionPortListener {
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
         printf("Session Established: joiner=%s, sessionId=%u\n", joiner, sessionId);
         fflush(stdout);
     }
@@ -353,6 +368,7 @@ class JoinCB : public BusAttachment::JoinSessionAsyncCB {
   public:
     void JoinSessionCB(QStatus status, SessionId id, const SessionOpts& opts, void* context)
     {
+        QCC_UNUSED(opts);
 
         if (ER_OK != status) {
             QCC_LogError(status, ("JoinSessionCB(%s) failed ", (char*)context));
@@ -408,6 +424,7 @@ class LocalTestObject : public BusObject {
 
     void AuthInit(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
 
         /* Reply with same string that was sent to us */
         MsgArg arg(*(msg->GetArg(0)));
@@ -651,6 +668,8 @@ class LocalTestObject : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL1] ++==## signalConsumer: Signal Received [%s] - \"%s\" session id  is [%u] ##==--\n", msg->GetInterface(), msg->GetArg(0)->v_string.str, msg->GetSessionId());
     }
 
@@ -658,6 +677,8 @@ class LocalTestObject : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL2] ++==## signalConsumer: Signal Received [%s] - \"%s\" session id is [%u] ##==--\n", msg->GetInterface(), msg->GetArg(0)->v_string.str, msg->GetSessionId());
     }
 
@@ -665,6 +686,8 @@ class LocalTestObject : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL3] ++==## signalConsumer: Signal Received [%s] - \"%s\" session id is [%u] ##==--\n", msg->GetInterface(), msg->GetArg(0)->v_string.str, msg->GetSessionId());
     }
 
@@ -673,12 +696,16 @@ class LocalTestObject : public BusObject {
                          const char* sourcePath,
                          Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL12] ++==## signalConsumer: Signal Received [%s] - \"%s\" session id  is [%u] ##==--\n", msg->GetInterface(), msg->GetArg(0)->v_string.str, msg->GetSessionId());
     }
     void SignalHandler13(const InterfaceDescription::Member*member,
                          const char* sourcePath,
                          Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL13] ++==## signalConsumer: Signal Received [%s] - \"%s\" session id  is [%u] ##==--\n", msg->GetInterface(), msg->GetArg(0)->v_string.str, msg->GetSessionId());
     }
 

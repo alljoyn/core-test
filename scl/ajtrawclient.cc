@@ -99,6 +99,7 @@ static volatile sig_atomic_t g_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -214,7 +215,7 @@ int TestAppMain(int argc, char** argv)
     uint16_t messageLen = 0;
     uint8_t*payload = NULL;
     uint32_t bytes = 0;
-    size_t recvd = -1;
+    size_t recvd = 0;
 
     while (true) {
         messageLen = 0;

@@ -65,6 +65,7 @@ static volatile sig_atomic_t g_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -75,6 +76,7 @@ class MySessionPortListener : public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(opts);
         if (sessionPort != SESSION_PORT) {
             QCC_SyncPrintf("Rejecting join request for unknown session port %d from %s\n", sessionPort, joiner);
             return false;
@@ -87,6 +89,7 @@ class MySessionPortListener : public SessionPortListener {
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
         QCC_SyncPrintf("SessionJoined with %s (id=%d)\n", joiner, sessionId);
         this->sessionId = sessionId;
         g_joinedSessionEvent.SetEvent();

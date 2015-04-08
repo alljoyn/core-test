@@ -57,6 +57,7 @@ static volatile sig_atomic_t s_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     s_interrupt = true;
 }
 
@@ -65,6 +66,7 @@ class MyBusListener : public BusListener {
   public:
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix)
     {
+        QCC_UNUSED(transport);
         if (0 == strcmp(name, SERVICE_NAME)) {
             printf("FoundAdvertisedName(name='%s', prefix='%s')\n", name, namePrefix);
 
@@ -272,6 +274,7 @@ static void usage(void)
 
 int TestAppMain(int argc, char** argv, char** envArg)
 {
+    QCC_UNUSED(envArg);
     printf("AllJoyn Library version: %s.\n", ajn::GetVersion());
     printf("AllJoyn Library build info: %s.\n", ajn::GetBuildInfo());
 

@@ -90,6 +90,7 @@ static void GetMyTimeNow(Timespec* ts)
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -152,6 +153,7 @@ class SignalReceiver : public MessageReceiver {
   public:
 
     void SignalHandler(const InterfaceDescription::Member* member, const char* sourcePath, Message& msg) {
+        QCC_UNUSED(member);
         uint32_t c = 0;
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("u", &c);

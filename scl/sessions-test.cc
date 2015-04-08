@@ -80,7 +80,7 @@ struct SessionInfo {
     SessionPortInfo portInfo;
     vector<String> peerNames;
     SessionInfo() : id(0) { }
-    SessionInfo(SessionId id, const SessionPortInfo& portInfo) : id(0), portInfo(portInfo) { }
+    SessionInfo(SessionId id, const SessionPortInfo& portInfo) : id(0), portInfo(portInfo) { QCC_UNUSED(id); }
 };
 
 
@@ -248,6 +248,8 @@ class SignalReceiver : public MessageReceiver {
     SignalReceiver() {
     }
     void ChatSignalHandler(const InterfaceDescription::Member* member, const char* sourcePath, Message& msg) {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         if (s_chatEcho) {
             printf("RX chat from %s[%u]: %s\n", msg->GetSender(), msg->GetSessionId(), msg->GetArg(0)->v_string.str);
         }
@@ -257,6 +259,7 @@ class SignalReceiver : public MessageReceiver {
 class MyBusListener : public BusListener, public SessionPortListener, public SessionListener {
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix)
     {
+        QCC_UNUSED(namePrefix);
         printf("Discovered name : \"%s\"\n", name);
         s_lock.Lock(MUTEX_CONTEXT);
         s_discoverSet.insert(DiscoverInfo(name, transport));
@@ -278,6 +281,7 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(opts);
         bool ret = false;
         s_lock.Lock(MUTEX_CONTEXT);
         map<SessionPort, SessionPortInfo>::iterator it = s_sessionPortMap.find(sessionPort);
@@ -357,6 +361,7 @@ class AutoChatThread : public Thread, public ThreadListener {
   protected:
     ThreadReturn STDCALL Run(void* args)
     {
+        QCC_UNUSED(args);
         char* buf = new char[maxSize + 1];
         for (size_t i = 0; i <= maxSize; ++i) {
             buf[i] = 'a' + (i % 26);
@@ -592,6 +597,8 @@ static void DoList()
 }
 
 class JoinCB : public BusAttachment::JoinSessionAsyncCB {
+  private:
+    void operator=(const JoinCB& cb) { QCC_UNUSED(cb); };
   public:
     const String name;
     const SessionPort port;
@@ -601,6 +608,7 @@ class JoinCB : public BusAttachment::JoinSessionAsyncCB {
 
     void JoinSessionCB(QStatus status, SessionId id, const SessionOpts& opts, void* context)
     {
+        QCC_UNUSED(context);
         if (status == ER_OK) {
             s_lock.Lock(MUTEX_CONTEXT);
             s_sessionMap.insert(pair<SessionId, SessionInfo>(id, SessionInfo(id, SessionPortInfo(port, name, opts))));
@@ -700,7 +708,10 @@ static void DoRemoveMatch(const String& rule)
 }
 
 struct AsyncTimeoutHandler : public BusAttachment::SetLinkTimeoutAsyncCB {
+  private:
+    void operator=(const AsyncTimeoutHandler& th) { QCC_UNUSED(th); };
 
+  public:
     const SessionId id;
     const uint32_t timeout;
 
@@ -709,6 +720,7 @@ struct AsyncTimeoutHandler : public BusAttachment::SetLinkTimeoutAsyncCB {
 
     void SetLinkTimeoutCB(QStatus status, uint32_t timeout, void* context)
     {
+        QCC_UNUSED(context);
         if (status != ER_OK) {
             printf("SetLinkTimeout(%u, %u) failed with %s\n", id, timeout, QCC_StatusText(status));
         } else {

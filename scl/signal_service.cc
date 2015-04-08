@@ -62,6 +62,7 @@ static volatile sig_atomic_t s_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     s_interrupt = true;
 }
 
@@ -105,6 +106,7 @@ class MyTranslator : public Translator {
     }
 
     virtual const char* Translate(const char* sourceLanguage, const char* targetLanguage, const char* source) {
+        QCC_UNUSED(sourceLanguage);
         size_t i = 0;
         if (targetLanguage && (0 == strcmp(targetLanguage, "de"))) {
             i = 1;
@@ -162,6 +164,7 @@ class MyTranslatorTest1 : public Translator {
     }
 
     virtual const char* Translate(const char* sourceLanguage, const char* targetLanguage, const char* source) {
+        QCC_UNUSED(sourceLanguage);
         size_t i = 0;
         if (targetLanguage && (0 == strcmp(targetLanguage, "hi"))) {
             i = 2;
@@ -220,6 +223,7 @@ class MyTranslatorTest2 : public Translator {
     }
 
     virtual const char* Translate(const char* sourceLanguage, const char* targetLanguage, const char* source) {
+        QCC_UNUSED(sourceLanguage);
         /* const char* tag = (*targetLanguage == '\0') ? "en" : targetLanguage;
            size_t i = 0;
 
@@ -378,6 +382,7 @@ class BasicSampleObject : public BusObject {
 
     QStatus Get(const char* ifcName, const char* propName, MsgArg& val)
     {
+        QCC_UNUSED(ifcName);
         printf("Get 'name' property was called returning: %s\n", prop_name.c_str());
         QStatus status = ER_OK;
         if (0 == strcmp("name", propName)) {
@@ -392,6 +397,7 @@ class BasicSampleObject : public BusObject {
 
     QStatus Set(const char* ifcName, const char* propName, MsgArg& val)
     {
+        QCC_UNUSED(ifcName);
         QStatus status = ER_OK;
         if ((0 == strcmp("name", propName)) && (val.typeId == ALLJOYN_STRING)) {
             printf("Set 'name' property was called changing name to %s\n", val.v_string.str);
@@ -543,6 +549,8 @@ static void usage(void)
 
 int TestAppMain(int argc, char** argv, char** envArg)
 {
+    QCC_UNUSED(envArg);
+
     printf("AllJoyn Library version: %s.\n", ajn::GetVersion());
     printf("AllJoyn Library build info: %s.\n", ajn::GetBuildInfo());
 
