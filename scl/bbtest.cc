@@ -369,6 +369,7 @@ class JoinCB : public BusAttachment::JoinSessionAsyncCB {
     void JoinSessionCB(QStatus status, SessionId id, const SessionOpts& opts, void* context)
     {
         QCC_UNUSED(opts);
+        QCC_UNUSED(context);
 
         if (ER_OK != status) {
             QCC_LogError(status, ("JoinSessionCB(%s) failed ", (char*)context));

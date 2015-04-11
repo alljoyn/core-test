@@ -122,9 +122,7 @@ int TestAppMain(int argc, char** argv)
             exit(0);
         } else {
             status = ER_FAIL;
-            printf("Unknown option %s\n", argv[i]);
-            usage();
-            exit(1);
+            printf("WARN: Ignoring Unknown option %s\n", argv[i]);
         }
     }
 

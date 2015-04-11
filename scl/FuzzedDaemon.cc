@@ -289,10 +289,6 @@ int TestAppMain() {
 
         delete [] buf;
     }
-
-    qcc::Close(connfd);
-
-    return 0;
 }
 
 int main()
