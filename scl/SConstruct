@@ -53,7 +53,7 @@ env.Append(LIBS = ['alljoyn'])
 
 # Android needs to explicitly link certain libraries
 if env['OS'] == 'android':
-    env.Append(LIBS = ['stdc++', 'crypto', 'gnustl_static'])
+    env.Append(LIBS = ['stdc++', 'm', 'crypto', 'gnustl_static'])
     # Need Android native logging liblog.so for __android_log_vprint
     env.Append(LIBS = ['log'])
 
