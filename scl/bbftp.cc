@@ -27,6 +27,8 @@
 #include <qcc/StringUtil.h>
 #include <qcc/ThreadPool.h>
 #include <alljoyn/BusAttachment.h>
+#include <alljoyn/Init.h>
+#include <qcc/Thread.h>
 
 #define QCC_MODULE "ALLJOYN"
 
@@ -37,7 +39,7 @@ using namespace ajn;
 /** Static top level message bus object */
 static BusAttachment* g_msgBus = NULL;
 static ThreadPool*threadPool = NULL;
-static Event g_discoverEvent;
+static Event*g_discoverEvent = NULL;
 static volatile bool g_interrupt = false;
 
 static bool UDP = false;
@@ -57,6 +59,7 @@ static bool g_client_complete = false;
 /** Signal handler */
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -80,12 +83,15 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(opts);
+        QCC_UNUSED(sessionPort);
         printf("Session Joined with: joiner=%s\n", joiner);
         return true;
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
         printf("Session Established: joiner=%s, sessionId=%u\n", joiner, sessionId);
         QStatus status = g_msgBus->SetSessionListener(sessionId, this);
         if (status != ER_OK) {
@@ -100,12 +106,12 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
         printf("FoundAdvertisedName(name=%s, transport=0x%x, prefix=%s)\n", name, transport, namePrefix);
         if (0 == strcmp(name, g_WellKnownName.c_str())) {
             if ((TCP && (transport == 4)) || (UDP && (transport == 256)) || (LOCAL && (transport == 1))) {
-                g_discoverEvent.SetEvent();
+                g_discoverEvent->SetEvent();
             }
         }
     }
 
-    void LostAdvertisedName(const char* name, const TransportMask transport, const char* prefix)
+    void LostAdvertisedName(const char* name, TransportMask transport, const char* prefix)
     {
         printf("LostAdvertisedName(name=%s, transport=0x%x,  prefix=%s)\n", name, transport, prefix);
     }
@@ -263,6 +269,7 @@ class LocalTestObject : public BusObject {
 
     void TransferFile(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Enabling concurrent callbacks. */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -374,6 +381,8 @@ class ClientObject : public MessageReceiver {
                            const char* sourcePath,
                            Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         /* File write operations at the client */
         if (opf != (FILE*)0) {
             size_t num_bytes_to_write = msg->GetArg(0)->v_string.len;
@@ -389,6 +398,8 @@ class ClientObject : public MessageReceiver {
                                  const char* sourcePath,
                                  Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         static uint32_t count = 0;
 
         uint32_t i(msg->GetArg(0)->v_int32);
@@ -421,6 +432,8 @@ class ClientObject : public MessageReceiver {
                               const char* sourcePath,
                               Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("\n FTP over signal received \n");
         g_endTime = GetTimestamp();
         printf("\n\n Time taken is %u ms \n\n", (g_endTime - g_startTime));
@@ -453,6 +466,19 @@ static void usage(void)
 int main(int argc, char**argv)
 {
     QStatus status = ER_OK;
+    status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
+    g_discoverEvent = new Event();
     bool server = false;
 
     /* Install SIGINT handler */
@@ -569,7 +595,9 @@ int main(int argc, char**argv)
         printf("Client mode  \n");
         if (THROUGHPUT) {
             printf("Throughput mode  \n");
-        } else {    printf("FTP mode \n"); }
+        } else {
+            printf("FTP mode \n");
+        }
     }
 
     /* Create message bus */
@@ -645,7 +673,7 @@ int main(int argc, char**argv)
         }
 
         /* Wait till discovery happens. */
-        status = Event::Wait(g_discoverEvent, 120000);
+        status = Event::Wait(*g_discoverEvent, 120000);
         if ((status == ER_TIMEOUT) || (status == ER_ALERTED_THREAD)) {
             QCC_LogError(status, ("Discovery times out. Did not get any advertisement."));
             return status;
@@ -745,6 +773,12 @@ int main(int argc, char**argv)
     if (threadPool) {
         delete threadPool;
     }
+    delete g_discoverEvent;
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
 
     return (int) status;
 }

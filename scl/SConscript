@@ -48,6 +48,7 @@ addnl_test_env.Program('sessions-test'     , 'sessions-test.cc')
 addnl_test_env.Program('nameChange_client' , 'nameChange_client.cc')
 addnl_test_env.Program('registerbusobjects', 'registerbusobjects.cc')
 addnl_test_env.Program('signal_service'    , 'signal_service.cc')
+addnl_test_env.Program('bbftp'             , 'bbftp.cc')
 
 if addnl_test_env['OS_CONF'] == 'linux':
     addnl_test_env.Program('mdns_fuzzer', '../misc/mdns_fuzzer.cc')
