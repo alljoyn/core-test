@@ -60,7 +60,7 @@ static const SessionPort SERVICE_PORT = 25;
 
 static volatile sig_atomic_t s_interrupt = false;
 
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
     QCC_UNUSED(sig);
     s_interrupt = true;
@@ -650,7 +650,7 @@ int TestAppMain(int argc, char** argv, char** envArg)
 }
 
 /** Main entry point */
-int main(int argc, char** argv, char** envArg)
+int CDECL_CALL main(int argc, char** argv, char** envArg)
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {

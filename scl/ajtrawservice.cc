@@ -63,7 +63,7 @@ static Event g_joinedSessionEvent;
 
 static volatile sig_atomic_t g_interrupt = false;
 
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
     QCC_UNUSED(sig);
     g_interrupt = true;
@@ -302,7 +302,7 @@ int TestAppMain(int argc, char** argv)
 }
 
 /** Main entry point */
-int main(int argc, char** argv)
+int CDECL_CALL main(int argc, char** argv)
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {

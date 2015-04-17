@@ -69,7 +69,7 @@ typedef struct nameTimestamp_t_ {
 
 // Forward declarations
 static void displayUsage(void);
-static void ctrlCHandler(int sig);
+static void CDECL_CALL ctrlCHandler(int sig);
 static void parseCmdLineArgs(const int argc, const char* argv[]);
 static qcc::String generateName(const qcc::String& wknPrefix, const qcc::String& shortGUID, const uint64_t timestamp, const uint32_t ttl, bool return_as_is);
 static bool isPingApiAvailable(ajn::BusAttachment* bus);
@@ -571,7 +571,7 @@ int TestAppMain(const int argc, const char* argv[])
     return EXIT_OK;
 }
 
-int main(const int argc, const char* argv[])
+int CDECL_CALL main(const int argc, const char* argv[])
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {
@@ -627,7 +627,7 @@ static void displayUsage(void)
         std::endl;
 }
 
-static void STDCALL ctrlCHandler(int sig)
+static void CDECL_CALL ctrlCHandler(int sig)
 {
     QCC_UNUSED(sig);
     g_interrupted = true;
