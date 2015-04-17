@@ -57,7 +57,7 @@ static bool g_server_complete = false;
 static bool g_client_complete = false;
 
 /** Signal handler */
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
     QCC_UNUSED(sig);
     g_interrupt = true;
@@ -463,7 +463,7 @@ static void usage(void)
 }
 
 /** Main entry point */
-int main(int argc, char**argv)
+int CDECL_CALL main(int argc, char**argv)
 {
     QStatus status = ER_OK;
     status = AllJoynInit();
