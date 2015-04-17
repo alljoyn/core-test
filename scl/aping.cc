@@ -81,7 +81,7 @@ uint32_t num_pings_successful = 0; // Number of times Ping was successful
 uint32_t num_pings_timedout = 0; // Number of times Ping timed out
 uint32_t num_pings_failed = 0; // Number of times Ping failed due to othr errors
 
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
     QCC_UNUSED(sig);
     g_interrupt = true;
@@ -358,7 +358,7 @@ int TestAppMain(int argc, char** argv)
 }
 
 /** Main entry point */
-int main(int argc, char** argv)
+int CDECL_CALL main(int argc, char** argv)
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {

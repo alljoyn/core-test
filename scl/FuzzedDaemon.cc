@@ -291,7 +291,7 @@ int TestAppMain() {
     }
 }
 
-int main()
+int CDECL_CALL main()
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {
