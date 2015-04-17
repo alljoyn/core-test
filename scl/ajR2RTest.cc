@@ -140,19 +140,19 @@ class R2RTestFindNameListener : public BusListener {
 
     R2RTestFindNameListener() : nameFound(0), nameMatched(0) { }
 
-    bool nameFound;
+    int nameFound;
     bool nameMatched;
     String NameToMatch;
 
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
-        nameFound = true;
+        nameFound++;
         if (strcmp(name, NameToMatch.c_str()) == 0) {
             nameMatched = true;
         }
     }
     void LostAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
         if (strcmp(name, NameToMatch.c_str()) == 0) {
-            nameFound = false;
+            nameFound--;
         }
     }
 };
