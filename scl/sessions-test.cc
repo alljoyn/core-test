@@ -390,7 +390,8 @@ class AutoChatThread : public Thread, public ThreadListener {
 static void usage()
 {
     printf("Usage: sessions [-h]\n");
-    exit(1);
+
+    return;
 }
 
 static String NextTok(String& inStr)
@@ -750,8 +751,9 @@ int TestAppMain(int argc, char** argv)
     for (int i = 1; i < argc; ++i) {
         if (0 == ::strcmp("-h", argv[i])) {
             usage();
+            return;
         } else {
-            printf("Unknown argument \"%s\"\n", argv[i]);
+            printf("Ignoring unknown argument \"%s\"\n", argv[i]);
             usage();
         }
     }
