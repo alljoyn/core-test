@@ -751,7 +751,7 @@ int TestAppMain(int argc, char** argv)
     for (int i = 1; i < argc; ++i) {
         if (0 == ::strcmp("-h", argv[i])) {
             usage();
-            return;
+            return 1;
         } else {
             printf("Ignoring unknown argument \"%s\"\n", argv[i]);
             usage();
