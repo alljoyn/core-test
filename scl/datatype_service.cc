@@ -18,27 +18,12 @@
  *    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
-#include <qcc/platform.h>
-
-#include <assert.h>
 #include <signal.h>
-#include <stdio.h>
-#include <vector>
-#include <qcc/Debug.h>
-#include <qcc/Environ.h>
-#include <qcc/Mutex.h>
-#include <qcc/String.h>
 #include <qcc/Thread.h>
-#include <qcc/time.h>
 #include <qcc/Util.h>
 #include <alljoyn/BusAttachment.h>
 #include <alljoyn/Init.h>
-#include <alljoyn/BusObject.h>
-#include <alljoyn/DBusStd.h>
-#include <alljoyn/AllJoynStd.h>
-#include <alljoyn/MsgArg.h>
 #include <alljoyn/version.h>
-#include <alljoyn/Status.h>
 
 #define QCC_MODULE "DATATYPESERVICE TEST PROGRAM"
 
@@ -62,8 +47,9 @@ static MySessionPortListener*g_SessionPortListener = NULL;
 
 static volatile sig_atomic_t g_interrupt = false;
 
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -100,6 +86,9 @@ class MySessionPortListener : public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(sessionPort);
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(opts);
         return true;
     }
 
@@ -178,11 +167,12 @@ class LocalTestObject : public BusObject {
 
     void Byte(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         uint8_t value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("y", &value);
-        printf("Pinged with: %u\n", value);
+        cout << "Pinged with: " << (int)value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Byte: Error sending reply"));
@@ -191,11 +181,12 @@ class LocalTestObject : public BusObject {
 
     void Int(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         int value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("i", &value);
-        printf("Pinged with: %d\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Int: Error sending reply"));
@@ -204,11 +195,12 @@ class LocalTestObject : public BusObject {
 
     void UnsignedInt(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         uint32_t value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("u", &value);
-        printf("Pinged with: %u\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("UnsignedInt: Error sending reply"));
@@ -217,11 +209,12 @@ class LocalTestObject : public BusObject {
 
     void Double(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         double value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("d", &value);
-        printf("Pinged with: %lf\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Double: Error sending reply"));
@@ -230,11 +223,12 @@ class LocalTestObject : public BusObject {
 
     void Bool(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         bool value = false;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("b", &value);
-        printf("Pinged with: %s \n", (value ? "true" : "false"));
+        cout << "Pinged with: " << (value ? "true" : "false") << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Bool: Error sending reply"));
@@ -243,11 +237,12 @@ class LocalTestObject : public BusObject {
 
     void String(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char*value;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("s", &value);
-        printf("Pinged with: %s\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("String: Error sending reply"));
@@ -256,11 +251,12 @@ class LocalTestObject : public BusObject {
 
     void UInt16(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         uint16_t value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("q", &value);
-        printf("Pinged with: %u\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("UInt16: Error sending reply"));
@@ -269,11 +265,12 @@ class LocalTestObject : public BusObject {
 
     void Int16(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         int16_t value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("n", &value);
-        printf("Pinged with: %d\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Int16: Error sending reply"));
@@ -282,11 +279,12 @@ class LocalTestObject : public BusObject {
 
     void Int64(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         int64_t value = 0;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("x", &value);
-        printf("Pinged with: %lld\n", value);
+        cout << "Pinged with: " << value << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Int64: Error sending reply"));
@@ -295,9 +293,10 @@ class LocalTestObject : public BusObject {
 
     void UInt64(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         const MsgArg* arg((msg->GetArg(0)));
         /* Reply with same string that was sent to us */
-        printf("Pinged with: %llu\n", arg->v_uint64);
+        cout << "Pinged with: " << arg->v_uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("UInt64: Error sending reply"));
@@ -306,21 +305,22 @@ class LocalTestObject : public BusObject {
 
     void Struct(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Structure structData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(yiudbsqnxt)", &structData.byte, &structData.int32, &structData.uint32, &structData.doubleValue, &structData.boolValue, &structData.stringValue, &structData.uint16, &structData.int16, &structData.int64, &structData.uint64);
-        printf("Pinged with Structure:  \n");
-        printf("	Pinged with Structure.byte: %u\n", structData.byte);
-        printf("	Pinged with Structure.int32: %d\n", structData.int32);
-        printf("	Pinged with Structure.uint32: %u\n", structData.uint32);
-        printf("	Pinged with Structure.double: %lf\n", structData.doubleValue);
-        printf("	Pinged with Structure.bool: %s\n", structData.boolValue ? "true" : "false");
-        printf("	Pinged with Structure.string: %s \n", structData.stringValue);
-        printf("	Pinged with Structure.uint16: %u\n", structData.uint16);
-        printf("	Pinged with Structure.int16: %d\n", structData.int16);
-        printf("	Pinged with Structure.int64: %lld\n", structData.int64);
-        printf("	Pinged with Structure.uint64: %llu\n", structData.uint64);
+        cout << "Pinged with Structure:  " << endl;
+        cout << "   Pinged with Structure.byte: " << (int)structData.byte << endl;
+        cout << "   Pinged with Structure.int32: " << structData.int32 << endl;
+        cout << "   Pinged with Structure.uint32: " << structData.uint32 << endl;
+        cout << "   Pinged with Structure.double: " << structData.doubleValue << endl;
+        cout << "   Pinged with Structure.bool: " << (structData.boolValue ? "true" : "false") << endl;
+        cout << "   Pinged with Structure.string: " << structData.stringValue << endl;
+        cout << "   Pinged with Structure.uint16: " << structData.uint16 << endl;
+        cout << "   Pinged with Structure.int16: " << structData.int16 << endl;
+        cout << "   Pinged with Structure.int64: " << structData.int64 << endl;
+        cout << "   Pinged with Structure.uint64: " << structData.uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Struct: Error sending reply"));
@@ -330,15 +330,16 @@ class LocalTestObject : public BusObject {
     /* Padding test1 - yqut  */
     void Paddingtest1(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(yqut)", &paddingData.byte, &paddingData.uint16, &paddingData.uint32, &paddingData.uint64);
-        printf("Pinged with yqut:  \n");
-        printf("        Pinged with yqut.byte: %u\n", paddingData.byte);
-        printf("        Pinged with yqut.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with yqut.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with yqut.uint64: %llu\n", paddingData.uint64);
+        cout << "Pinged with yqut:  " << endl;
+        cout << "   Pinged with yqut.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with yqut.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with yqut.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with yqut.uint64: " << paddingData.uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest1: Error sending reply"));
@@ -348,15 +349,16 @@ class LocalTestObject : public BusObject {
     /* Padding test2 - yqtu */
     void Paddingtest2(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(yqtu)", &paddingData.byte, &paddingData.uint16, &paddingData.uint64, &paddingData.uint32);
-        printf("Pinged with yqtu:  \n");
-        printf("        Pinged with yqtu.byte: %u\n", paddingData.byte);
-        printf("        Pinged with yqtu.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with yqtu.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with yqtu.uint32: %u\n", paddingData.uint32);
+        cout << "Pinged with yqtu:  " << endl;
+        cout << "   Pinged with yqtu.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with yqtu.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with yqtu.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with yqtu.uint32: " << paddingData.uint32 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest2: Error sending reply"));
@@ -366,15 +368,16 @@ class LocalTestObject : public BusObject {
     /* Padding test3 - yuqt */
     void Paddingtest3(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(yuqt)", &paddingData.byte, &paddingData.uint32, &paddingData.uint16, &paddingData.uint64);
-        printf("Pinged with yuqt:  \n");
-        printf("        Pinged with yuqt.byte: %u\n", paddingData.byte);
-        printf("        Pinged with yuqt.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with yuqt.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with yuqt.uint64: %llu\n", paddingData.uint64);
+        cout << "Pinged with yuqt:  " << endl;
+        cout << "   Pinged with yuqt.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with yuqt.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with yuqt.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with yuqt.uint64: " << paddingData.uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest3: Error sending reply"));
@@ -384,15 +387,16 @@ class LocalTestObject : public BusObject {
     /* Padding test4 - yutq*/
     void Paddingtest4(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(yutq)", &paddingData.byte, &paddingData.uint32, &paddingData.uint64, &paddingData.uint16);
-        printf("Pinged with yutq:  \n");
-        printf("        Pinged with yutq.byte: %u\n", paddingData.byte);
-        printf("        Pinged with yutq.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with yutq.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with yutq.uint16: %u\n", paddingData.uint16);
+        cout << "Pinged with yutq:  " << endl;
+        cout << "   Pinged with yutq.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with yutq.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with yutq.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with yutq.uint16: " << paddingData.uint16 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest4: Error sending reply"));
@@ -402,15 +406,16 @@ class LocalTestObject : public BusObject {
     /* Padding test5 - ytqu*/
     void Paddingtest5(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(ytqu)", &paddingData.byte, &paddingData.uint64, &paddingData.uint16, &paddingData.uint32);
-        printf("Pinged with yutq:  \n");
-        printf("        Pinged with ytqu.byte: %u\n", paddingData.byte);
-        printf("        Pinged with ytqu.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with ytqu.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with ytqu.uint32: %u\n", paddingData.uint32);
+        cout << "Pinged with yutq:  " << endl;
+        cout << "   Pinged with ytqu.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with ytqu.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with ytqu.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with ytqu.uint32: " << paddingData.uint32 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest5: Error sending reply"));
@@ -420,15 +425,16 @@ class LocalTestObject : public BusObject {
     /* Padding test6 - ytuq */
     void Paddingtest6(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(ytuq)", &paddingData.byte, &paddingData.uint64, &paddingData.uint32, &paddingData.uint16);
-        printf("Pinged with ytuq:  \n");
-        printf("        Pinged with ytuq.byte: %u\n", paddingData.byte);
-        printf("        Pinged with ytuq.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with ytuq.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with ytuq.uint16: %u\n", paddingData.uint16);
+        cout << "Pinged with ytuq:  " << endl;
+        cout << "   Pinged with ytuq.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with ytuq.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with ytuq.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with ytuq.uint16: " << paddingData.uint16 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest6: Error sending reply"));
@@ -438,15 +444,16 @@ class LocalTestObject : public BusObject {
     /* Padding test7 - ytuq */
     void Paddingtest7(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(qyut)", &paddingData.uint16, &paddingData.byte, &paddingData.uint32, &paddingData.uint64);
-        printf("Pinged with qyut:  \n");
-        printf("        Pinged with qyut.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with qyut.byte: %u\n", paddingData.byte);
-        printf("        Pinged with qyut.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with qyut.uint64: %llu\n", paddingData.uint64);
+        cout << "Pinged with qyut:  " << endl;
+        cout << "   Pinged with qyut.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with qyut.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with qyut.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with qyut.uint64: " << paddingData.uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest7: Error sending reply"));
@@ -456,15 +463,16 @@ class LocalTestObject : public BusObject {
     /* Padding test8 - qytu */
     void Paddingtest8(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(qytu)", &paddingData.uint16, &paddingData.byte, &paddingData.uint64, &paddingData.uint32);
-        printf("Pinged with qytu:  \n");
-        printf("        Pinged with qytu.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with qytu.byte: %u\n", paddingData.byte);
-        printf("        Pinged with qytu.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with qytu.uint32: %u\n", paddingData.uint32);
+        cout << "Pinged with qytu:  " << endl;
+        cout << "   Pinged with qytu.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with qytu.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with qytu.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with qytu.uint32: " << paddingData.uint32 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest8: Error sending reply"));
@@ -474,15 +482,16 @@ class LocalTestObject : public BusObject {
     /* Padding test9 - uyqt */
     void Paddingtest9(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(uyqt)", &paddingData.uint32, &paddingData.byte, &paddingData.uint16, &paddingData.uint64);
-        printf("Pinged with uyqt:  \n");
-        printf("        Pinged with uyqt.uint32: %u\n", paddingData.uint32);
-        printf("        Pinged with uyqt.byte: %u\n", paddingData.byte);
-        printf("        Pinged with uyqt.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with uyqt.uint64: %llu\n", paddingData.uint64);
+        cout << "Pinged with uyqt:  " << endl;
+        cout << "   Pinged with uyqt.uint32: " << paddingData.uint32 << endl;
+        cout << "   Pinged with uyqt.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with uyqt.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with uyqt.uint64: " << paddingData.uint64 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest9: Error sending reply"));
@@ -492,14 +501,15 @@ class LocalTestObject : public BusObject {
     /* Padding test10 - tyqu */
     void Paddingtest10(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         Padding paddingData;
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(tyqu)", &paddingData.uint64, &paddingData.byte, &paddingData.uint16, &paddingData.uint32);
-        printf("Pinged with tyqu:  \n");
-        printf("        Pinged with tyqu.uint64: %llu\n", paddingData.uint64);
-        printf("        Pinged with tyqu.byte: %u\n", paddingData.byte);
-        printf("        Pinged with tyqu.uint16: %u\n", paddingData.uint16);
-        printf("        Pinged with tyqu.uint32: %u\n", paddingData.uint32);
+        cout << "Pinged with tyqu:  " << endl;
+        cout << "   Pinged with tyqu.uint64: " << paddingData.uint64 << endl;
+        cout << "   Pinged with tyqu.byte: " << (int)paddingData.byte << endl;
+        cout << "   Pinged with tyqu.uint16: " << paddingData.uint16 << endl;
+        cout << "   Pinged with tyqu.uint32: " << paddingData.uint32 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Paddingtest10: Error sending reply"));
@@ -508,9 +518,10 @@ class LocalTestObject : public BusObject {
 
     void ArrayofStruct(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         const MsgArg* arg((msg->GetArg(0)));
         /* Reply with same string that was sent to us */
-        printf("Pinged with Array of Structures: \n");
+        cout << "Pinged with Array of Structures: " << endl;
         MsgArg* outer;
         size_t outerSize;
         QStatus status = arg->Get("a(is)", &outerSize, &outer);
@@ -518,8 +529,8 @@ class LocalTestObject : public BusObject {
         for (size_t i = 0; i < outerSize; ++i) {
             StructTest tmp;
             status = outer[i].Get("(is)", &tmp.num, &tmp.ord);
-            printf("	element[%d].num %u \n", i, tmp.num);
-            printf("	element[%d].ord %s \n", i, tmp.ord);
+            cout << "   element[" << i << "].num " << tmp.num << endl;
+            cout << "   element[" << i << "].ord " << tmp.ord << endl;
         }
         status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -529,6 +540,7 @@ class LocalTestObject : public BusObject {
 
     void Dictionary(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         const MsgArg* arg((msg->GetArg(0)));
         /* Reply with same string that was sent to us */
         MsgArg* entries;
@@ -539,9 +551,9 @@ class LocalTestObject : public BusObject {
         QStatus status = arg->Get("a{uv}", &num, &entries);
         status = entries[0].Get("{uv}", &key, &val);
         status = val->Get("u", &value);
-        printf("Pinged with Dictionary: \n");
-        printf("      Pinged with key: %u\n", key);
-        printf("      Pinged with Value: %u\n", value);
+        cout << "Pinged with Dictionary: " << endl;
+        cout << "   Pinged with key: " << key << endl;
+        cout << "   Pinged with Value: " << value << endl;
         status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Dictionary: Error sending reply"));
@@ -551,30 +563,31 @@ class LocalTestObject : public BusObject {
 
     void NestedStruct(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         uint8_t byte;
         int32_t int32;
         uint32_t uint32;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
         arg->Get("(y(iu))", &byte, &int32, &uint32);
-        printf("Pinged with y(iu) :  \n");
-        printf("        Pinged with y(iu)  y  %u\n", byte);
-        printf("        Pinged with y(iu) i %d\n", int32);
-        printf("        Pinged with y(iu) u %u\n", uint32);
+        cout << "Pinged with y(iu) :  " << endl;
+        cout << "   Pinged with y(iu) y  " << (int)byte << endl;
+        cout << "   Pinged with y(iu) i " << int32 << endl;
+        cout << "   Pinged with y(iu) u " << uint32 << endl;
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
             QCC_LogError(status, ("Struct: Error sending reply"));
         }
     }
 
-
     void ByteArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with ByteArray: \n");
+        cout << "Pinged with ByteArray: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("	Pinged with ByteArray: %u\n", arg->v_scalarArray.v_byte[i]);
+            cout << "   Pinged with ByteArray: " << (int)arg->v_scalarArray.v_byte[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -585,11 +598,12 @@ class LocalTestObject : public BusObject {
 
     void IntArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with IntArray: \n");
+        cout << "Pinged with IntArray: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with IntArray: %d\n", arg->v_scalarArray.v_int32[i]);
+            cout << "   Pinged with IntArray: " << arg->v_scalarArray.v_int32[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -601,11 +615,12 @@ class LocalTestObject : public BusObject {
 
     void UnsignedIntArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with UnsignedIntArray: \n");
+        cout << "Pinged with UnsignedIntArray: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with UInt32Array: %u\n", arg->v_scalarArray.v_uint32[i]);
+            cout << "   Pinged with UInt32Array: " << arg->v_scalarArray.v_uint32[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -617,11 +632,12 @@ class LocalTestObject : public BusObject {
 
     void DoubleArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with DoubleArray: \n");
+        cout << "Pinged with DoubleArray: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with DoubleArray: %lf\n", arg->v_scalarArray.v_double[i]);
+            cout << "   Pinged with DoubleArray: " << arg->v_scalarArray.v_double[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -632,11 +648,12 @@ class LocalTestObject : public BusObject {
 
     void BoolArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with BoolArray: \n");
+        cout << "Pinged with BoolArray: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with BoolArray: %s\n", arg->v_scalarArray.v_bool[i] ? "true" : "false");
+            cout << "   Pinged with BoolArray: " << (arg->v_scalarArray.v_bool[i] ? "true" : "false") << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -647,9 +664,10 @@ class LocalTestObject : public BusObject {
 
     void StringArray(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with StringArray: \n");
+        cout << "Pinged with StringArray: " << endl;
         MsgArg* outer;
         size_t outerSize;
         QStatus status = arg->Get("as", &outerSize, &outer);
@@ -657,7 +675,7 @@ class LocalTestObject : public BusObject {
         for (size_t i = 0; i < outerSize; ++i) {
             char*value;
             status = outer[i].Get("s", &value);
-            printf("      Pinged with StringArray: %s \n", value);
+            cout << "   Pinged with StringArray: " << value << endl;
         }
         status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -668,11 +686,12 @@ class LocalTestObject : public BusObject {
 
     void UInt16Array(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with UInt16Array: \n");
+        cout << "Pinged with UInt16Array: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with UInt16Array: %u\n", arg->v_scalarArray.v_uint16[i]);
+            cout << "   Pinged with UInt16Array: " << arg->v_scalarArray.v_uint16[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -684,11 +703,12 @@ class LocalTestObject : public BusObject {
 
     void Int16Array(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with Int16Array: \n");
+        cout << "Pinged with Int16Array: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with Int16Array: %d\n", arg->v_scalarArray.v_int16[i]);
+            cout << "   Pinged with Int16Array: " << arg->v_scalarArray.v_int16[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -699,12 +719,12 @@ class LocalTestObject : public BusObject {
 
     void Int64Array(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with Int64Array: \n");
+        cout << "Pinged with Int64Array: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with Int64Array: %lld\n", arg->v_scalarArray.v_int64[i]);
-
+            cout << "   Pinged with Int64Array: " << arg->v_scalarArray.v_int64[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -715,11 +735,12 @@ class LocalTestObject : public BusObject {
 
     void UInt64Array(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
-        printf("Pinged with UInt64Array: \n");
+        cout << "Pinged with UInt64Array: " << endl;
         for (int i = 0; i < (int)arg->v_scalarArray.numElements; i++) {
-            printf("      Pinged with UInt64Array: %llu\n", arg->v_scalarArray.v_uint64[i]);
+            cout << "    Pinged with UInt64Array: " << arg->v_scalarArray.v_uint64[i] << endl;
         }
         QStatus status = MethodReply(msg, arg, 1);
         if (ER_OK != status) {
@@ -730,11 +751,10 @@ class LocalTestObject : public BusObject {
 
 static void usage(void)
 {
-    printf("Usage: datatype_service [-h] [-n <name>] \n\n");
-    printf("Options:\n");
-    printf("   -h                    = Print this help message\n");
-    printf("   -n <well-known name>  = Well-known name to advertise\n");
-    printf("   -p                    = Run additional data padding test cases\n");
+    cout << "Usage: datatype_service [-h] [-n <name>] " << endl << endl;
+    cout << "Options:" << endl;
+    cout << "   -h                    = Print this help message" << endl;
+    cout << "   -n <well-known name>  = Well-known name to advertise" << endl;
 }
 
 
@@ -742,8 +762,8 @@ int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
     SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
-    printf("AllJoyn Library version: %s\n", ajn::GetVersion());
-    printf("AllJoyn Library build info: %s\n", ajn::GetBuildInfo());
+    cout << "AllJoyn Library version: " << ajn::GetVersion() << endl;
+    cout << "AllJoyn Library build info: " << ajn::GetBuildInfo() << endl;
 
     /* Install SIGINT handler */
     signal(SIGINT, SigIntHandler);
@@ -756,7 +776,7 @@ int TestAppMain(int argc, char** argv)
         } else if (0 == strcmp("-n", argv[i])) {
             ++i;
             if (i == argc) {
-                printf("option %s requires a parameter\n", argv[i - 1]);
+                cout << "option " << argv[i - 1] << " requires a parameter" << endl;
                 usage();
                 exit(1);
             } else {
@@ -764,7 +784,7 @@ int TestAppMain(int argc, char** argv)
             }
         }  else {
             status = ER_FAIL;
-            printf("Unknown option %s\n", argv[i]);
+            cout << "Unknown option " << argv[i] << endl;
             usage();
             exit(1);
         }
@@ -806,7 +826,6 @@ int TestAppMain(int argc, char** argv)
     }
     InterfaceDescription* paddingtestIntf = NULL;
     status = g_msgBus->CreateInterface(g_PaddingInterfaceName, paddingtestIntf);
-    printf("Status of create interface ------------------------  %d \n", status);
     if (ER_OK == status) {
         paddingtestIntf->AddMethod("paddingtest1", "(yqut)", "(yqut)", "inStr,outStr", 0);
         paddingtestIntf->AddMethod("paddingtest2", "(yqtu)", "(yqtu)", "inStr,outStr", 0);
@@ -874,13 +893,13 @@ int TestAppMain(int argc, char** argv)
     delete g_msgBus;
     delete g_SessionPortListener;
 
-    printf("%s exiting with status %d (%s)\n", argv[0], status, QCC_StatusText(status));
+    cout << argv[0] << " exiting with status " << status << " (" << QCC_StatusText(status) << ")" << endl;
 
     return (int) status;
 }
 
 /** Main entry point */
-int main(int argc, char** argv)
+int CDECL_CALL main(int argc, char** argv)
 {
     QStatus status = AllJoynInit();
     if (ER_OK != status) {

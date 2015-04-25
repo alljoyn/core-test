@@ -18,25 +18,11 @@
  *    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
-#include <qcc/platform.h>
-#include <qcc/Debug.h>
-#include <qcc/Thread.h>
 #include <signal.h>
-#include <stdio.h>
-#include <assert.h>
-#include <vector>
-#include <qcc/Environ.h>
-#include <qcc/Event.h>
-#include <qcc/String.h>
-#include <qcc/StringUtil.h>
 #include <qcc/Util.h>
-#include <qcc/time.h>
 #include <alljoyn/BusAttachment.h>
 #include <alljoyn/Init.h>
-#include <alljoyn/DBusStd.h>
-#include <alljoyn/AllJoynStd.h>
 #include <alljoyn/version.h>
-#include <alljoyn/Status.h>
 
 #define QCC_MODULE "DATATYPECLIENT TEST PROGRAM"
 
@@ -48,7 +34,7 @@ const char* g_WellKnownName = "org.datatypes.test";
 const char* g_InterfaceName = "org.datatypes.test.interface";
 const char* g_PaddingInterfaceName = "org.datatypes.test.padding.interface";
 const char* g_ObjectPath = "/datatypes";
-SessionPort g_SessionPort = 25;
+static SessionPort g_SessionPort = 25;
 
 typedef struct {
     uint8_t byte;
@@ -73,8 +59,8 @@ typedef struct {
 
 /** Static data */
 static BusAttachment* g_msgBus = NULL;
-static Event g_discoverEvent;
-
+static Event* g_discoverEvent = NULL;
+static TransportMask g_Transport = TRANSPORT_ANY;
 /** AllJoynListener receives discovery events from AllJoyn */
 class MyBusListener : public BusListener, public SessionListener {
   public:
@@ -84,13 +70,13 @@ class MyBusListener : public BusListener, public SessionListener {
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix)
     {
         QStatus status = ER_OK;
-        QCC_SyncPrintf("FoundAdvertisedName(name=%s, transport=0x%x, prefix=%s)\n", name, transport, namePrefix);
+        cout << "FoundAdvertisedName(name=" << name << ", transport=" << transport << ", prefix=" << namePrefix << ")" << endl;
 
         /* We must enable concurrent callbacks since some of the calls below are blocking */
         g_msgBus->EnableConcurrentCallbacks();
 
         if (0 == ::strcmp(name, g_WellKnownName)) {
-            SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, transport);
+            SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, g_Transport);
 
             status = g_msgBus->JoinSession(name, g_SessionPort, this, sessionId, opts);
             if (ER_OK != status) {
@@ -99,7 +85,7 @@ class MyBusListener : public BusListener, public SessionListener {
 
             /* Release the main thread */
             if (ER_OK == status) {
-                g_discoverEvent.SetEvent();
+                g_discoverEvent->SetEvent();
             }
         }
     }
@@ -123,23 +109,27 @@ static void CDECL_CALL SigIntHandler(int sig)
 
 static void usage(void)
 {
-    printf("Usage: datatype_client [-h] [-d] [-n <well-known name>] \n\n");
-    printf("Options:\n");
-    printf("   -h                        = Print this help message\n");
-    printf("   -n <well-known name>      = Well-known bus name advertised by bbservice\n");
-    printf("   -d                        = discover remote bus with test service\n");
-    printf("   -p                        = Run additional data padding test cases\n");
-    printf("\n");
+    cout << "Usage: datatype_client [-h] [-d] [-n <well-known name>] [-u/-t/-l]" << endl << endl;
+    cout << "Options:" << endl;
+    cout << "   -h                        = Print this help message" << endl;
+    cout << "   -n <well-known name>      = Well-known bus name advertised by bbservice" << endl;
+    cout << "   -d                        = discover remote bus with test service" << endl;
+    cout << "   -p                        = Run additional data padding test cases" << endl;
+    cout << "   -l                        = Use TRANSPORT_LOCAL" << endl;
+    cout << "   -t                        = Use TRANSPORT_TCP" << endl;
+    cout << "   -u                        = Use TRANSPORT_UDP" << endl;
+    cout << endl;
 }
 
 int TestAppMain(int argc, char** argv)
 {
     QStatus status = ER_OK;
+    g_discoverEvent = new Event();
     bool discoverRemote = false;
     bool paddingTest = false;
 
-    printf("AllJoyn Library version: %s\n", ajn::GetVersion());
-    printf("AllJoyn Library build info: %s\n", ajn::GetBuildInfo());
+    cout << "AllJoyn Library version: " << ajn::GetVersion() << endl;
+    cout << "AllJoyn Library build info: " << ajn::GetBuildInfo() << endl;
 
     /* Install SIGINT handler */
     signal(SIGINT, SigIntHandler);
@@ -149,7 +139,7 @@ int TestAppMain(int argc, char** argv)
         if (0 == strcmp("-n", argv[i])) {
             ++i;
             if (i == argc) {
-                printf("option %s requires a parameter\n", argv[i - 1]);
+                cout << "option " << argv[i - 1] << " requires a parameter" << endl;
                 usage();
                 exit(1);
             } else {
@@ -162,9 +152,15 @@ int TestAppMain(int argc, char** argv)
             discoverRemote = true;
         } else if (0 == strcmp("-p", argv[i])) {
             paddingTest = true;
+        } else if (0 == strcmp("-l", argv[i])) {
+            g_Transport = TRANSPORT_LOCAL;
+        } else if (0 == strcmp("-t", argv[i])) {
+            g_Transport = TRANSPORT_TCP;
+        } else if (0 == strcmp("-u", argv[i])) {
+            g_Transport = TRANSPORT_UDP;
         } else {
             status = ER_FAIL;
-            printf("Unknown option %s\n", argv[i]);
+            cout << "Unknown option " << argv[i] << endl;
             usage();
             exit(1);
         }
@@ -189,7 +185,7 @@ int TestAppMain(int argc, char** argv)
     }
 
     if (discoverRemote) {
-        g_discoverEvent.ResetEvent();
+        g_discoverEvent->ResetEvent();
         status = g_msgBus->FindAdvertisedName(g_WellKnownName);
         if (status != ER_OK) {
             QCC_LogError(status, ("FindAdvertisedName failed"));
@@ -199,8 +195,8 @@ int TestAppMain(int argc, char** argv)
     bool hasOwner = false;
     status = g_msgBus->NameHasOwner(g_WellKnownName, hasOwner);
     if ((ER_OK == status) && !hasOwner) {
-        QCC_SyncPrintf("Waiting for name %s to appear on the bus\n", g_WellKnownName);
-        status = Event::Wait(g_discoverEvent);
+        cout << "Waiting for name " << g_WellKnownName << " to appear on the bus" << endl;
+        status = Event::Wait(*g_discoverEvent);
         if (ER_OK != status) {
             QCC_LogError(status, ("Event::Wait failed"));
         }
@@ -212,94 +208,92 @@ int TestAppMain(int argc, char** argv)
         remoteObj = new ProxyBusObject(*g_msgBus, g_WellKnownName, g_ObjectPath, g_busListener->GetSessionId());
         status = remoteObj->IntrospectRemoteObject();
         if (ER_OK != status) {
-            QCC_LogError(status, ("Introspection of %s (path=%s) failed",
-                                  g_WellKnownName,
-                                  g_ObjectPath));
+            QCC_LogError(status, ("Introspection of %s (path=%s) failed", g_WellKnownName, g_ObjectPath));
         }
     }
 
     Message reply(*g_msgBus);
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg byte;
         byte.Set("y", 255);
         status = remoteObj->MethodCall(g_InterfaceName, "byte", &byte, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("byte returned %u \n", reply->GetArg(0)->v_byte);
+            cout << "byte returned " << (int)reply->GetArg(0)->v_byte << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "byte"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg integer;
         integer.Set("i", -65540);
         status = remoteObj->MethodCall(g_InterfaceName, "int", &integer, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("int returned %d \n", reply->GetArg(0)->v_int32);
+            cout << "int returned " << reply->GetArg(0)->v_int32 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "int"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg unsignedInteger;
         unsignedInteger.Set("u", 65540);
         status = remoteObj->MethodCall(g_InterfaceName, "unsignedint", &unsignedInteger, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("unsignedint returned %u \n", reply->GetArg(0)->v_uint32);
+            cout << "unsignedint returned " << reply->GetArg(0)->v_uint32 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "unsignedint"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg doubleType;
         doubleType.Set("d", 3.1423);
         status = remoteObj->MethodCall(g_InterfaceName, "double", &doubleType, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("double returned %lf \n", reply->GetArg(0)->v_double);
+            cout << "double returned " << reply->GetArg(0)->v_double << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "double"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg boolType;
         bool temp = true;
         boolType.Set("b", temp);
         status = remoteObj->MethodCall(g_InterfaceName, "bool", &boolType, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("bool returned %s \n", (reply->GetArg(0)->v_bool) ? "true" : "false");
+            cout << "bool returned " << ((reply->GetArg(0)->v_bool) ? "true" : "false") << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "bool"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg stringType;
         stringType.Set("s", "Hello");
         status = remoteObj->MethodCall(g_InterfaceName, "string", &stringType, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("string returned %s \n", reply->GetArg(0)->v_string.str);
+            cout << "string returned " << reply->GetArg(0)->v_string.str << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "string"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg uint16Type;
         uint16Type.Set("q", 65535);
         status = remoteObj->MethodCall(g_InterfaceName, "uint16", &uint16Type, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("uint16 returned %u \n", reply->GetArg(0)->v_uint16);
+            cout << "uint16 returned " << reply->GetArg(0)->v_uint16 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "uint16"));
         }
@@ -307,19 +301,19 @@ int TestAppMain(int argc, char** argv)
 
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg int16Type;
         int16Type.Set("n", -32768);
         status = remoteObj->MethodCall(g_InterfaceName, "int16", &int16Type, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("int16 returned %d \n", reply->GetArg(0)->v_int16);
+            cout << "int16 returned " << reply->GetArg(0)->v_int16 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "int16"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg int64Type;
 #if _WIN32
         int64Type.Set("x", -9223372036854775808i64);
@@ -328,14 +322,14 @@ int TestAppMain(int argc, char** argv)
 #endif
         status = remoteObj->MethodCall(g_InterfaceName, "int64", &int64Type, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("int64 returned %lld \n", reply->GetArg(0)->v_int64);
+            cout << "int64 returned " << reply->GetArg(0)->v_int64 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "int64"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         MsgArg uint64Type;
 #if _WIN32
         uint64Type.Set("t", 7223372036854775808ui64);
@@ -344,14 +338,14 @@ int TestAppMain(int argc, char** argv)
 #endif
         status = remoteObj->MethodCall(g_InterfaceName, "uint64", &uint64Type, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("uint64 returned %llu \n", reply->GetArg(0)->v_uint64);
+            cout << "uint64 returned " << reply->GetArg(0)->v_uint64 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "uint64"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         Structure structData;
         structData.byte = 254;
         structData.int32 = -65541;
@@ -373,24 +367,24 @@ int TestAppMain(int argc, char** argv)
         structType.Set("(yiudbsqnxt)", structData.byte, structData.int32, structData.uint32, structData.doubleValue, structData.boolValue, structData.stringValue, structData.uint16, structData.int16, structData.int64, structData.uint64);
         status = remoteObj->MethodCall(g_InterfaceName, "struct", &structType, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("struct members %d \n", reply->GetArg(0)->v_struct.numMembers);
-            QCC_SyncPrintf("struct returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-            QCC_SyncPrintf("struct returned %d \n", reply->GetArg(0)->v_struct.members[1].v_int32);
-            QCC_SyncPrintf("struct returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint32);
-            QCC_SyncPrintf("struct returned %lf \n", reply->GetArg(0)->v_struct.members[3].v_double);
-            QCC_SyncPrintf("struct returned %s \n", reply->GetArg(0)->v_struct.members[4].v_bool ? "true" : "false");
-            QCC_SyncPrintf("struct returned %s \n", reply->GetArg(0)->v_struct.members[5].v_string.str);
-            QCC_SyncPrintf("struct returned %u \n", reply->GetArg(0)->v_struct.members[6].v_uint16);
-            QCC_SyncPrintf("struct returned %i \n", reply->GetArg(0)->v_struct.members[7].v_int16);
-            QCC_SyncPrintf("struct returned %lld \n", reply->GetArg(0)->v_struct.members[8].v_int64);
-            QCC_SyncPrintf("struct returned %llu \n", reply->GetArg(0)->v_struct.members[9].v_uint64);
+            cout << "struct members " << reply->GetArg(0)->v_struct.numMembers << endl;
+            cout << "struct returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[1].v_int32 << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[2].v_uint32 << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[3].v_double << endl;
+            cout << "struct returned " << (reply->GetArg(0)->v_struct.members[4].v_bool ? "true" : "false") << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[5].v_string.str << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[6].v_uint16 << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[7].v_int16 << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[8].v_int64 << endl;
+            cout << "struct returned " << reply->GetArg(0)->v_struct.members[9].v_uint64 << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "struct"));
         }
     }
     /* Array of struct. */
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         struct {
             uint32_t num;
             const char* ord;
@@ -409,11 +403,11 @@ int TestAppMain(int argc, char** argv)
             const MsgArg* reply_outer;
             size_t reply_outerSize;
             status = reply_arg->Get("a(is)", &reply_outerSize, &reply_outer);
-            QCC_SyncPrintf("Array of struct members %d \n", reply_outerSize);
+            cout << "Array of struct members " << reply_outerSize << endl;
             for (size_t i = 0; i < reply_outerSize; ++i) {
-                QCC_SyncPrintf("element[%d] members %d \n", i, reply_outer[i].v_struct.numMembers);
-                QCC_SyncPrintf("element[%d].num %u\n", i, reply_outer[i].v_struct.members[0].v_uint32);
-                QCC_SyncPrintf("element[%d].ord %s \n", i, reply_outer[i].v_struct.members[1].v_string.str);
+                cout << "element[" << i << "] members " << reply_outer[i].v_struct.numMembers << endl;
+                cout << "element[" << i << "].num " << reply_outer[i].v_struct.members[0].v_uint32 << endl;
+                cout << "element[" << i << "].ord " << reply_outer[i].v_struct.members[1].v_string.str << endl;
             }
 
         } else {
@@ -423,8 +417,7 @@ int TestAppMain(int argc, char** argv)
 
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
-
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         int numEntries = 1;
         MsgArg* entries = new MsgArg[numEntries];
         MsgArg dict(ALLJOYN_ARRAY);
@@ -434,7 +427,7 @@ int TestAppMain(int argc, char** argv)
         status = dict.v_array.SetElements("{uv}", numEntries, entries);
         status = remoteObj->MethodCall(g_InterfaceName, "dictionary", &dict, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("Dictionary returned elements  \n");
+            cout << "Dictionary returned elements  " << endl;
             const MsgArg* reply_arg = reply->GetArg(0);
             MsgArg* reply_entries;
             MsgArg* reply_val;
@@ -444,15 +437,15 @@ int TestAppMain(int argc, char** argv)
             status = reply_arg->Get("a{uv}", &reply_num, &reply_entries);
             status = reply_entries[0].Get("{uv}", &reply_key, &reply_val);
             status = reply_val->Get("u", &reply_value);
-            QCC_SyncPrintf("Dictionary returened key  % d \n", reply_key);
-            QCC_SyncPrintf("Dictionary returened value  % d \n", reply_value);
+            cout << "Dictionary returned key  " << reply_key << endl;
+            cout << "Dictionary returned value  " << reply_value << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "dictionary"));
         }
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         uint8_t byte = 254;
         int32_t int32 = 65535;
         uint32_t uint32 = 65541;
@@ -465,10 +458,10 @@ int TestAppMain(int argc, char** argv)
             uint32_t uint32_reply;
             const MsgArg* reply_arg((reply->GetArg(0)));
             reply_arg->Get("(y(iu))", &byte_reply, &int32_reply, &uint32_reply);
-            QCC_SyncPrintf("nestedstruct members %d \n", reply->GetArg(0)->v_struct.numMembers);
-            QCC_SyncPrintf("nestedstruct returned %u \n", byte_reply);
-            QCC_SyncPrintf("nestedstruct returned %u \n", int32_reply);
-            QCC_SyncPrintf("nestedstruct returned %u \n", uint32_reply);
+            cout << "nestedstruct members  " << reply->GetArg(0)->v_struct.numMembers << endl;
+            cout << "nestedstruct returned " << (int)byte_reply << endl;
+            cout << "nestedstruct returned " << int32_reply << endl;
+            cout << "nestedstruct returned " << uint32_reply << endl;
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "nestedstruct"));
         }
@@ -476,15 +469,15 @@ int TestAppMain(int argc, char** argv)
 
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         uint8_t byteArray[] = { 255, 254, 253, 252, 251 };
         MsgArg arg;
         status = arg.Set("ay", sizeof(byteArray), byteArray);
         status = remoteObj->MethodCall(g_InterfaceName, "bytearray", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("bytearray returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "bytearray returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("bytearray returned %u\n", reply->GetArg(0)->v_scalarArray.v_byte[i]);
+                cout << "bytearray returned " << (int)reply->GetArg(0)->v_scalarArray.v_byte[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "bytearray"));
@@ -492,15 +485,15 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         int32_t intArray[] = { -65540, -65541, -65542, -65543, -65544 };
         MsgArg arg;
         status = arg.Set("ai", sizeof(intArray) / sizeof(int32_t), intArray);
         status = remoteObj->MethodCall(g_InterfaceName, "intarray", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("intarray returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "intarray returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("intarray returned %d\n", reply->GetArg(0)->v_scalarArray.v_int32[i]);
+                cout << "intarray returned " << reply->GetArg(0)->v_scalarArray.v_int32[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "intarray"));
@@ -508,15 +501,15 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         uint32_t unsignedintArray[] = { 65540, 65541, 65542, 65543, 65544 };
         MsgArg arg;
         status = arg.Set("au", sizeof(unsignedintArray) / sizeof(uint32_t), unsignedintArray);
         status = remoteObj->MethodCall(g_InterfaceName, "unsignedintarray", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("unsignedintarray returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "unsignedintarray returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("unsignedintarray returned %u\n", reply->GetArg(0)->v_scalarArray.v_uint32[i]);
+                cout << "unsignedintarray returned " << reply->GetArg(0)->v_scalarArray.v_uint32[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "unsignedintarray"));
@@ -524,18 +517,18 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         double doubleArray[10];
         for (int i = 0; i < 10; i++) {
-            doubleArray[i] = i;
+            doubleArray[i] = i + (0.1 * (double)i);
         }
         MsgArg arg;
         status = arg.Set("ad", sizeof(doubleArray) / sizeof(double), doubleArray);
         status = remoteObj->MethodCall(g_InterfaceName, "doublearray", &arg, 1, reply, 100000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("doublearray returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "doublearray returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("doublearray returned %lf\n", reply->GetArg(0)->v_scalarArray.v_double[i]);
+                cout << "doublearray returned " << reply->GetArg(0)->v_scalarArray.v_double[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "doublearray"));
@@ -543,15 +536,15 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         bool boolArray[] = { true, true, false, false, true, true };
         MsgArg arg;
         status = arg.Set("ab", sizeof(boolArray) / sizeof(bool), boolArray);
         status = remoteObj->MethodCall(g_InterfaceName, "boolarray", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("boolarray returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "boolarray returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("doublearray returned %s\n", reply->GetArg(0)->v_scalarArray.v_bool[i] ? "true" : "false");
+                cout << "boolarray returned " << (reply->GetArg(0)->v_scalarArray.v_bool[i] ? "true" : "false") << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "boolarray"));
@@ -559,15 +552,15 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         uint16_t uint16Array[] = { 65535, 65534 };
         MsgArg arg;
         status = arg.Set("aq", sizeof(uint16Array) / sizeof(uint16_t), uint16Array);
         status = remoteObj->MethodCall(g_InterfaceName, "uint16array", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("uint16array returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "uint16array returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("uint16array returned %u\n", reply->GetArg(0)->v_scalarArray.v_uint16[i]);
+                cout << "uint16array returned " << reply->GetArg(0)->v_scalarArray.v_uint16[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "uint16array"));
@@ -575,15 +568,15 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         int16_t int16Array[] = { -32768, -32767, -32766, -32765 };
         MsgArg arg;
         status = arg.Set("an", sizeof(int16Array) / sizeof(int16_t), int16Array);
         status = remoteObj->MethodCall(g_InterfaceName, "int16array", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("int16array returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "int16array returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("int16array returned %d\n", reply->GetArg(0)->v_scalarArray.v_int16[i]);
+                cout << "int16array returned " << reply->GetArg(0)->v_scalarArray.v_int16[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "int16array"));
@@ -592,7 +585,7 @@ int TestAppMain(int argc, char** argv)
 
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
 #if _WIN32
         int64_t int64Array[] = { -5223372036854775808i64, -5223372036854775807i64, -5223372036854775806i64 };
 #else
@@ -602,9 +595,9 @@ int TestAppMain(int argc, char** argv)
         status = arg.Set("ax", sizeof(int64Array) / sizeof(int64_t), int64Array);
         status = remoteObj->MethodCall(g_InterfaceName, "int64array", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("int64array returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "int64array returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("int64array returned %lld\n", reply->GetArg(0)->v_scalarArray.v_int64[i]);
+                cout << "int64array returned " << reply->GetArg(0)->v_scalarArray.v_int64[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "int64array"));
@@ -613,15 +606,15 @@ int TestAppMain(int argc, char** argv)
 
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         uint64_t uint64Array[] = { 6223372036854775808, 6223372036854775807 };
         MsgArg arg;
         status = arg.Set("at", sizeof(uint64Array) / sizeof(uint64_t), uint64Array);
         status = remoteObj->MethodCall(g_InterfaceName, "uint64array", &arg, 1, reply, 50000);
         if (ER_OK == status) {
-            QCC_SyncPrintf("uint64array returned elements %d \n", (unsigned int)reply->GetArg(0)->v_scalarArray.numElements);
+            cout << "uint64array returned elements " << (unsigned int)reply->GetArg(0)->v_scalarArray.numElements << endl;
             for (size_t i = 0; i < reply->GetArg(0)->v_scalarArray.numElements; i++) {
-                QCC_SyncPrintf("uint64array returned %llu\n", reply->GetArg(0)->v_scalarArray.v_uint64[i]);
+                cout << "uint64array returned " << reply->GetArg(0)->v_scalarArray.v_uint64[i] << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "uint64array"));
@@ -629,7 +622,7 @@ int TestAppMain(int argc, char** argv)
     }
 
     {
-        QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+        cout << " ------------------------------------------------------------------------------------------------ " << endl;
         const char*string_data[3] = { "hello", "world", "dog" };
         MsgArg arg;
         status = arg.Set("as", ArraySize(string_data), string_data);
@@ -639,11 +632,11 @@ int TestAppMain(int argc, char** argv)
             MsgArg* array_of_strings;
             size_t no_of_strings;
             status = reply_arg->Get("as", &no_of_strings, &array_of_strings);
-            QCC_SyncPrintf("stringarray returned elements %d \n", no_of_strings);
+            cout << "stringarray returned elements " << no_of_strings << endl;
             for (size_t i = 0; i < no_of_strings; i++) {
                 char*value;
                 array_of_strings[i].Get("s", &value);
-                QCC_SyncPrintf("string returned %s \n", value);
+                cout << "string returned " << value << endl;
             }
         } else {
             QCC_LogError(status, ("MethodCall on %s.%s failed", g_InterfaceName, "stringarray"));
@@ -654,8 +647,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test1 yqut */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
-
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -671,10 +663,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(yqut)", paddingData.byte, paddingData.uint16, paddingData.uint32, paddingData.uint64);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest1", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest1 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest1 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_uint16);
-                QCC_SyncPrintf("paddingtest1 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint32);
-                QCC_SyncPrintf("paddingtest1 returned %llu \n", reply->GetArg(0)->v_struct.members[3].v_uint64);
+                cout << "paddingtest1 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest1 returned " << reply->GetArg(0)->v_struct.members[1].v_uint16 << endl;
+                cout << "paddingtest1 returned " << reply->GetArg(0)->v_struct.members[2].v_uint32 << endl;
+                cout << "paddingtest1 returned " << reply->GetArg(0)->v_struct.members[3].v_uint64 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest1"));
             }
@@ -682,7 +674,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test2 yqtu */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -697,10 +689,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(yqtu)", paddingData.byte, paddingData.uint16, paddingData.uint64, paddingData.uint32);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest2", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest2 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest2 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_uint16);
-                QCC_SyncPrintf("paddingtest2 returned %llu \n", reply->GetArg(0)->v_struct.members[2].v_uint64);
-                QCC_SyncPrintf("paddingtest2 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint32);
+                cout << "paddingtest2 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest2 returned " << reply->GetArg(0)->v_struct.members[1].v_uint16 << endl;
+                cout << "paddingtest2 returned " << reply->GetArg(0)->v_struct.members[2].v_uint64 << endl;
+                cout << "paddingtest2 returned " << reply->GetArg(0)->v_struct.members[3].v_uint32 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest2"));
             }
@@ -708,7 +700,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test3 yuqt */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -724,10 +716,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(yuqt)", paddingData.byte, paddingData.uint32, paddingData.uint16, paddingData.uint64);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest3", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest3 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest3returned %u \n", reply->GetArg(0)->v_struct.members[1].v_uint32);
-                QCC_SyncPrintf("paddingtest3 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint16);
-                QCC_SyncPrintf("paddingtest3 returned %llu \n", reply->GetArg(0)->v_struct.members[3].v_uint64);
+                cout << "paddingtest3 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest3returned  " << reply->GetArg(0)->v_struct.members[1].v_uint32 << endl;
+                cout << "paddingtest3 returned " << reply->GetArg(0)->v_struct.members[2].v_uint16 << endl;
+                cout << "paddingtest3 returned " << reply->GetArg(0)->v_struct.members[3].v_uint64 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest3"));
             }
@@ -735,7 +727,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test4 yutq */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -751,10 +743,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(yutq)", paddingData.byte, paddingData.uint32, paddingData.uint64, paddingData.uint16);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest4", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest4 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest4 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_uint32);
-                QCC_SyncPrintf("paddingtest4 returned %llu \n", reply->GetArg(0)->v_struct.members[2].v_uint64);
-                QCC_SyncPrintf("paddingtest4 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint16);
+                cout << "paddingtest4 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest4 returned " << reply->GetArg(0)->v_struct.members[1].v_uint32 << endl;
+                cout << "paddingtest4 returned " << reply->GetArg(0)->v_struct.members[2].v_uint64 << endl;
+                cout << "paddingtest4 returned " << reply->GetArg(0)->v_struct.members[3].v_uint16 << endl;
 
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest4"));
@@ -763,7 +755,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test5 ytqu */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -779,10 +771,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(ytqu)", paddingData.byte, paddingData.uint64, paddingData.uint16, paddingData.uint32);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest5", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest5 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest5 returned %llu \n", reply->GetArg(0)->v_struct.members[1].v_uint64);
-                QCC_SyncPrintf("paddingtest5 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint16);
-                QCC_SyncPrintf("paddingtest5 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint32);
+                cout << "paddingtest5 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest5 returned " << reply->GetArg(0)->v_struct.members[1].v_uint64 << endl;
+                cout << "paddingtest5 returned " << reply->GetArg(0)->v_struct.members[2].v_uint16 << endl;
+                cout << "paddingtest5 returned " << reply->GetArg(0)->v_struct.members[3].v_uint32 << endl;
 
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest5"));
@@ -791,7 +783,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test6 ytuq */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -807,10 +799,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(ytuq)", paddingData.byte, paddingData.uint64, paddingData.uint32, paddingData.uint16);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest6", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest6 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_byte);
-                QCC_SyncPrintf("paddingtest6 returned %llu \n", reply->GetArg(0)->v_struct.members[1].v_uint64);
-                QCC_SyncPrintf("paddingtest6 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint32);
-                QCC_SyncPrintf("paddingtest6 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint16);
+                cout << "paddingtest6 returned " << (int)reply->GetArg(0)->v_struct.members[0].v_byte << endl;
+                cout << "paddingtest6 returned " << reply->GetArg(0)->v_struct.members[1].v_uint64 << endl;
+                cout << "paddingtest6 returned " << reply->GetArg(0)->v_struct.members[2].v_uint32 << endl;
+                cout << "paddingtest6 returned " << reply->GetArg(0)->v_struct.members[3].v_uint16 << endl;
 
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest6"));
@@ -819,7 +811,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test7 qyut */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -835,10 +827,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(qyut)", paddingData.uint16, paddingData.byte, paddingData.uint32, paddingData.uint64);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest7", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest7 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_uint16);
-                QCC_SyncPrintf("paddingtest7 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_byte);
-                QCC_SyncPrintf("paddingtest7 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint32);
-                QCC_SyncPrintf("paddingtest7 returned %llu \n", reply->GetArg(0)->v_struct.members[3].v_uint64);
+                cout << "paddingtest7 returned " << reply->GetArg(0)->v_struct.members[0].v_uint16 << endl;
+                cout << "paddingtest7 returned " << (int)reply->GetArg(0)->v_struct.members[1].v_byte << endl;
+                cout << "paddingtest7 returned " << reply->GetArg(0)->v_struct.members[2].v_uint32 << endl;
+                cout << "paddingtest7 returned " << reply->GetArg(0)->v_struct.members[3].v_uint64 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest7"));
             }
@@ -847,7 +839,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test8 qytu */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -863,10 +855,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(qytu)", paddingData.uint16, paddingData.byte, paddingData.uint64, paddingData.uint32);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest8", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest8 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_uint16);
-                QCC_SyncPrintf("paddingtest8 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_byte);
-                QCC_SyncPrintf("paddingtest8 returned %llu \n", reply->GetArg(0)->v_struct.members[2].v_uint64);
-                QCC_SyncPrintf("paddingtest8 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint32);
+                cout << "paddingtest8 returned " << reply->GetArg(0)->v_struct.members[0].v_uint16 << endl;
+                cout << "paddingtest8 returned " << (int)reply->GetArg(0)->v_struct.members[1].v_byte << endl;
+                cout << "paddingtest8 returned " << reply->GetArg(0)->v_struct.members[2].v_uint64 << endl;
+                cout << "paddingtest8 returned " << reply->GetArg(0)->v_struct.members[3].v_uint32 << endl;
 
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest8"));
@@ -875,7 +867,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test9 uyqt */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -891,10 +883,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(uyqt)", paddingData.uint32,  paddingData.byte, paddingData.uint16, paddingData.uint64);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest9", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest9 returned %u \n", reply->GetArg(0)->v_struct.members[0].v_uint32);
-                QCC_SyncPrintf("paddingtest9 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_byte);
-                QCC_SyncPrintf("paddingtest9 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint16);
-                QCC_SyncPrintf("paddingtest9 returned %llu \n", reply->GetArg(0)->v_struct.members[3].v_uint64);
+                cout << "paddingtest9 returned " << reply->GetArg(0)->v_struct.members[0].v_uint32 << endl;
+                cout << "paddingtest9 returned " << (int)reply->GetArg(0)->v_struct.members[1].v_byte << endl;
+                cout << "paddingtest9 returned " << reply->GetArg(0)->v_struct.members[2].v_uint16 << endl;
+                cout << "paddingtest9 returned " << reply->GetArg(0)->v_struct.members[3].v_uint64 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest9"));
             }
@@ -902,7 +894,7 @@ int TestAppMain(int argc, char** argv)
 
         /* Padding test10 tyqu */
         {
-            QCC_SyncPrintf(" ------------------------------------------------------------------------------------------------ \n");
+            cout << " ------------------------------------------------------------------------------------------------ " << endl;
             Padding1 paddingData;
             paddingData.byte = 254;
             paddingData.uint16 = 65535;
@@ -918,10 +910,10 @@ int TestAppMain(int argc, char** argv)
             structType.Set("(tyqu)", paddingData.uint64,  paddingData.byte, paddingData.uint16, paddingData.uint32);
             status = remoteObj->MethodCall(g_PaddingInterfaceName, "paddingtest10", &structType, 1, reply, 50000);
             if (ER_OK == status) {
-                QCC_SyncPrintf("paddingtest10 returned %llu \n", reply->GetArg(0)->v_struct.members[0].v_uint64);
-                QCC_SyncPrintf("paddingtest10 returned %u \n", reply->GetArg(0)->v_struct.members[1].v_byte);
-                QCC_SyncPrintf("paddingtest10 returned %u \n", reply->GetArg(0)->v_struct.members[2].v_uint16);
-                QCC_SyncPrintf("paddingtest10 returned %u \n", reply->GetArg(0)->v_struct.members[3].v_uint32);
+                cout << "paddingtest10 returned " << reply->GetArg(0)->v_struct.members[0].v_uint64 << endl;
+                cout << "paddingtest10 returned " << (int)reply->GetArg(0)->v_struct.members[1].v_byte << endl;
+                cout << "paddingtest10 returned " << reply->GetArg(0)->v_struct.members[2].v_uint16 << endl;
+                cout << "paddingtest10 returned " << reply->GetArg(0)->v_struct.members[3].v_uint32 << endl;
             } else {
                 QCC_LogError(status, ("MethodCall on %s.%s failed", g_PaddingInterfaceName, "paddingtest10"));
             }
@@ -932,8 +924,8 @@ int TestAppMain(int argc, char** argv)
 /* Deallocate bus */
     delete g_msgBus;
     delete g_busListener;
-    g_busListener = NULL;
-    printf("datatype_lient exiting with status %d (%s)\n", status, QCC_StatusText(status));
+    delete g_discoverEvent;
+    cout << "datatype_lient exiting with status " << status << "(" << QCC_StatusText(status) << ")" << endl;
     return (int) status;
 }
 
