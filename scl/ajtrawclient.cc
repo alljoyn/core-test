@@ -186,7 +186,7 @@ int TestAppMain(int argc, char** argv)
     status = Event::Wait(g_discoverEvent);
 
     /* Join Session Now */
-    SessionOpts opts(SessionOpts::TRAFFIC_RAW_RELIABLE, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
+    SessionOpts opts(SessionOpts::TRAFFIC_RAW_RELIABLE, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_TCP);
     SessionId sessionId = 0;
 
     status = g_msgBus->JoinSession(g_wellKnownName.c_str(), SESSION_PORT, NULL, sessionId, opts);
