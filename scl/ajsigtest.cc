@@ -22,6 +22,8 @@
 
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <assert.h>
 
 #include <vector>
@@ -38,6 +40,7 @@
 #include <alljoyn/BusObject.h>
 #include <alljoyn/DBusStd.h>
 #include <alljoyn/AllJoynStd.h>
+#include <alljoyn/Init.h>
 #include <alljoyn/version.h>
 
 #include <alljoyn/Status.h>
@@ -109,8 +112,10 @@ static void PrintInfo() {
 }
 
 
-static void SigIntHandler(int sig)
+static void CDECL_CALL SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
+
     g_interrupt = true;
     printf("Interrupted by Ctl-C..bye\n");
     PrintInfo();
@@ -123,11 +128,15 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(opts);
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(sessionPort);
         return true;
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
         g_SessionId = sessionId;
         printf("=============> Session Established: joiner=%s, sessionId=%u\n", joiner, sessionId);
         QStatus status = g_msgBus->SetSessionListener(sessionId, this);
@@ -153,7 +162,7 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
         }
     }
 
-    void LostAdvertisedName(const char* name, const TransportMask transport, const char* prefix)
+    void LostAdvertisedName(const char* name, TransportMask transport, const char* prefix)
     {
         printf("LostAdvertisedName(name=%s, transport=0x%x,  prefix=%s)\n", name, transport, prefix);
     }
@@ -220,12 +229,13 @@ class LocalTestObject : public BusObject {
         if (!g_random) {
             tbufsize = g_payload;
         } else {
-            tbufsize = 50 + random() % g_payload;
+            srand(time(NULL) + count);
+            tbufsize = 50 + rand() % g_payload;
         }
 
         uint32_t ttimeToLive = g_timeToLive;
         //Set infinite ttl if you want to interleave ttl and infinite ttl packets. Set it with 50% probablity
-        if ((g_random_ttl) && (random() % 2 == 0)) {
+        if ((g_random_ttl) && (rand() % 2 == 0)) {
             ttimeToLive = 0;
         }
 
@@ -257,6 +267,9 @@ class SignalReceiver : public MessageReceiver {
   public:
 
     void SignalHandler(const InterfaceDescription::Member* member, const char* sourcePath, Message& msg) {
+
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
 
         static uint32_t expected_infinite_ttl_count = 1;
         uint32_t c = 0;
@@ -327,18 +340,32 @@ static void usage(void)
     printf("   -payload #      = Payload will be between 50 and <payload> bytes \n");
     printf("   -t #            = TTL for the signals (in s)\n");
     printf("   -n <wkn>        = WKN to be used.\n");
+    printf("   -s              = Run in Server mode\n");
     printf("   -d              = put debug timer prints.\n");
     printf("   -f              = prefix for discovery\n");
+    printf("   -sleep #        = Runtime of the program in milliseconds\n");
     printf("   -random         = randomize payload \n");
     printf("   -randomttl      = infinite ttl and finite ttl interleaved (50 pc packets are infinite ttl and vice versa \n");
 }
 
 
 /** Main entry point */
-int main(int argc, char** argv)
+int CDECL_CALL main(int argc, char** argv)
 {
     QStatus status = ER_OK;
     unsigned long signalDelay = 0;
+
+    status = AllJoynInit();
+    if (ER_OK != status) {
+        return 1;
+    }
+#ifdef ROUTER
+    status = AllJoynRouterInit();
+    if (ER_OK != status) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
 
     printf("AllJoyn Library version: %s\n", ajn::GetVersion());
     printf("AllJoyn Library build info: %s\n", ajn::GetBuildInfo());
@@ -572,6 +599,11 @@ int main(int argc, char** argv)
     delete g_msgBus;
     PrintInfo();
     printf("ajsigtest exiting with %d (%s)\n", status, QCC_StatusText(status));
+
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
 
     return (int) status;
 }
