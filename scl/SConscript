@@ -31,7 +31,7 @@ addnl_test_env.Append(CPPPATH = [ addnl_test_env.Dir(env['AJ_CORE_SRC_DIR'] + '/
 # On newer versions of GCC, link dependencies need to be explicitly specified.
 # See: https://fedoraproject.org/wiki/UnderstandingDSOLinkChange
 if addnl_test_env['OS'] == 'linux':
-    addnl_test_env.Append(LIBS = ['rt'])
+    addnl_test_env.Append(LIBS = ['rt', 'pthread', 'crypto'])
 
 addnl_test_env.Program('advtdiscov'        , 'advtdiscov.cc')
 addnl_test_env.Program('ajoin'             , 'ajoin.cc')
@@ -68,7 +68,7 @@ if env.has_key('GTEST_DIR'):
     # The following is copied as-is from alljoyn/common/unit_test/SConscript
     # This can be removed once the following JIRA is fixed:
     # https://jira.allseenalliance.org/browse/ASACORE-152
-    gtest_env = env.Clone()
+    gtest_env = addnl_test_env.Clone()
     gtest_dir = gtest_env['GTEST_DIR']
     vars = Variables();
     vars.AddVariables(('GTEST_HOME', '', gtest_dir))
@@ -142,11 +142,7 @@ if env.has_key('GTEST_DIR'):
     # gtest library file is placed in same folder as the the object files.
     addnl_unittest_env.Append(LIBPATH = ['./'])
 
-    # On Linux, we seem to link pthread library as well
-    if addnl_unittest_env['OS'] == 'linux':
-        addnl_unittest_env.Prepend(LIBS = ['gtest', 'pthread'])
-    else:
-        addnl_unittest_env.Prepend(LIBS = ['gtest'])
+    addnl_unittest_env.Prepend(LIBS = ['gtest'])
 
     # RoutingNode-to-RoutingNode tests involve the use of
     # two routing nodes. One that is bundled-in-process and
