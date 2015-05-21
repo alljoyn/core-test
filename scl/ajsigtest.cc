@@ -449,6 +449,8 @@ int CDECL_CALL main(int argc, char** argv)
             g_debug = true;
         } else if (0 == strcmp("-tcp", argv[i])) {
             g_transport = TRANSPORT_TCP;
+        } else if (0 == strcmp("-local", argv[i])) {
+            g_transport = TRANSPORT_LOCAL;
         } else if (0 == strcmp("-s", argv[i])) {
             g_server = true;
         } else if (0 == strcmp("-udp", argv[i])) {
