@@ -153,3 +153,13 @@ if env.has_key('GTEST_DIR'):
         addnl_unittest_env.Program('ajr2rtest', 'ajR2RTest.cc')
         addnl_unittest_env.Program('namepropagationtest', 'NamePropagationTest.cc')
         addnl_unittest_env.Program('nameownerchangedtest', 'NameOwnerChangedTest.cc')
+
+    # Only build on Linux for now
+    # TODO: Yet to figure out how to fix link errors on Windows
+    if env.has_key('AJTC_CORE_DIR') and addnl_unittest_env['OS'] == 'linux':
+        if addnl_unittest_env['OS'] == 'win7':
+            addnl_unittest_env.Append(LIBS=['advapi32'])
+
+        alljoyn_thin_standard_test_srcs = addnl_unittest_env.Glob("../tcl/tc-sc-interaction/*Test.cc")
+        alljoyn_thin_standard_test_objs = [ addnl_unittest_env.Object(alljoyn_thin_standard_test_srcs) ]
+        addnl_unittest_env.Program('ajtcsctest', alljoyn_thin_standard_test_objs)
