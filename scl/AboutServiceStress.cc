@@ -257,7 +257,7 @@ class BusObject1 : public BusObject {
 
         size_t index = 0;
 
-        printf("Object1 interfaces %zu \n", ::obj1Interfaces::obj1InfCount);
+        printf("Object1 interfaces %" PRIuSIZET " \n", ::obj1Interfaces::obj1InfCount);
 
         for (index = 0; index < ::obj1Interfaces::obj1InfCount; index++) {
             const char* interfaceName = ::obj1Interfaces::obj1InfNames[index].c_str();
@@ -284,7 +284,7 @@ class BusObject2 : public BusObject {
 
         size_t index = 0;
 
-        printf("Object2 interfaces %zu \n", ::obj2Interfaces::obj2InfCount);
+        printf("Object2 interfaces %" PRIuSIZET " \n", ::obj2Interfaces::obj2InfCount);
 
         for (index = 0; index < ::obj2Interfaces::obj2InfCount; index++) {
             const char* interfaceName = ::obj2Interfaces::obj2InfNames[index].c_str();
