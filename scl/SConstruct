@@ -28,7 +28,8 @@ vars = Variables()
 vars.Add(PathVariable('AJ_CORE_DIST_DIR', 'Location of the core sdk directory',
                       env['AJ_CORE_SRC_DIR'] + '/build/' +
                       env['OS'] + '/' + env['CPU'] + '/' + env['VARIANT'] + '/dist' , PathVariable.PathIsDir))
-
+vars.Add(PathVariable('AJTC_CORE_DIR', 'Location of the built AJ Thin Core directory',
+                      '../../ajtcl', PathVariable.PathIsDir))
 vars.Update(env)
 Help(vars.GenerateHelpText(env))
 
@@ -47,9 +48,26 @@ if env.has_key('AJ_CORE_DIST_DIR'):
                            env.Dir('$AJ_CORE_DIST_DIR/about/inc') ])
     env.Append(LIBPATH = [ env.Dir('$AJ_CORE_DIST_DIR/cpp/lib'),
                            env.Dir('$AJ_CORE_DIST_DIR/about/lib') ])
+    # Setup libraries needed to link
+    env.Append(LIBS = ['alljoyn'])
 
-# Setup libraries needed to link
-env.Append(LIBS = ['alljoyn'])
+if env.has_key('AJTC_CORE_DIR'):
+    # Normalize AJTC_CORE_DIR
+    env['AJTC_CORE_DIR'] = env.Dir('$AJTC_CORE_DIR')
+    # Update target-independent header files
+    env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/inc')])
+    # Update external crypto-related header files
+    env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/external/sha2')])
+    # Add target specific headers
+    if env['OS'] == 'win7':
+        env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/target/win32')])
+    else:
+        env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/target/$OS')])
+    # Update include and library paths
+    env.Append(LIBPATH = [env.Dir('$AJTC_CORE_DIR')])
+
+    # Setup libraries needed to link
+    env.Append(LIBS = ['ajtcl_st'])
 
 # Android needs to explicitly link certain libraries
 if env['OS'] == 'android':
