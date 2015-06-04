@@ -46,7 +46,9 @@ class MyBusListener : public BusListener {
   public:
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix)
     {
-        //cout << "FA name "<< name <<endl;
+        QCC_UNUSED(name);
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
         g_foundName = true;
     }
 };
