@@ -349,8 +349,9 @@ static MySessionPortListenerWithPrompt mySessionPortListenerWithPrompt;
 
 class MySessionListener : public SessionListener {
 
-    void SessionLost(SessionId sessid)
+    void SessionLost(SessionId sessid, SessionListener::SessionLostReason reason)
     {
+        QCC_UNUSED(reason);
         QCC_SyncPrintf("Session Lost  %u \n", sessid);
     }
 

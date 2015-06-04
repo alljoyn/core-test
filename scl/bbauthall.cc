@@ -247,8 +247,9 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
         if (g_debug) { QCC_SyncPrintf("LostAdvertisedName(name=%s, transport=0x%x,  prefix=%s)\n", name, transport, prefix); }
     }
 
-    void SessionLost(SessionId sessid)
+    void SessionLost(SessionId sessid, SessionListener::SessionLostReason reason)
     {
+        QCC_UNUSED(reason);
         QCC_SyncPrintf("Session Lost  %u\n", sessid);
     }
 

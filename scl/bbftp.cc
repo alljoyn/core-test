@@ -116,7 +116,8 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
         printf("LostAdvertisedName(name=%s, transport=0x%x,  prefix=%s)\n", name, transport, prefix);
     }
 
-    void SessionLost(SessionId sessionId) {
+    void SessionLost(SessionId sessionId, SessionListener::SessionLostReason reason) {
+        QCC_UNUSED(reason);
         printf("\n SessionLost(%08x) \n", sessionId);
         g_server_complete = true;
     }

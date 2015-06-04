@@ -87,9 +87,11 @@ static void DoList()
 class MySessionListener : public SessionListener {
 
   public:
-    void SessionLost(SessionId sessid)
+    void SessionLost(SessionId sessid, SessionListener::SessionLostReason reason)
     {
         /* Session Lost */
+        QCC_UNUSED(sessid);
+        QCC_UNUSED(reason);
     }
 };
 static MySessionListener g_sessionListener;
