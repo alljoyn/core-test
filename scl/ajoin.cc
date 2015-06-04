@@ -332,7 +332,7 @@ int TestAppMain(int argc, char** argv)
         if (ER_OK == status) {
 
             /* Create session opts */
-            SessionOpts optsmp(SessionOpts::TRAFFIC_MESSAGES, g_useMultipoint,  SessionOpts::PROXIMITY_ANY, transportOpts);
+            SessionOpts optsmp(SessionOpts::TRAFFIC_MESSAGES, g_useMultipoint,  SessionOpts::PROXIMITY_ANY, TRANSPORT_ANY);
 
             /* Create a session for incoming client connections */
             status = g_msgBus->BindSessionPort(SESSION_PORT, optsmp, myBusListener);
