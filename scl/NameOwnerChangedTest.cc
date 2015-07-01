@@ -35,6 +35,7 @@ using namespace ajn;
 /** Main entry point */
 int main(int argc, char**argv, char**envArg)
 {
+    QCC_UNUSED(envArg);
     int status = 0;
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -71,10 +72,16 @@ class OtherBusListener : public BusListener, public SessionPortListener {
     OtherBusListener() : found(false) { }
 
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
+        QCC_UNUSED(name);
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
         found = true;
     }
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
+        QCC_UNUSED(sessionPort);
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(opts);
         return true;
     }
 };
@@ -135,6 +142,9 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
     }
 
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
+        QCC_UNUSED(name);
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
         found = true;
     }
 
@@ -152,6 +162,18 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
         }
         if (signalled) {
             --signalled;
+            return ER_OK;
+        } else {
+            return ER_TIMEOUT;
+        }
+    }
+
+    QStatus WaitForMultipleNameOwnerChanged(uint32_t num, uint32_t msecs = waitTimeoutMs) {
+        for (uint32_t i = 0; (signalled < num) && (i < msecs); i += 100) {
+            qcc::Sleep(100);
+        }
+        if (signalled == num) {
+            signalled -= num;
             return ER_OK;
         } else {
             return ER_TIMEOUT;
@@ -218,8 +240,9 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId id, const char* joiner) {
+        QCC_UNUSED(sessionPort);
         sid = id;
-        printf("SessionJoined(name=%s,...)\n", joiner);
+        printf("SessionJoined(name=%s,%u...)\n", joiner, sid);
     }
 
     QStatus AcceptSession(SessionOpts::NameTransferType nameTransfer = SessionOpts::ALL_NAMES) {
@@ -240,7 +263,7 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
     }
 
     QStatus LeaveSession() {
-        printf("LeaveSession\n");
+        printf("LeaveSession %u\n", sid);
         return bus->LeaveSession(sid);
     }
 };
@@ -355,6 +378,7 @@ TEST_F(NameOwnerChangedTest, AllNames_RemoteAcceptSessionTriggersNOC)
     FlushNameOwnerChangedSignals();
     EXPECT_EQ(ER_OK, AcceptSession());
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged(500));
+    qcc::Sleep(100);
     EXPECT_EQ(ER_OK, LeaveSession());
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged(500));
 }
@@ -564,6 +588,65 @@ TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessions) {
     printf("LeaveSession()\n");
     EXPECT_EQ(ER_OK, bus->LeaveSession(b));
     EXPECT_EQ(ER_OK, WaitForNameOwnerChanged());
+    FlushNameOwnerChangedSignals();
+
+    printf("LeaveSession()\n");
+    EXPECT_EQ(ER_OK, bus->LeaveSession(a));
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+}
+
+TEST_F(NameOwnerChangedTest, DaemonNames_MultipleDaemonAndAllSessionsUniqueName) {
+    EXPECT_EQ(ER_OK, ConnectOtherBus("unix:abstract=alljoyn"));
+    EXPECT_EQ(ER_OK, BindAdditionalPortOnOtherBus(SessionOpts::SLS_NAMES));
+    FlushNameOwnerChangedSignals();
+
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
+    SessionId a = sid;
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+    EXPECT_EQ(ER_OK, JoinSession());
+    SessionId b = sid;
+    /*
+     * Since oldOwner is SLS_NAMES, we should see 3
+     * NameOwnerChanged signals.
+     */
+    EXPECT_EQ(ER_OK, WaitForMultipleNameOwnerChanged(3));
+    FlushNameOwnerChangedSignals();
+
+    EXPECT_EQ(ER_OK, JoinSession());
+    SessionId c = sid;
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+
+    EXPECT_EQ(ER_OK, JoinSession(SessionOpts::SLS_NAMES));
+    SessionId d = sid;
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+
+    printf("LeaveSession()\n");
+    EXPECT_EQ(ER_OK, bus->LeaveSession(d));
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+
+    printf("LeaveSession()\n");
+    EXPECT_EQ(ER_OK, bus->LeaveSession(c));
+    EXPECT_EQ(ER_TIMEOUT, WaitForNameOwnerChanged(500));
+
+    printf("LeaveSession()\n");
+    EXPECT_EQ(ER_OK, bus->LeaveSession(b));
+    EXPECT_EQ(ER_OK, WaitForMultipleNameOwnerChanged(3));
+    FlushNameOwnerChangedSignals();
+
+    /* Join an ALL_NAMES again and see what happens */
+    EXPECT_EQ(ER_OK, JoinSession());
+    b = sid;
+    /*
+     * Since oldOwner is SLS_NAMES, we should see 3
+     * NameOwnerChanged signals.
+     */
+    EXPECT_EQ(ER_OK, WaitForMultipleNameOwnerChanged(3));
+    FlushNameOwnerChangedSignals();
+
+    printf("LeaveSession()\n");
+    EXPECT_EQ(ER_OK, bus->LeaveSession(b));
+    EXPECT_EQ(ER_OK, WaitForMultipleNameOwnerChanged(3));
+
     FlushNameOwnerChangedSignals();
 
     printf("LeaveSession()\n");

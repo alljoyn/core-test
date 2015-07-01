@@ -50,6 +50,8 @@ using namespace ajn;
 /** Main entry point */
 int main(int argc, char**argv, char**envArg)
 {
+    QCC_UNUSED(envArg);
+
     int status = 0;
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -145,12 +147,18 @@ class R2RTestFindNameListener : public BusListener {
     String NameToMatch;
 
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
+
         nameFound++;
         if (strcmp(name, NameToMatch.c_str()) == 0) {
             nameMatched = true;
         }
     }
     void LostAdvertisedName(const char* name, TransportMask transport, const char* namePrefix) {
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
+
         if (strcmp(name, NameToMatch.c_str()) == 0) {
             nameFound--;
         }
@@ -349,6 +357,9 @@ class R2RTestSessionListener : public SessionPortListener, SessionListener {
     SessionId busSessionId;
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(opts);
+
         if (sessionPort == port) {
             sessionAccepted = true;
             return true;
@@ -359,10 +370,15 @@ class R2RTestSessionListener : public SessionPortListener, SessionListener {
     }
 
     void SessionLost(SessionId id, SessionListener::SessionLostReason reason) {
+        QCC_UNUSED(id);
+        QCC_UNUSED(reason);
+
         sessionLost = true;
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId id, const char* joiner) {
+        QCC_UNUSED(joiner);
+
         if (sessionPort == port) {
             busSessionId = id;
             sessionJoined = true;
