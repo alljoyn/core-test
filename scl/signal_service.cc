@@ -296,16 +296,16 @@ class BasicSampleObject : public BusObject {
         InterfaceDescription* intf = NULL;
         QStatus status = bus.CreateInterface(INTERFACE_NAME, intf);
         if (status == ER_OK) {
-            intf->AddSignal("nameChanged", "s", "newName", 0);
-            intf->AddSignal("nameChangedTest", "s", "newNameTest", 0);
-            intf->AddMethod("testMethod", "s", "s", "inStr,outStr", 0);
+            intf->AddSignal("nameChanged", "s", "newName", MEMBER_ANNOTATE_UNICAST);
+            intf->AddSignal("nameChangedTest", "s", "newNameTest", MEMBER_ANNOTATE_SESSIONLESS);
+            intf->AddMethod("testMethod", "s", "s", "inStr,outStr");
             intf->AddProperty("name", "s", PROP_ACCESS_RW);
 
             intf->SetDescriptionLanguage("");
             intf->SetDescription(ifcId);
-            intf->SetMemberDescription("nameChanged", nameChangedId, 0);
-            intf->SetMemberDescription("nameChangedTest", nameChangedIdTest, 1);
-            intf->SetMemberDescription("testMethod", testMethodId, 1);
+            intf->SetMemberDescription("nameChanged", nameChangedId);
+            intf->SetMemberDescription("nameChangedTest", nameChangedIdTest);
+            intf->SetMemberDescription("testMethod", testMethodId);
             intf->SetArgDescription("nameChanged", "newName", argId);
             intf->SetPropertyDescription("name", propId);
 

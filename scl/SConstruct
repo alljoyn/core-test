@@ -71,7 +71,10 @@ if env.has_key('AJTC_CORE_DIR'):
 
 # Android needs to explicitly link certain libraries
 if env['OS'] == 'android':
-    env.Append(LIBS = ['stdc++', 'm', 'crypto', 'gnustl_static'])
+    env.Append(LIBS = ['stdc++', 'm', 'gnustl_static'])
+    # AllJoyn build on Android makes a distinction between builtin and openssl
+    if env['CRYPTO'] == 'openssl':
+        env.Append(LIBS = ['crypto'])
     # Need Android native logging liblog.so for __android_log_vprint
     env.Append(LIBS = ['log'])
 
