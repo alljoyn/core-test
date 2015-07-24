@@ -18,8 +18,8 @@
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
 
-#include "alljoyn.h"
-#include "aj_crypto.h"
+#include <ajtcl/alljoyn.h>
+#include <ajtcl/aj_crypto.h>
 
 static const char DaemonName[] = "org.alljoyn.BusNode";
 
@@ -83,15 +83,15 @@ static const AJ_SessionOpts session_opts = {
         TRUE
 };
 
-uint32_t Random()
+static uint32_t Random()
 {
-    uint32_t random;
-    AJ_RandBytes((uint8_t*)&random, sizeof(random));
-    return random;
+    uint32_t r;
+    AJ_RandBytes((uint8_t*) &r, sizeof(r));
+    return r;
 }
 
 
-void AppDoWork()
+static void AppDoWork()
 {
     static uint32_t count = 1;
     static uint32_t count_infinite_ttl = 1;
@@ -102,7 +102,7 @@ void AppDoWork()
 
     uint32_t array_size = 0;
     uint32_t i;
-    uint32_t random = Random();
+    uint32_t r = Random();
 
 
     // wait for a session id
@@ -118,7 +118,7 @@ void AppDoWork()
         AJ_ASSERT(FALSE && "EXIT");
     }
 
-    if ((g_random_ttl) && (random % 2 == 0)) {
+    if ((g_random_ttl) && (r % 2 == 0)) {
         ttimeToLive = 0;
     }
 
@@ -129,7 +129,7 @@ void AppDoWork()
 
     if (g_random) {
         // range: [50, 100)
-        array_size = 50 + (random % g_payload);
+        array_size = 50 + (r % g_payload);
     } else {
         array_size = g_payload;
     }
@@ -216,7 +216,7 @@ MessageError:
     AJ_CloseMsg(&msg);
 }
 
-void SignalHandler(AJ_Message* msg)
+static void SignalHandler(AJ_Message* msg)
 {
     static uint32_t expected_infinite_ttl_count = 1;
     uint32_t count = 0;
@@ -311,7 +311,7 @@ void SignalHandler(AJ_Message* msg)
             time_diff, msg->bus->uniqueName, ttl, length,  msg->sender, count, count,  diff * 1000 + (SignalArrivalTime.milliseconds - receivedMseconds));
 }
 
-void AJ_Main(void)
+static void AJ_Main(void)
 {
     AJ_Status status = AJ_OK;
     uint8_t connected = FALSE;
