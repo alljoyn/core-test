@@ -17,11 +17,8 @@
 #include <gtest/gtest.h>
 
 extern "C" {
-#include <alljoyn.h>
-#include <aj_authentication.h>
-#include <aj_cert.h>
-#include <aj_creds.h>
-#include <aj_crypto.h>
+#include <ajtcl/alljoyn.h>
+#include <ajtcl/aj_crypto.h>
 /* Undefine a TC deprecated flag that causes conflicts with SC headers */
 #ifdef ALLJOYN_FLAG_SESSIONLESS
 #undef ALLJOYN_FLAG_SESSIONLESS

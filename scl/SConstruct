@@ -55,19 +55,12 @@ if env.has_key('AJTC_CORE_DIR'):
     # Normalize AJTC_CORE_DIR
     env['AJTC_CORE_DIR'] = env.Dir('$AJTC_CORE_DIR')
     # Update target-independent header files
-    env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/inc')])
-    # Update external crypto-related header files
-    env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/external/sha2')])
-    # Add target specific headers
-    if env['OS'] == 'win7':
-        env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/target/win32')])
-    else:
-        env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/target/$OS')])
+    env.Append(CPPPATH = [env.Dir('$AJTC_CORE_DIR/dist/include')])
     # Update include and library paths
-    env.Append(LIBPATH = [env.Dir('$AJTC_CORE_DIR')])
+    env.Append(LIBPATH = [env.Dir('$AJTC_CORE_DIR/dist/lib')])
 
     # Setup libraries needed to link
-    env.Append(LIBS = ['ajtcl_st'])
+    env.Append(LIBS = ['ajtcl'])
 
 # Android needs to explicitly link certain libraries
 if env['OS'] == 'android':
