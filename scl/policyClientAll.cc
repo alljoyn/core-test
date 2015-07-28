@@ -123,7 +123,7 @@ class LocalTestObject1 : public BusObject {
         ifc1(testIfc1),
         ifc2(testIfc2)
     {
-
+        QCC_UNUSED(bus);       
         assert(ifc1);
         assert(ifc2);
 
@@ -181,12 +181,14 @@ class LocalTestObject1 : public BusObject {
 
     void NameAcquiredCB(Message& msg, void* context)
     {
-
+        QCC_UNUSED(msg);
+        QCC_UNUSED(context);
     }
 
     void AdvertiseRequestCB(Message& msg, void* context)
     {
-
+        QCC_UNUSED(msg);
+        QCC_UNUSED(context);
     }
 
 
@@ -219,7 +221,7 @@ class LocalTestObject2 : public BusObject {
         ifc1(testIfc1),
         ifc2(testIfc2)
     {
-
+        QCC_UNUSED(bus);
         assert(ifc1);
         assert(ifc2);
 
@@ -275,12 +277,14 @@ class LocalTestObject2 : public BusObject {
 
     void NameAcquiredCB(Message& msg, void* context)
     {
-
+        QCC_UNUSED(msg);
+        QCC_UNUSED(context);
     }
 
     void AdvertiseRequestCB(Message& msg, void* context)
     {
-
+        QCC_UNUSED(msg);
+        QCC_UNUSED(context);
     }
 
 
@@ -302,6 +306,7 @@ static volatile sig_atomic_t g_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -312,6 +317,7 @@ static QStatus callMethodOrError(const char* wkName,
                                  const char* methodName,
                                  bool callType)
 {
+    QCC_UNUSED(callType);
     QStatus status = ER_OK;
     bool objSecure = false;
     size_t cnt = 0;
@@ -591,6 +597,8 @@ static QStatus CallAll(LocalTestObject1* testObj1,
 /** Main entry point */
 int main(int argc, char** argv)
 {
+    QCC_UNUSED(argc);
+    QCC_UNUSED(argv);
     if (AllJoynInit() != ER_OK) {
         return 1;
     }

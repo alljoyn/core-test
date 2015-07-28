@@ -131,6 +131,7 @@ static volatile sig_atomic_t g_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
@@ -161,6 +162,7 @@ class MyBusListener : public SessionPortListener, public SessionListener {
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
         QCC_SyncPrintf("Session Established: joiner=%s, sessionId=%08x\n", joiner, sessionId);
 
         /* Enable concurrent callbacks since some of the calls below could block */
@@ -263,6 +265,7 @@ class LocalTestObject1 : public BusObject {
       protected:
         ThreadReturn STDCALL Run(void* arg)
         {
+            QCC_UNUSED(arg);
             delayedResponseLock1.Lock(MUTEX_CONTEXT);
             bool done = delayedResponses1.empty();
             delayedResponseLock1.Unlock(MUTEX_CONTEXT);
@@ -420,6 +423,8 @@ class LocalTestObject1 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         QCC_SyncPrintf("A RxSignal: %s - %u\n", sourcePath, rxCounts[sourcePath]);
 
     }
@@ -429,7 +434,8 @@ class LocalTestObject1 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
-
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         QCC_SyncPrintf("B RxSignal: %s - %u\n", sourcePath, rxCounts[sourcePath]);
 
     }
@@ -439,6 +445,8 @@ class LocalTestObject1 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -451,6 +459,8 @@ class LocalTestObject1 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -459,6 +469,7 @@ class LocalTestObject1 : public BusObject {
     }
     void aMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -475,6 +486,7 @@ class LocalTestObject1 : public BusObject {
 
     void bMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -491,6 +503,7 @@ class LocalTestObject1 : public BusObject {
 
     void cMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -507,6 +520,7 @@ class LocalTestObject1 : public BusObject {
 
     void dMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -523,6 +537,7 @@ class LocalTestObject1 : public BusObject {
 
     void aError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -537,6 +552,7 @@ class LocalTestObject1 : public BusObject {
 
     void bError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -551,6 +567,7 @@ class LocalTestObject1 : public BusObject {
 
     void cError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -565,6 +582,7 @@ class LocalTestObject1 : public BusObject {
 
     void dError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -648,6 +666,7 @@ class LocalTestObject2 : public BusObject {
       protected:
         ThreadReturn STDCALL Run(void* arg)
         {
+            QCC_UNUSED(arg);
             delayedResponseLock2.Lock(MUTEX_CONTEXT);
             bool done = delayedResponses2.empty();
             delayedResponseLock2.Unlock(MUTEX_CONTEXT);
@@ -804,6 +823,8 @@ class LocalTestObject2 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -816,6 +837,8 @@ class LocalTestObject2 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -828,6 +851,8 @@ class LocalTestObject2 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -840,6 +865,8 @@ class LocalTestObject2 : public BusObject {
                         const char* sourcePath,
                         Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(msg);
         /* Enable concurrent signal handling */
         g_msgBus->EnableConcurrentCallbacks();
 
@@ -848,6 +875,7 @@ class LocalTestObject2 : public BusObject {
     }
     void eMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -864,6 +892,7 @@ class LocalTestObject2 : public BusObject {
 
     void fMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -880,6 +909,7 @@ class LocalTestObject2 : public BusObject {
 
     void gMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -896,6 +926,7 @@ class LocalTestObject2 : public BusObject {
 
     void hMethod(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -911,6 +942,7 @@ class LocalTestObject2 : public BusObject {
     }
     void eError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -925,6 +957,7 @@ class LocalTestObject2 : public BusObject {
 
     void fError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -939,6 +972,7 @@ class LocalTestObject2 : public BusObject {
 
     void gError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
@@ -953,6 +987,7 @@ class LocalTestObject2 : public BusObject {
 
     void hError(const InterfaceDescription::Member* member, Message& msg)
     {
+        QCC_UNUSED(member);
         char* value = NULL;
         /* Reply with same string that was sent to us */
         const MsgArg* arg((msg->GetArg(0)));
