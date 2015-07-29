@@ -56,7 +56,7 @@ static const SessionPort SESSION_PORT = 33;
 
 /** Static data */
 static BusAttachment* g_msgBus = NULL;
-static Event g_discoverEvent;
+static Event* g_discoverEvent = NULL;
 static String g_wellKnownName = "org.alljoyn.ajtraw_test";
 
 /** AllJoynListener receives discovery events from AllJoyn */
@@ -71,7 +71,7 @@ class MyBusListener : public BusListener {
 
         if (0 == strcmp(name, g_wellKnownName.c_str())) {
             /* Release the main thread */
-            g_discoverEvent.SetEvent();
+            g_discoverEvent->SetEvent();
         }
     }
 
@@ -145,6 +145,8 @@ int TestAppMain(int argc, char** argv)
         }
     }
 
+    g_discoverEvent = new Event();
+
     /* Get env vars */
     env = Environ::GetAppEnviron();
     qcc::String connectArgs = env->Find("BUS_ADDRESS");
@@ -183,7 +185,7 @@ int TestAppMain(int argc, char** argv)
     }
 
     /* Wait till you find a name */
-    status = Event::Wait(g_discoverEvent);
+    status = Event::Wait(*g_discoverEvent);
 
     /* Join Session Now */
     SessionOpts opts(SessionOpts::TRAFFIC_RAW_RELIABLE, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_TCP);
@@ -302,6 +304,7 @@ int TestAppMain(int argc, char** argv)
 
     /* Stop the bus */
     delete g_msgBus;
+    delete g_discoverEvent;
 
     QCC_SyncPrintf("\n [%s]", QCC_StatusText(status));
     return (int) status;

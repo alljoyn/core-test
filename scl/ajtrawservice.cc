@@ -59,7 +59,7 @@ static const SessionPort SESSION_PORT = 33;
 /** Static top level message bus object */
 static BusAttachment* g_msgBus = NULL;
 static String g_wellKnownName = "org.alljoyn.ajtraw_test";
-static Event g_joinedSessionEvent;
+static Event* g_joinedSessionEvent = NULL;
 
 static volatile sig_atomic_t g_interrupt = false;
 
@@ -92,7 +92,7 @@ class MySessionPortListener : public SessionPortListener {
         QCC_UNUSED(sessionPort);
         QCC_SyncPrintf("SessionJoined with %s (id=%d)\n", joiner, sessionId);
         this->sessionId = sessionId;
-        g_joinedSessionEvent.SetEvent();
+        g_joinedSessionEvent->SetEvent();
     }
 
     SocketFd GetSessionId() { return sessionId; }
@@ -140,6 +140,8 @@ int TestAppMain(int argc, char** argv)
             exit(1);
         }
     }
+
+    g_joinedSessionEvent = new Event();
 
     /* Get env vars */
     Environ* env = Environ::GetAppEnviron();
@@ -197,7 +199,7 @@ int TestAppMain(int argc, char** argv)
     }
 
     /* Wait till you have successfully joined a session */
-    status = Event::Wait(g_joinedSessionEvent);
+    status = Event::Wait(*g_joinedSessionEvent);
 
     SessionId id = mySessionPortListener.GetSessionId();
 
@@ -295,6 +297,7 @@ int TestAppMain(int argc, char** argv)
 
     /* Delete the bus */
     delete g_msgBus;
+    delete g_joinedSessionEvent;
 
     QCC_SyncPrintf("\n%s exiting with status %d (%s)\n", argv[0], status, QCC_StatusText(status));
 
