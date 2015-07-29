@@ -104,6 +104,8 @@ class MyBusListener : public BusListener, public BusAttachment::JoinSessionAsync
 
     void FoundAdvertisedName(const char* name, TransportMask transport, const char* namePrefix)
     {
+        QCC_UNUSED(transport);
+        QCC_UNUSED(namePrefix);
         if (0 != ::strcmp(name, g_wellKnownName)) {
             /* Proceed to Join Session */
             SessionOpts::TrafficType traffic = SessionOpts::TRAFFIC_MESSAGES;
@@ -119,6 +121,8 @@ class MyBusListener : public BusListener, public BusAttachment::JoinSessionAsync
 
     void LostAdvertisedName(const char* name, TransportMask transport, const char* prefix)
     {
+        QCC_UNUSED(transport);
+        QCC_UNUSED(prefix);
         /* You need to get the device id from the name. Then remove it from the list. */
         /* Remove the device id from the list */
         String temp = name;
@@ -131,7 +135,7 @@ class MyBusListener : public BusListener, public BusAttachment::JoinSessionAsync
     }
 
     void JoinSessionCB(QStatus status, SessionId sessionId, const SessionOpts& opts, void* context) {
-
+        QCC_UNUSED(opts);
         if (status == ER_OK) {
             /* Obtain proxy Bus Object and make a method call, getDeviceInfo and Add to list */
             const char* name = reinterpret_cast<const char*>(context);
@@ -172,11 +176,16 @@ class MySessionPortListener : public SessionPortListener {
 
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts)
     {
+        QCC_UNUSED(joiner);
+        QCC_UNUSED(opts);
         return (sessionPort == g_sessionPort);
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
     {
+        QCC_UNUSED(sessionPort);
+        QCC_UNUSED(sessionId);
+        QCC_UNUSED(joiner);
         /* print session joined */
     }
 
@@ -187,7 +196,7 @@ class LocalTestObject : public BusObject {
 
   public:
 
-    LocalTestObject(BusAttachment& bus, const char* path) : BusObject(bus, path)
+    LocalTestObject(BusAttachment& bus, const char* path) : BusObject(path)
     {
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface(g_InterfaceName);
@@ -212,7 +221,7 @@ class LocalTestObject : public BusObject {
 
     void getDeviceInfo(const InterfaceDescription::Member* member, Message& msg)
     {
-
+        QCC_UNUSED(member);
         /*TODO -  Reply with the device id i.e "hNARA123" */
         MsgArg arg;
         arg.Set("s", g_deviceId);
@@ -228,6 +237,7 @@ static volatile sig_atomic_t g_interrupt = false;
 
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
 }
 
