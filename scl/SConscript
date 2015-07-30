@@ -50,6 +50,8 @@ addnl_test_env.Program('registerbusobjects', 'registerbusobjects.cc')
 addnl_test_env.Program('signal_service'    , 'signal_service.cc')
 addnl_test_env.Program('bbftp'             , 'bbftp.cc')
 addnl_test_env.Program('ajsigtest'         , 'ajsigtest.cc')
+addnl_test_env.Program('authtestservice'   , 'authtestservice.cc')
+addnl_test_env.Program('authtestclient'    , 'authtestclient.cc')
 
 if addnl_test_env['OS_CONF'] == 'linux':
     addnl_test_env.Program('mdns_fuzzer', '../misc/mdns_fuzzer.cc')
