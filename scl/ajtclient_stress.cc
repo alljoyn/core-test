@@ -113,6 +113,7 @@ static MyBusListener g_busListener;
 /** Signal handler */
 static void SigIntHandler(int sig)
 {
+    QCC_UNUSED(sig);
     g_interrupt = true;
     printf("Pressed Ctrl-C..exiting \n");
     _exit(-1);
@@ -132,6 +133,8 @@ class SignalListeningObject : public MessageReceiver {
                        const char* sourcePath,
                        Message& msg)
     {
+        QCC_UNUSED(member);
+        QCC_UNUSED(sourcePath);
         printf("[SIGNAL] ++==## signalConsumer: Signal Received [%s] --- Session id is [%u]  ##==-- \n", msg->GetInterface(), msg->GetSessionId());
     }
 
