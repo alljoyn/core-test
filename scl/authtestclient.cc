@@ -65,9 +65,10 @@ static qcc::KeyInfoNISTP256 g_adminpublicKeyInfo;
 static bool g_recd = false;
 
 static KeyInfoNISTP256 g_cakeyInfo;
+static KeyInfoNISTP256 g_asgakeyInfo;
 static ECCPrivateKey g_caPrivateKey;
 static ECCPublicKey g_caPublicKey;
-
+static GUID128 g_asgaGUID;
 static const char* caPublicKeyPEM = {
     "-----BEGIN PUBLIC KEY-----"
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7MmnoBVWrArQosp1VvWwfWMsprlg"
@@ -96,6 +97,16 @@ void setCAKeys() {
     setcaKeyInfo(g_cakeyInfo);
 }
 
+void setASGAGUID(GUID128& guid) {
+    g_asgaGUID = guid;
+}
+
+void setasgaKeyInfo(KeyInfoNISTP256& asgakeyInfo) {
+    uint8_t asgaAKI[] = { 3, 4, 5 };
+    asgakeyInfo.SetKeyId(asgaAKI, 3);
+    asgakeyInfo.SetPublicKey(g_adminpublicKeyInfo.GetPublicKey());
+}
+
 void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
 
     //Set the version
@@ -105,10 +116,24 @@ void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
         PermissionPolicy::Acl myAcl[1];
         //set two peers for acl[0]
         {
-            PermissionPolicy::Peer peer[1];
+            PermissionPolicy::Peer peer[2];
             peer[0].SetType(PermissionPolicy::Peer::PEER_FROM_CERTIFICATE_AUTHORITY);
             peer[0].SetKeyInfo(&g_cakeyInfo);
-            myAcl[0].SetPeers(1, peer);
+
+            peer[1].SetType(PermissionPolicy::Peer::PEER_WITH_MEMBERSHIP);
+            peer[1].SetKeyInfo(&g_asgakeyInfo);
+            peer[1].SetSecurityGroupId(g_asgaGUID);
+
+            PermissionPolicy::Rule::Member member[1];
+            member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+
+            PermissionPolicy::Rule rule[1];
+            rule[0].SetObjPath("*");
+            rule[0].SetInterfaceName("*");
+            rule[0].SetMembers(1, member);
+
+            myAcl[0].SetRules(1, rule);
+            myAcl[0].SetPeers(2, peer);
         }
         permissionPolicy.SetAcls(1, myAcl);
     }
@@ -311,6 +336,10 @@ int main() {
 
     QStatus status = ER_OK;
     setCAKeys();
+    //GUID used by ASGA and this GUID should be persistent.
+    GUID128 asgaGUID("123456785484");
+    setASGAGUID(asgaGUID);
+
     if (AllJoynInit() != ER_OK) {
         return 1;
     }
@@ -328,7 +357,7 @@ int main() {
     status = g_msgBus->Connect();
     assert(status == ER_OK);
 
-    printf("Testing PermissionCOnfigurator functions.. \n");
+    printf("Testing PermissionConfigurator functions.. \n");
     PermissionConfigurator& pc1 = g_msgBus->GetPermissionConfigurator();
     status = pc1.SetApplicationState(PermissionConfigurator::ApplicationState::CLAIMABLE);
     printf("Before calling EPS, calling SetApplicationState  %s \n", QCC_StatusText(status));
@@ -375,19 +404,8 @@ int main() {
     //caKey.SetKeyId(caAKI, 2);
     //caKey.SetPublicKey(caDsaKeyPair.GetDSAPublicKey());
 
-
-    KeyInfoNISTP256 mycaKey;
-    //mycaKey.SetKeyId(caAKI, 2);
-    mycaKey.SetPublicKey(g_adminpublicKeyInfo.GetPublicKey());
-
-    //Set the ASGA key as your public key.
-    KeyInfoNISTP256 asgaKey;
-    uint8_t asgAKI[] = { 3, 4, 5 };
-    asgaKey.SetKeyId(asgAKI, 3);
-    asgaKey.SetPublicKey(g_adminpublicKeyInfo.GetPublicKey());
-
-    //GUID used by ASGA and this GUID should be persistent.
-    GUID128 asgaGUID("123456785484");
+    //Set the ASGA KeyInfo
+    setasgaKeyInfo(g_asgakeyInfo);
 
     uint8_t adminSubjectCN[] = { 11, 22, 33, 44 };
     uint8_t adminIssuerCN[] = { 11, 22, 33, 44 };
@@ -442,7 +460,7 @@ int main() {
 
     printf("Claiming myself using Self signed IC, a new GUID128, a diff. ca pub key and an asga pub key (which is same as my pub key) \n");
     GUID128 myGUID;
-    status = mySecurityAppProxy.Claim(g_cakeyInfo, myGUID, asgaKey, &adminCert, 1, manifest, 1);
+    status = mySecurityAppProxy.Claim(g_cakeyInfo, myGUID, g_asgakeyInfo, &adminCert, 1, manifest, 1);
     printf("Admin Claim status is %s \n", QCC_StatusText(status));
 
 
@@ -541,7 +559,7 @@ int main() {
     //printf("BUG Reset status is %s  \n",QCC_StatusText(status));
 
     //All set to claim
-    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, asgaKey, certChain, 2, manifest, 1);
+    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, certChain, 2, manifest, 1);
     printf("Service Claim status is %s \n", QCC_StatusText(status));
 
     qcc::Sleep(2000);
@@ -550,6 +568,13 @@ int main() {
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "nara-client-test-keystore", false);
     assert(status == ER_OK);
+
+    //Install a Policy
+    PermissionPolicy myPolicy;
+    createPermissionPolicy(myPolicy);
+    status = securityAppProxy.UpdatePolicy(myPolicy);
+    printf("Service Update policy status is %s \n", QCC_StatusText(status));
+
     //Try to call Reset on service bus.
     status = securityAppProxy.Reset();
     printf("Service Reset status is %s \n", QCC_StatusText(status));
