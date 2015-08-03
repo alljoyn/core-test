@@ -166,8 +166,8 @@ static void AppDoWork()
         }
     }
 
-    if (array_size < ((array_size + 3) & 0xFFFFFFF3)) {
-        uint32_t pad = ((array_size + 3) & 0xFFFFFFF3) - array_size;
+    if (array_size < ((array_size + 3) & 0xFFFFFFFC)) {
+        uint32_t pad = ((array_size + 3) & 0xFFFFFFFC) - array_size;
         // pad the message!
         status = AJ_MarshalRaw(&msg, byte_array, pad);
         if (AJ_OK != status) {
@@ -238,21 +238,22 @@ static void SignalHandler(AJ_Message* msg)
     status = AJ_UnmarshalArgs(msg, "utq", &count, &receivedSeconds, &receivedMseconds);
     if (AJ_OK != status) {
         AJ_Printf("AJ_UnmarshalArgs(utq): %s\n", AJ_StatusText(status));
+        return;
     }
 
 
     status = AJ_UnmarshalRaw(msg, (const void**) &raw, sizeof(uint32_t), &sz);
     if (AJ_OK != status) {
         AJ_Printf("ERROR: UnmarshalRaw 1st call status is %s \n", AJ_StatusText(status));
-        g_error = 1;
+        return;
     } else {
         length = *((uint32_t*) raw);
-
         // need to align to the nearest WORD because there are two aligned uint32_t values after the array
         length += 3;
-        length &= 0xFFFFFFF4;
+        length &= 0xFFFFFFFC;
     }
 
+    AJ_Printf("============> Received sls_signal # %u, length %u\n", count, length);
     AJ_ASSERT(length < 0xFFFF);
 
     // read the array
@@ -261,17 +262,17 @@ static void SignalHandler(AJ_Message* msg)
 
         while (0 != bytesToBeFetched) {
             raw = NULL;
+            sz = 0;
             status = AJ_UnmarshalRaw(msg, (const void**) &raw, bytesToBeFetched, &sz);
-            if (AJ_OK != status) {
-                AJ_Printf("UnmarshalRaw status is %s \n", AJ_StatusText(status));
-                AJ_Printf("Bytes to be fetched: %u, actual bytes fetched: %u \n", bytesToBeFetched, (uint32_t) sz);
-            } else {
+            if (AJ_OK == status) {
                 bytesToBeFetched -= sz;
                 //AJ_Printf("Fetched %u bytes; %u remaining\n", sz, bytesToBeFetched);
+            } else {
+                AJ_Printf("UnmarshalRaw status is %s \n", AJ_StatusText(status));
+                AJ_Printf("Bytes to be fetched: %u, actual bytes fetched: %u \n", bytesToBeFetched, (uint32_t) sz);
+                return;
             }
         }
-
-        AJ_Printf("============> Received sls_signal # %u, length %u\n", count, length);
     }
 
 
@@ -327,6 +328,8 @@ static void AJ_Main(void)
     AJ_RegisterObjects(ProxyObjects, ProxyObjects);
 
     AJ_PrintXML(ProxyObjects);
+
+    AJ_InitTimer(&StartTime);
 
     while (TRUE) {
         AJ_Message msg;
