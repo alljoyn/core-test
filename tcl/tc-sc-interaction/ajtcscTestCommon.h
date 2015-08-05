@@ -16,8 +16,15 @@
 
 #include <gtest/gtest.h>
 
+extern "C" {
 #include <ajtcl/alljoyn.h>
 #include <ajtcl/aj_crypto.h>
+#include <ajtcl/aj_authentication.h>
+#include <ajtcl/aj_authorisation.h>
+#include <ajtcl/aj_cert.h>
+#include <ajtcl/aj_creds.h>
+#include <ajtcl/aj_security.h>
+#include <ajtcl/aj_link_timeout.h>
 
 /* Undefine a TC deprecated flag that causes conflicts with SC headers */
 #ifdef ALLJOYN_FLAG_SESSIONLESS
@@ -53,6 +60,7 @@
 #ifdef PROPERTY
 #undef PROPERTY
 #endif
+}
 
 #include <qcc/Util.h>
 #include <qcc/StringUtil.h>
