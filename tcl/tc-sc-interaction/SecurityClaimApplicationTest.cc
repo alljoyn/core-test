@@ -105,6 +105,8 @@ class TCThread : public Thread {
             }
             AJ_CloseMsg(&msg);
         }
+
+        AJ_Disconnect(&bus);
         running = TRUE;
         return this;
     }
@@ -127,7 +129,8 @@ class TCThread : public Thread {
             }
             qcc::Sleep(WAIT_MSECS);
         }
-        AJ_Disconnect(&bus);
+
+        AJ_Net_Interrupt();
         return Thread::Stop();
     }
     qcc::String GetUniqueName() {
@@ -165,6 +168,41 @@ class TCThread : public Thread {
     AJ_BusAttachment bus;
 };
 
+class StateNotification_ApplicationStateListener : public ApplicationStateListener {
+  public:
+    StateNotification_ApplicationStateListener() : busNames(), publicKeys(), states() {
+        stateChanged = false;
+    }
+
+    virtual void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
+        busNames.push(busName);
+        publicKeys.push(publicKeyInfo);
+        states.push(state);
+        stateChanged = true;
+    }
+
+    queue<String> busNames;
+    queue<KeyInfoNISTP256> publicKeys;
+    queue<PermissionConfigurator::ApplicationState> states;
+    bool stateChanged;
+};
+/*
+class Claim_ApplicationStateListener : public ApplicationStateListener {
+  public:
+    Claim_ApplicationStateListener() {
+        stateChanged = false;
+    }
+
+    virtual void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
+        QCC_UNUSED(busName);
+        QCC_UNUSED(publicKeyInfo);
+        QCC_UNUSED(state);
+        stateChanged = true;
+    }
+
+    bool stateChanged;
+};*/
+
 class SecurityClaimApplicationTest : public testing::Test {
   public:
     SecurityClaimApplicationTest() :
@@ -195,9 +233,13 @@ class SecurityClaimApplicationTest : public testing::Test {
 
         TCBus.SetUp(routingNodePrefix.c_str());
         TCBus.Start();
+
+        securityManagerBus.RegisterApplicationStateListener(appStateListener);
     }
 
     void TearDown() {
+        securityManagerBus.UnregisterApplicationStateListener(appStateListener);
+
         ASSERT_EQ(ER_OK, TCBus.Stop());
         ASSERT_EQ(ER_OK, TCBus.Join());
 
@@ -226,6 +268,8 @@ class SecurityClaimApplicationTest : public testing::Test {
 
     TCThread TCBus;
     int msec;
+
+    StateNotification_ApplicationStateListener appStateListener;
 };
 
 TEST_F(SecurityClaimApplicationTest, IsClaimable)
@@ -246,21 +290,7 @@ TEST_F(SecurityClaimApplicationTest, IsClaimable)
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 }
 
-class Claim_ApplicationStateListener : public ApplicationStateListener {
-  public:
-    Claim_ApplicationStateListener() {
-        stateChanged = false;
-    }
 
-    virtual void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
-        QCC_UNUSED(busName);
-        QCC_UNUSED(publicKeyInfo);
-        QCC_UNUSED(state);
-        stateChanged = true;
-    }
-
-    bool stateChanged;
-};
 
 /*
  * Claim using ECDHE_NULL
@@ -274,8 +304,6 @@ class Claim_ApplicationStateListener : public ApplicationStateListener {
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     //EnablePeerSecurity
@@ -304,7 +332,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -373,7 +401,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
 }
@@ -401,8 +429,6 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_caPublicKe
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     //Create admin group key
@@ -495,8 +521,6 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_adminGroup
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     //Create admin group key
@@ -578,8 +602,6 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_adminGroup
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_adminGroupKey)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -717,8 +739,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -829,8 +849,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
  * Manifest digest != digest in the identity certificate */
 TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equal_claim_manifest)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -944,8 +962,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1064,8 +1080,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1206,8 +1220,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1308,8 +1320,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
  */
 TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1391,8 +1401,6 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_security_enabled)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1584,8 +1592,6 @@ class ClaimThread2 : public Thread {
  */
 TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1674,8 +1680,6 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_security_mechanisms)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1761,8 +1765,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
  */
 TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identity_cert)
 {
-    Claim_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -1845,25 +1847,6 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
                                                          manifest, manifestSize));
 }
 
-class StateNotification_ApplicationStateListener : public ApplicationStateListener {
-  public:
-    StateNotification_ApplicationStateListener() : busNames(), publicKeys(), states() {
-        stateChanged = false;
-    }
-
-    virtual void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
-        busNames.push(busName);
-        publicKeys.push(publicKeyInfo);
-        states.push(state);
-        stateChanged = true;
-    }
-
-    queue<String> busNames;
-    queue<KeyInfoNISTP256> publicKeys;
-    queue<PermissionConfigurator::ApplicationState> states;
-    bool stateChanged;
-};
-
 /*
  * TestCase:
  * In factory reset mode, app should emit the state notification.
@@ -1880,9 +1863,6 @@ class StateNotification_ApplicationStateListener : public ApplicationStateListen
  */
 TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -1937,9 +1917,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
  */
 TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_peer)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -1957,7 +1934,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    // fail if not true!
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2092,9 +2070,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
  */
 TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_then_reset_peer)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -2393,9 +2368,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
  */
 TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -2412,7 +2384,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2436,7 +2408,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
 
@@ -2499,7 +2471,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2556,7 +2528,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
@@ -2643,9 +2615,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
  */
 TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -2662,7 +2631,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2686,7 +2655,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
 
@@ -2749,7 +2718,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2777,7 +2746,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
@@ -2799,9 +2768,6 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
  */
 TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_manifest_change)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -2818,7 +2784,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -2842,7 +2808,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
@@ -2872,8 +2838,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
  */
 TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
     appStateListener.stateChanged = false;
@@ -2985,9 +2949,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
  */
 TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -3004,7 +2965,7 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -3028,7 +2989,7 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
 
@@ -3044,13 +3005,12 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
 
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.back());
-
 }
 
 
@@ -3067,9 +3027,6 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
  */
 TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_off)
 {
-    StateNotification_ApplicationStateListener appStateListener;
-    securityManagerBus.RegisterApplicationStateListener(appStateListener);
-
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
@@ -3086,7 +3043,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
     }
     printf("%d: Slept %d\n", __LINE__, msec);
 
-    EXPECT_TRUE(appStateListener.stateChanged);
+    ASSERT_TRUE(appStateListener.stateChanged);
 
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
@@ -3110,5 +3067,4 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
     printf("%d: Slept %d\n", __LINE__, msec);
 
     EXPECT_FALSE(appStateListener.stateChanged);
-
 }
