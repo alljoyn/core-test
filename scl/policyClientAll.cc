@@ -123,7 +123,7 @@ class LocalTestObject1 : public BusObject {
         ifc1(testIfc1),
         ifc2(testIfc2)
     {
-        QCC_UNUSED(bus);       
+        QCC_UNUSED(bus);
         assert(ifc1);
         assert(ifc2);
 

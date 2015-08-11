@@ -371,9 +371,6 @@ int main() {
     status = pc1.Reset();
     printf("Before calling EPS, calling Reset  %s \n", QCC_StatusText(status));
 
-    status = pc1.GenerateSigningKeyPair();
-    printf("Before calling EPS, calling GenerateSigningKeyPair()  %s \n", QCC_StatusText(status));
-
     KeyInfoNISTP256 keyInfo;
     status = pc1.GetSigningPublicKey(keyInfo);
     printf("Before calling EPS, calling GetSigningPublicKey  %s \n", QCC_StatusText(status));
@@ -387,9 +384,6 @@ int main() {
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "nara-client-test-keystore", false);
     assert(status == ER_OK);
     qcc::Sleep(2000);
-
-    //status = pc1.GenerateSigningKeyPair();
-    //printf("BUG after calling EPS, calling GetSigningPublicKey  %s \n",QCC_StatusText(status));
 
 
     //Self-Claim and install a membership for myself. I am the ASGA.
