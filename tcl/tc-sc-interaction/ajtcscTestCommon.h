@@ -16,14 +16,43 @@
 
 #include <gtest/gtest.h>
 
-extern "C" {
 #include <ajtcl/alljoyn.h>
 #include <ajtcl/aj_crypto.h>
+
 /* Undefine a TC deprecated flag that causes conflicts with SC headers */
 #ifdef ALLJOYN_FLAG_SESSIONLESS
 #undef ALLJOYN_FLAG_SESSIONLESS
 #endif
-}
+
+/* Undefine all SC conflicting macros defined by Thin Library */
+
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
+
+#ifdef KEYLEN
+#undef KEYLEN
+#endif
+
+#ifdef OUTLEN
+#undef OUTLEN
+#endif
+
+#ifdef SEEDLEN
+#undef SEEDLEN
+#endif
+
+#ifdef SIGNAL
+#undef SIGNAL
+#endif
+
+#ifdef PROPERTY
+#undef PROPERTY
+#endif
 
 #include <qcc/Util.h>
 #include <qcc/StringUtil.h>
