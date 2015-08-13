@@ -65,6 +65,7 @@ static AJ_SessionId g_SessionId = 0;
 static AJ_Time StartTime;
 static AJ_Time SignalArrivalTime;
 static uint8_t g_error = 0;
+static uint8_t g_exit = FALSE;
 
 static uint8_t g_server = TRUE;
 
@@ -103,7 +104,7 @@ static void AppDoWork()
     uint32_t array_size = 0;
     uint32_t i;
     uint32_t r = Random();
-
+    uint32_t pad = 0;
 
     // wait for a session id
     // and only if we're a server
@@ -115,7 +116,8 @@ static void AppDoWork()
 
     if (AJ_GetTimeDifference(&now, &StartTime) > g_sleepTime) {
         printf("Time  %u exceeds  %u specified. program exits  \n", AJ_GetTimeDifference(&now, &StartTime), g_sleepTime);
-        AJ_ASSERT(FALSE && "EXIT");
+        g_exit = TRUE;
+        return;
     }
 
     if ((g_random_ttl) && (r % 2 == 0)) {
@@ -136,8 +138,11 @@ static void AppDoWork()
 
     AJ_Printf("\tDEBUG: Size of array (in signal payload) is %u\n", array_size);
 
-    // array_size + 1u for size + 2u for remaining parameters
-    status = AJ_DeliverMsgPartial(&msg, 3 * sizeof(uint32_t) + (array_size));
+    if (array_size < ((array_size + 3) & 0xFFFFFFFC)) {
+        pad = ((array_size + 3) & 0xFFFFFFFC) - array_size;
+    }
+    // array_size + pad + 1u for size + 2u for remaining parameters
+    status = AJ_DeliverMsgPartial(&msg, 3 * sizeof(uint32_t) + (array_size) + pad);
     if (AJ_OK != status) {
         AJ_Printf("ERROR: DeliverMsgPartial returned: %s.\n", AJ_StatusText(status));
         goto MessageError;
@@ -166,9 +171,7 @@ static void AppDoWork()
         }
     }
 
-    if (array_size < ((array_size + 3) & 0xFFFFFFFC)) {
-        uint32_t pad = ((array_size + 3) & 0xFFFFFFFC) - array_size;
-        // pad the message!
+    if (pad != 0) {
         status = AJ_MarshalRaw(&msg, byte_array, pad);
         if (AJ_OK != status) {
             AJ_Printf("ERROR: Marshaling msg pad failed: %s.\n", AJ_StatusText(status));
@@ -354,11 +357,8 @@ static void AJ_Main(void)
         status = AJ_UnmarshalMsg(&g_bus, &msg, UNMARSHAL_TIMEOUT);
         if ((AJ_ERR_TIMEOUT != status) && (AJ_OK != status)) {
             AJ_Printf("ERROR: UnmarshalMsg returned %s \n", AJ_StatusText(status));
-        }
-
-        if (AJ_ERR_TIMEOUT == status) {
+        } else {
             AppDoWork();
-            continue;
         }
 
         if (AJ_OK == status) {
@@ -420,6 +420,14 @@ static void AJ_Main(void)
             AJ_Printf("Disconnected from Daemon:%s\n", AJ_GetUniqueName(&g_bus));
             AJ_Disconnect(&g_bus);
             connected = FALSE;
+            break;
+        }
+
+        if (g_exit) {
+            AJ_Printf("AllJoyn exiting\n");
+            AJ_Disconnect(&g_bus);
+            connected = FALSE;
+            status = AJ_OK;
             break;
         }
     }
