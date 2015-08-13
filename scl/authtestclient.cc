@@ -59,7 +59,7 @@ using namespace ajn;
 /* Static top level globals */
 static BusAttachment* g_msgBus = NULL;
 String g_appUniqueName;
-static SessionId g_sessionId;
+static SessionId g_sessionId = 0;
 static qcc::KeyInfoNISTP256 g_publicKeyInfo;
 static qcc::KeyInfoNISTP256 g_adminpublicKeyInfo;
 static bool g_recd = false;
@@ -69,6 +69,9 @@ static KeyInfoNISTP256 g_asgakeyInfo;
 static ECCPrivateKey g_caPrivateKey;
 static ECCPublicKey g_caPublicKey;
 static GUID128 g_asgaGUID;
+static String g_wellKnownName = "";
+static qcc::CertificateX509 g_CACert;
+
 static const char* caPublicKeyPEM = {
     "-----BEGIN PUBLIC KEY-----"
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7MmnoBVWrArQosp1VvWwfWMsprlg"
@@ -107,13 +110,30 @@ void setasgaKeyInfo(KeyInfoNISTP256& asgakeyInfo) {
     asgakeyInfo.SetPublicKey(g_adminpublicKeyInfo.GetPublicKey());
 }
 
+void CreateCACert() {
+
+    //Self signed CA certificate
+    g_CACert.SetSerial((uint8_t*)"Certificate-authority", 22);
+    uint8_t CN[] = { 111, 222, 133, 144 };
+    g_CACert.SetIssuerCN(CN, 4);
+    g_CACert.SetSubjectCN(CN, 4);
+    CertificateX509::ValidPeriod validityICAdmin;
+    validityICAdmin.validFrom = 1427404154;
+    validityICAdmin.validTo = 1427404154 + 630720000;
+    g_CACert.SetValidity(&validityICAdmin);
+    g_CACert.SetSubjectPublicKey(&g_caPublicKey);
+    g_CACert.SetCA(true);
+    //sign the leaf cert
+    g_CACert.Sign(&g_caPrivateKey);
+}
+
 void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
 
     //Set the version
     permissionPolicy.SetVersion(5555);
     {
         //Create an ACL[0].
-        PermissionPolicy::Acl myAcl[1];
+        PermissionPolicy::Acl myAcl[2];
         //set two peers for acl[0]
         {
             PermissionPolicy::Peer peer[2];
@@ -135,7 +155,22 @@ void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
             myAcl[0].SetRules(1, rule);
             myAcl[0].SetPeers(2, peer);
         }
-        permissionPolicy.SetAcls(1, myAcl);
+        {
+           PermissionPolicy::Peer peer[1];
+           peer[0].SetType(PermissionPolicy::Peer::PEER_ANY_TRUSTED);
+           
+           PermissionPolicy::Rule::Member member[1];
+           member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+
+            PermissionPolicy::Rule rule[1];
+            rule[0].SetObjPath("*");
+            rule[0].SetInterfaceName("*");
+            rule[0].SetMembers(1, member);
+
+            myAcl[1].SetRules(1, rule);
+            myAcl[1].SetPeers(1, peer);
+        }
+        permissionPolicy.SetAcls(2, myAcl);
     }
 }
 
@@ -183,7 +218,7 @@ class MyApplicationStateListener : public ApplicationStateListener {
 
     void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
         QCC_UNUSED(publicKeyInfo);
-        if (strcmp(busName, g_msgBus->GetUniqueName().c_str()) != 0) { g_publicKeyInfo = publicKeyInfo; g_recd = true; }
+        if (strcmp(busName, g_wellKnownName.c_str()) != 0) { g_publicKeyInfo = publicKeyInfo; g_recd = true; }
         if (strcmp(busName, g_msgBus->GetUniqueName().c_str()) == 0) { g_adminpublicKeyInfo = publicKeyInfo; }
         String stateStr;
         switch (state) {
@@ -332,13 +367,16 @@ class MyAuthListener : public AuthListener {
 };
 
 
-int main() {
+int main(int argc, char *argv[]) {
 
     QStatus status = ER_OK;
     setCAKeys();
     //GUID used by ASGA and this GUID should be persistent.
     GUID128 asgaGUID("123456785484");
     setASGAGUID(asgaGUID);
+
+    //Populate the CA Cert;
+    CreateCACert();
 
     if (AllJoynInit() != ER_OK) {
         return 1;
@@ -349,9 +387,25 @@ int main() {
         return 1;
     }
 #endif
+  bool stressInstallPolicy = false; 
+
+    /* Parse command line args */
+    for (int i = 1; i < argc; ++i) {
+        if (0 == strcmp("-n", argv[i])) {
+            ++i;
+            if (i == argc) {
+                printf("option %s requires a parameter\n", argv[i - 1]);
+                exit(1);
+            } else {
+                g_wellKnownName = argv[i];
+            }
+        } else if ( 0 == strcmp("-sip", argv[i])) {
+            stressInstallPolicy = true;
+        }
+    }
 
     /* Create message bus */
-    g_msgBus = new BusAttachment("authclienttest", true);
+    g_msgBus = new BusAttachment("security-manager", true);
     status = g_msgBus->Start();
     assert(status == ER_OK);
     status = g_msgBus->Connect();
@@ -363,7 +417,6 @@ int main() {
     printf("Before calling EPS, calling SetApplicationState  %s \n", QCC_StatusText(status));
 
     PermissionConfigurator::ApplicationState state;
-    printf("Application state is %s \n", PermissionConfigurator::ToString(state));
     status = pc1.GetApplicationState(state);
     printf("Before calling EPS, calling GetApplicationState  %s \n", QCC_StatusText(status));
     printf("Application state is %s \n", PermissionConfigurator::ToString(state));
@@ -381,7 +434,7 @@ int main() {
 
 
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "nara-client-test-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
     assert(status == ER_OK);
     qcc::Sleep(2000);
 
@@ -437,6 +490,7 @@ int main() {
     uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
     PermissionMgmtObj::GenerateManifestDigest(*g_msgBus, manifest, 1, digest, Crypto_SHA256::DIGEST_SIZE);
 
+    //Self signed admin cert
     qcc::IdentityCertificate adminCert;
     adminCert.SetSerial((uint8_t*)"admin", 6);
     adminCert.SetIssuerCN(adminIssuerCN, 4);
@@ -466,13 +520,14 @@ int main() {
     //Lets focus attention on service side.
     MyBusListener busListener;
     g_msgBus->RegisterBusListener(busListener);
-    status = g_msgBus->FindAdvertisedName("innocent.app");;
+    status = g_msgBus->FindAdvertisedName(g_wellKnownName.c_str());
     assert(status == ER_OK);
-
-    qcc::Sleep(2000);
+    printf("Waiting to JoinSession with %s \n",g_wellKnownName.c_str());
+     while(g_sessionId == 0){ 
+       qcc::Sleep(200);
+     }
 
     printf("Waiting for State notification from service.. \n");
-
     while (!g_recd)
         qcc::Sleep(200);
 
@@ -506,7 +561,7 @@ int main() {
 
 
     uint8_t subjectCN[] = { 1, 2, 3, 4 };
-    uint8_t issuerCN[] = { 11, 22, 33, 44 };
+    uint8_t issuerCN[] = { 111, 222, 133, 144 };
 
     qcc::IdentityCertificate leafCert;
     leafCert.SetSerial((uint8_t*)"1234", 5);
@@ -521,16 +576,15 @@ int main() {
     leafCert.SetSubjectPublicKey(&leafPublicKey);
     //leafCert.SetAlias("leaf-cert-alias-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     leafCert.SetAlias("leaf-cert-alias-0123456789abcdef");
-    leafCert.SetCA(true);
-
+    leafCert.SetCA(false);
     //sign the leaf cert
-    status = pc1.SignCertificate(leafCert);
-    assert(status == ER_OK);
+    leafCert.Sign(&g_caPrivateKey);
 
-
-    qcc::IdentityCertificate certChain[2];
+    //Form the Identity chain
+    //qcc::IdentityCertificate certChain[2];
+    qcc::CertificateX509 certChain[2];
     certChain[0] = leafCert;
-    certChain[1] = adminCert;
+    certChain[1] = g_CACert;
 
 
     String leafPEM, rootPEM;
@@ -553,21 +607,38 @@ int main() {
     //printf("BUG Reset status is %s  \n",QCC_StatusText(status));
 
     //All set to claim
-    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, certChain, 2, manifest, 1);
+    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, (qcc::IdentityCertificate *)certChain, 2, manifest, 1);
     printf("Service Claim status is %s \n", QCC_StatusText(status));
 
     qcc::Sleep(2000);
 
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "nara-client-test-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore", false);
     assert(status == ER_OK);
 
     //Install a Policy
     PermissionPolicy myPolicy;
     createPermissionPolicy(myPolicy);
+
+   if(stressInstallPolicy) {
+    for(int i=0; i<1000; i++){
+    myPolicy.SetVersion(5555+i);
     status = securityAppProxy.UpdatePolicy(myPolicy);
-    printf("Service Update policy status is %s \n", QCC_StatusText(status));
+    printf("Service Update policy stress (%d)th time status is %s \n", i, QCC_StatusText(status));
+
+    // ASACORE-2331 Dummy reset the policy. This call will fail.
+    status = securityAppProxy.ResetPolicy();
+
+    //Actual reset the policy.
+    status = securityAppProxy.ResetPolicy();
+    printf("Service Reset policy (%d)th time status is %s \n", i, QCC_StatusText(status));
+    }
+
+   } else {
+      status = securityAppProxy.UpdatePolicy(myPolicy);
+      printf("Service Update policy status is %s \n",QCC_StatusText(status));
+   }
 
     //Try to call Reset on service bus.
     status = securityAppProxy.Reset();
