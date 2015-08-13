@@ -363,7 +363,6 @@ int main() {
     printf("Before calling EPS, calling SetApplicationState  %s \n", QCC_StatusText(status));
 
     PermissionConfigurator::ApplicationState state;
-    printf("Application state is %s \n", PermissionConfigurator::ToString(state));
     status = pc1.GetApplicationState(state);
     printf("Before calling EPS, calling GetApplicationState  %s \n", QCC_StatusText(status));
     printf("Application state is %s \n", PermissionConfigurator::ToString(state));
