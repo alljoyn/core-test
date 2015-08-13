@@ -156,9 +156,7 @@ if env.has_key('GTEST_DIR'):
         addnl_unittest_env.Program('namepropagationtest', 'NamePropagationTest.cc')
         addnl_unittest_env.Program('nameownerchangedtest', 'NameOwnerChangedTest.cc')
 
-    # Only build on Linux for now
-    # TODO: Yet to figure out how to fix link errors on Windows
-    if env.has_key('AJTC_CORE_DIR') and addnl_unittest_env['OS'] == 'linux':
+    if env.has_key('AJTC_CORE_DIR'):
         if addnl_unittest_env['OS'] == 'win7':
             addnl_unittest_env.Append(LIBS=['advapi32'])
 
