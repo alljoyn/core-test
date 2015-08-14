@@ -65,6 +65,8 @@ void AJ_Main(void)
     AJ_SecuritySetClaimConfig(&bus, APP_STATE_CLAIMABLE, CLAIM_CAPABILITY_ECDHE_NULL, 0);
     AJ_BusEnableSecurity(&bus, suites, ArraySize(suites));
     AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
+    status = AJ_BusAdvertiseName(&bus, AJ_GetUniqueName(&bus), AJ_TRANSPORT_ANY, AJ_BUS_START_ADVERTISING, 0);
+
     while (TRUE) {
 
         status = AJ_UnmarshalMsg(&bus, &msg, UNMARSHAL_TIMEOUT);
