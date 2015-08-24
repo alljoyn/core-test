@@ -322,7 +322,8 @@ class MySessionPortListenerWithPrompt : public SessionPortListener {
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
         QCC_UNUSED(sessionPort);
         QCC_UNUSED(opts);
-        printf("Joiner  [%s] wants to join: y/n ?  ", joiner);
+        g_msgBus->EnableConcurrentCallbacks();
+        printf("Joiner  [%s] wants to join on %d transport: y/n ?  ", joiner, opts.transports);
         fflush(stdout);
         char option;
         if (scanf("%c", &option) != 1) {
@@ -839,20 +840,14 @@ int TestAppMain(int argc, char** argv)
         }
 
         /* Begin Advertising the well-known name */
-        uint8_t trans = 0;
-        printf("Which transport - local, blueooth, tcp, ice ? ");
-        fflush(stdout);
-        if (scanf("%hhu", &trans) != 1) {
-            status = ER_FAIL;
-            printf("Expect short integer for transport \n");
-            fflush(stdout);
-            return status;
-        }
+        uint16_t trans = 0;
+        printf("Which transport: local, tcp, udp, ip ? \n");
+        printf("For local- Type 1, tcp- Type 4, udp- Type 256, ip- Type 261, all- 65535 \n");
+        cin >> trans;
 
         getchar();
         status = g_msgBus->AdvertiseName(g_wellKnownName.c_str(), trans);
         if (ER_OK != status) {
-            status = (status == ER_OK) ? ER_FAIL : status;
             QCC_LogError(status, ("Sending org.alljoyn.Bus.Advertise failed "));
             return status;
         }
@@ -894,7 +889,7 @@ int TestAppMain(int argc, char** argv)
 
                     temp = strtok(NULL, " ");
                     if (!temp) {
-                        printf("ERROR - join wkn port isMultipoint traffic transport noSessionListener. \n");
+                        printf("ERROR - join wkn port isMultipoint traffic proximity transport noSessionListener. \n");
                         fflush(stdout);
                         status = ER_FAIL;
                     } else {
@@ -905,7 +900,7 @@ int TestAppMain(int argc, char** argv)
                     if (status == ER_OK) {
                         temp = strtok(NULL, " ");
                         if (!temp) {
-                            printf("ERROR - join wkn port isMultipoint traffic transport noSessionListener. \n");
+                            printf("ERROR - join wkn port isMultipoint traffic proximity transport noSessionListener. \n");
                             fflush(stdout);
                             status = ER_FAIL;
                         } else {
