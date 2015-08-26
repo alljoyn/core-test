@@ -230,7 +230,9 @@ int TestAppMain(int argc, char** argv)
     for (int i = 0; i < 100; i++) {
         if (i == 99) {
             messageLen = 10000;
-        } else {      messageLen = ((double)rand() / RAND_MAX * 1.0) * 65535; }
+        } else {
+            messageLen = ((double)rand() / RAND_MAX * 1.0) * 65535;
+        }
         if (messageLen == 0) {
             continue;
         }
