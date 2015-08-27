@@ -1,8 +1,7 @@
 /**
  * @file
  * Sample implementation of auth based test.
- * The auth client is the Admin app.
- * It is the ASGA i.e it has a membership certificate belonging to the ASG group. self signed by itself.)
+ * The authtestclient is the Admin app.
  */
 
 /******************************************************************************
@@ -63,6 +62,7 @@ static SessionId g_sessionId = 0;
 static qcc::KeyInfoNISTP256 g_publicKeyInfo;
 static qcc::KeyInfoNISTP256 g_adminpublicKeyInfo;
 static bool g_recd = false;
+static bool peer1 = true;
 
 static KeyInfoNISTP256 g_cakeyInfo;
 static KeyInfoNISTP256 g_asgakeyInfo;
@@ -72,6 +72,8 @@ static GUID128 g_asgaGUID;
 static String g_wellKnownName = "";
 static qcc::CertificateX509 g_CACert;
 
+/* The CA keys were generated using OpenSSL. The CA cert is self-signed.
+ * It is of type CertificateX509 */
 static const char* caPublicKeyPEM = {
     "-----BEGIN PUBLIC KEY-----"
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7MmnoBVWrArQosp1VvWwfWMsprlg"
@@ -86,6 +88,205 @@ static const char* caPrivateKeyPEM = {
     "ItAEQRpqsNasoC+p9yQv00kuGRkxalVuGQ=="
     "-----END EC PRIVATE KEY-----"
 };
+
+//Membership cert for SGID1
+// 0 - sgid1.root
+// 1 - ia.sgid1.root
+static const char*membershipSGID2_privatekeys [2] = {
+    "-----BEGIN EC PRIVATE KEY-----"
+    "MHcCAQEEIMGf/sTLeCysCO7EGZn7S73u9CsW9apRyVqtUGk6Ie7UoAoGCCqGSM49"
+    "AwEHoUQDQgAEYIdmiF+HO55YxCql9ltahRv6+034yMqAEhT64Y9fkui5+4OEQvXX"
+    "IiEpw0/vcVCFNNfkgE7OBrOZVxxTDbtYcw=="
+    "-----END EC PRIVATE KEY-----",
+
+    "-----BEGIN EC PRIVATE KEY-----"
+    "MHcCAQEEIIoIjuOhCMAmzn8NaVAGehlc3JpgYA1vJ7v7Dd8I/HHFoAoGCCqGSM49"
+    "AwEHoUQDQgAEcQbvGPx97uKbZwaHPEgH8rOYvw7irwZ8GKqQIjqsLWQz1eFkTh1U"
+    "GLmwyfISziAJPOspt2N/p6me6Vt0aNsSVA=="
+    "-----END EC PRIVATE KEY-----"
+};
+
+static const char*membershipSGID2_publickeys [2] = {
+    "-----BEGIN PUBLIC KEY-----"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYIdmiF+HO55YxCql9ltahRv6+034"
+    "yMqAEhT64Y9fkui5+4OEQvXXIiEpw0/vcVCFNNfkgE7OBrOZVxxTDbtYcw=="
+    "-----END PUBLIC KEY-----",
+
+    "-----BEGIN PUBLIC KEY-----"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcQbvGPx97uKbZwaHPEgH8rOYvw7i"
+    "rwZ8GKqQIjqsLWQz1eFkTh1UGLmwyfISziAJPOspt2N/p6me6Vt0aNsSVA=="
+    "-----END PUBLIC KEY-----"
+};
+
+//Membership cert for SGID2
+// 0 - sgid2.root
+// 1 - ia.sgid2.root
+
+static const char*membershipSGID1_privatekeys [2] = {
+    "-----BEGIN EC PRIVATE KEY-----"
+    "MHcCAQEEIJqIVkLfJkWvvJH7/VgLDBYkjR7712YukKDES0HxG1/VoAoGCCqGSM49"
+    "AwEHoUQDQgAECqxHZSuqHtujVD3zyb3RDAC38owRmeQC9XKBokzjtVp2DS7QcBSH"
+    "/bobpagmJ2QSaBeFTbWTVxxbK5KeZgVynQ=="
+    "-----END EC PRIVATE KEY-----",
+
+    "-----BEGIN EC PRIVATE KEY-----"
+    "MHcCAQEEIN4ZHjN0wcZPknLpCEZ8a/8dmAufB8CUragjP1CgjmpuoAoGCCqGSM49"
+    "AwEHoUQDQgAEUxp9VHg/3z2jjguQ9nbTH1wS/aNaIYAiSWfICLThhFxalUm+o8kn"
+    "2JkfVRkJs4/WdFm47uHkfptv05f8XZPh/w=="
+    "-----END EC PRIVATE KEY-----"
+};
+
+static const char*membershipSGID1_publickeys [2] = {
+    "-----BEGIN PUBLIC KEY-----"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECqxHZSuqHtujVD3zyb3RDAC38owR"
+    "meQC9XKBokzjtVp2DS7QcBSH/bobpagmJ2QSaBeFTbWTVxxbK5KeZgVynQ=="
+    "-----END PUBLIC KEY-----",
+
+    "-----BEGIN PUBLIC KEY-----"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUxp9VHg/3z2jjguQ9nbTH1wS/aNa"
+    "IYAiSWfICLThhFxalUm+o8kn2JkfVRkJs4/WdFm47uHkfptv05f8XZPh/w=="
+    "-----END PUBLIC KEY-----"
+};
+
+static ECCPrivateKey g_privateKey[4];
+static ECCPublicKey g_publicKey[4];
+
+void convertPEMtoDER() {
+
+//populate the private keys
+    CertificateX509::DecodePrivateKeyPEM(membershipSGID1_privatekeys[0], &g_privateKey[0]);
+    CertificateX509::DecodePrivateKeyPEM(membershipSGID1_privatekeys[1], &g_privateKey[1]);
+    CertificateX509::DecodePrivateKeyPEM(membershipSGID2_privatekeys[0], &g_privateKey[2]);
+    CertificateX509::DecodePrivateKeyPEM(membershipSGID2_privatekeys[1], &g_privateKey[3]);
+
+//populate the public keys
+    CertificateX509::DecodePublicKeyPEM(membershipSGID1_publickeys[0], &g_publicKey[0]);
+    CertificateX509::DecodePublicKeyPEM(membershipSGID1_publickeys[1], &g_publicKey[1]);
+    CertificateX509::DecodePublicKeyPEM(membershipSGID2_publickeys[0], &g_publicKey[2]);
+    CertificateX509::DecodePublicKeyPEM(membershipSGID2_publickeys[1], &g_publicKey[3]);
+
+}
+
+qcc::CertificateX509 SGID1Chain[3];
+qcc::CertificateX509 SGID2Chain[3];
+
+
+/* Membership certificate chain 1:  CA->SGA->leaf
+   The Intermediate Cert is of type Membership Certificate which is the SG Authority which signs the Leaf Membership cert.
+ */
+
+void CreateMembershipCertChainPeer1() {
+
+    CertificateX509::ValidPeriod validityMCert;
+    validityMCert.validFrom = 1427404154;
+    validityMCert.validTo = 1427404154 + 630720000;
+
+    GUID128 SGID1("ALPHA");
+
+    //The root is a self-signed CA, g_CACert, which is of CertificateX509Type
+    SGID1Chain[2] = g_CACert;
+    uint8_t rootIssuerCN[] = { 111, 222, 133, 144 };
+
+    //SGID1 Chain root, self-signed
+    //SGID1Chain[2].SetSerial((uint8_t*)"1111", 4);
+    //uint8_t rootSubjectCN[] = { 1, 2, 3, 4 };
+    //uint8_t rootIssuerCN[] = { 1, 2, 3, 4 };
+    //SGID1Chain[2].SetIssuerCN(rootIssuerCN, 4);
+    //SGID1Chain[2].SetSubjectCN(rootSubjectCN, 4);
+    //SGID1Chain[2].SetValidity(&validityMCert);
+    //SGID1Chain[2].SetSubjectPublicKey(&g_publicKey[0]);
+    //SGID1Chain[2].SetGuild(SGID1);
+    //SGID1Chain[2].SetCA(true);
+    //QStatus status = SGID1Chain[2].Sign(&g_privateKey[0]);
+    //assert(status == ER_OK);
+
+    //SGID1 Chain, IA, signed by root
+    qcc::MembershipCertificate tempIA;
+    tempIA.SetSerial((uint8_t*)"2222", 4);
+    uint8_t iaSubjectCN[] = { 5, 6, 7, 8 };
+    tempIA.SetIssuerCN(rootIssuerCN, 4);
+    tempIA.SetSubjectCN(iaSubjectCN, 4);
+    tempIA.SetValidity(&validityMCert);
+    tempIA.SetSubjectPublicKey(&g_publicKey[1]);
+    tempIA.SetGuild(SGID1);
+    tempIA.SetCA(true);
+    QStatus status = tempIA.Sign(&g_caPrivateKey);
+    assert(status == ER_OK);
+    SGID1Chain[1] = tempIA;
+
+    //SGID1 Chain, leaf, signed by IA
+    qcc::MembershipCertificate leaf;
+    leaf.SetSerial((uint8_t*)"3333", 4);
+    uint8_t leafSubjectCN[] = { 9, 10, 11, 12 };
+    leaf.SetIssuerCN(iaSubjectCN, 4);
+    leaf.SetSubjectCN(leafSubjectCN, 4);
+    leaf.SetValidity(&validityMCert);
+    leaf.SetSubjectPublicKey(g_publicKeyInfo.GetPublicKey());
+    leaf.SetGuild(SGID1);
+    leaf.SetCA(true);
+    status = leaf.Sign(&g_privateKey[1]);
+    assert(status == ER_OK);
+    SGID1Chain[0] = leaf;
+}
+
+/* Membership certificate chain 2:  CA->SGA->leaf
+   The Intermediate Cert is of type Membership Certificate which is the SG Authority which signs the Leaf Membership cert.
+ */
+
+void CreateMembershipCertChainPeer2() {
+    CertificateX509::ValidPeriod validityMCert;
+    validityMCert.validFrom = 1427404154;
+    validityMCert.validTo = 1427404154 + 630720000;
+
+    GUID128 SGID2("BETA");
+
+    //The root is a self-signed CA, g_CACert, which is of CertificateX509Type
+    SGID2Chain[2] = g_CACert;
+    uint8_t rootIssuerCN[] = { 111, 222, 133, 144 };
+
+    //SGID2 Chain root, self-signed
+    //SGID2Chain[2].SetSerial((uint8_t*)"4444", 4);
+    //uint8_t rootSubjectCN[] = { 13, 14, 15, 16 };
+    //SGID2Chain[2].SetIssuerCN(rootIssuerCN, 4);
+    //SGID2Chain[2].SetSubjectCN(rootSubjectCN, 4);
+    //SGID2Chain[2].SetValidity(&validityMCert);
+    //SGID2Chain[2].SetSubjectPublicKey(&g_publicKey[2]);
+    //SGID2Chain[2].SetGuild(SGID2);
+    //SGID2Chain[2].SetCA(true);
+    //QStatus status = SGID2Chain[2].Sign(&g_privateKey[2]);
+    //assert(status == ER_OK);
+
+    //SGID2 Chain, IA, signed by root
+    qcc::MembershipCertificate tempIA;
+    tempIA.SetSerial((uint8_t*)"5555", 4);
+    uint8_t iaSubjectCN[] = { 17, 18, 19, 20 };
+    tempIA.SetIssuerCN(rootIssuerCN, 4);
+    tempIA.SetSubjectCN(iaSubjectCN, 4);
+    tempIA.SetValidity(&validityMCert);
+    tempIA.SetSubjectPublicKey(&g_publicKey[3]);
+    tempIA.SetGuild(SGID2);
+    tempIA.SetCA(true);
+    QStatus status = tempIA.Sign(&g_caPrivateKey);
+    assert(status == ER_OK);
+    SGID2Chain[1] = tempIA;
+
+    //SGID2 Chain, leaf, signed by IA
+    qcc::MembershipCertificate leaf;
+    leaf.SetSerial((uint8_t*)"6666", 4);
+    uint8_t leafSubjectCN[] = { 21, 22, 23, 24 };
+    leaf.SetIssuerCN(iaSubjectCN, 4);
+    leaf.SetSubjectCN(leafSubjectCN, 4);
+    leaf.SetValidity(&validityMCert);
+    leaf.SetSubjectPublicKey(g_publicKeyInfo.GetPublicKey());
+    leaf.SetGuild(SGID2);
+    leaf.SetCA(true);
+    status = leaf.Sign(&g_privateKey[3]);
+    assert(status == ER_OK);
+    SGID2Chain[0] = leaf;
+}
+
+
+
 
 void setcaKeyInfo(KeyInfoNISTP256& cakeyInfo) {
 
@@ -156,11 +357,11 @@ void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
             myAcl[0].SetPeers(2, peer);
         }
         {
-           PermissionPolicy::Peer peer[1];
-           peer[0].SetType(PermissionPolicy::Peer::PEER_ANY_TRUSTED);
-           
-           PermissionPolicy::Rule::Member member[1];
-           member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+            PermissionPolicy::Peer peer[1];
+            peer[0].SetType(PermissionPolicy::Peer::PEER_ANY_TRUSTED);
+
+            PermissionPolicy::Rule::Member member[1];
+            member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
 
             PermissionPolicy::Rule rule[1];
             rule[0].SetObjPath("*");
@@ -170,6 +371,99 @@ void createPermissionPolicy(PermissionPolicy& permissionPolicy) {
             myAcl[1].SetRules(1, rule);
             myAcl[1].SetPeers(1, peer);
         }
+        permissionPolicy.SetAcls(2, myAcl);
+    }
+}
+
+
+void createPermissionPolicyForPeer1(PermissionPolicy& permissionPolicy) {
+
+    GUID128 BETA("BETA");
+    //Set the version
+    permissionPolicy.SetVersion(5556);
+    {
+        //Create an ACL[0].
+        PermissionPolicy::Acl myAcl[2];
+        //set peer belonging to BETA membership group
+        {
+            PermissionPolicy::Peer peer[1];
+
+            peer[0].SetType(PermissionPolicy::Peer::PEER_WITH_MEMBERSHIP);
+
+            //The public key is the root of the BETA certificate chain
+            uint8_t AKI[] = { 3, 4, 5, 6, 7, 8 };
+            KeyInfoNISTP256 keyInfo;
+            keyInfo.SetKeyId(AKI, 6);
+            keyInfo.SetPublicKey(&g_publicKey[3]);
+
+            peer[0].SetKeyInfo(&keyInfo);
+            peer[0].SetSecurityGroupId(BETA);
+
+            PermissionPolicy::Rule::Member member[1];
+            member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+
+            PermissionPolicy::Rule rule[1];
+            rule[0].SetObjPath("*");
+            rule[0].SetInterfaceName("*");
+            rule[0].SetMembers(1, member);
+
+            myAcl[0].SetRules(1, rule);
+            myAcl[0].SetPeers(1, peer);
+        }
+        {
+            PermissionPolicy::Peer peer[1];
+            peer[0].SetType(PermissionPolicy::Peer::PEER_FROM_CERTIFICATE_AUTHORITY);
+            peer[0].SetKeyInfo(&g_cakeyInfo);
+            myAcl[1].SetPeers(1, peer);
+        }
+
+
+        permissionPolicy.SetAcls(2, myAcl);
+    }
+}
+
+void createPermissionPolicyForPeer2(PermissionPolicy& permissionPolicy) {
+
+    GUID128 ALPHA("ALPHA");
+    //Set the version
+    permissionPolicy.SetVersion(5557);
+    {
+        //Create an ACL[0].
+        PermissionPolicy::Acl myAcl[2];
+        //set peer belonging to ALPHA membership group
+        {
+            PermissionPolicy::Peer peer[1];
+
+            peer[0].SetType(PermissionPolicy::Peer::PEER_WITH_MEMBERSHIP);
+
+            //The public key is the root of the ALPHA certificate chain
+            uint8_t AKI[] = { 1, 2, 3, 4, 5, 6 };
+            KeyInfoNISTP256 keyInfo;
+            keyInfo.SetKeyId(AKI, 6);
+            keyInfo.SetPublicKey(&g_publicKey[1]);
+
+            peer[0].SetKeyInfo(&keyInfo);
+            peer[0].SetSecurityGroupId(ALPHA);
+
+            PermissionPolicy::Rule::Member member[1];
+            member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+
+            PermissionPolicy::Rule rule[1];
+            rule[0].SetObjPath("*");
+            rule[0].SetInterfaceName("*");
+            rule[0].SetMembers(1, member);
+
+            myAcl[0].SetRules(1, rule);
+            myAcl[0].SetPeers(1, peer);
+        }
+        {
+            PermissionPolicy::Peer peer[1];
+            peer[0].SetType(PermissionPolicy::Peer::PEER_FROM_CERTIFICATE_AUTHORITY);
+            peer[0].SetKeyInfo(&g_cakeyInfo);
+            myAcl[1].SetPeers(1, peer);
+        }
+
+
         permissionPolicy.SetAcls(2, myAcl);
     }
 }
@@ -218,7 +512,7 @@ class MyApplicationStateListener : public ApplicationStateListener {
 
     void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
         QCC_UNUSED(publicKeyInfo);
-        if (strcmp(busName, g_wellKnownName.c_str()) != 0) { g_publicKeyInfo = publicKeyInfo; g_recd = true; }
+        if (strcmp(busName, g_wellKnownName.c_str()) == 0) { g_publicKeyInfo = publicKeyInfo; g_recd = true; }
         if (strcmp(busName, g_msgBus->GetUniqueName().c_str()) == 0) { g_adminpublicKeyInfo = publicKeyInfo; }
         String stateStr;
         switch (state) {
@@ -367,7 +661,7 @@ class MyAuthListener : public AuthListener {
 };
 
 
-int main(int argc, char *argv[]) {
+int main(int argc, char*argv[]) {
 
     QStatus status = ER_OK;
     setCAKeys();
@@ -377,6 +671,7 @@ int main(int argc, char *argv[]) {
 
     //Populate the CA Cert;
     CreateCACert();
+    convertPEMtoDER();
 
     if (AllJoynInit() != ER_OK) {
         return 1;
@@ -387,7 +682,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 #endif
-  bool stressInstallPolicy = false; 
+    bool stressInstallPolicy = false;
+    bool reset = false;
 
     /* Parse command line args */
     for (int i = 1; i < argc; ++i) {
@@ -399,8 +695,12 @@ int main(int argc, char *argv[]) {
             } else {
                 g_wellKnownName = argv[i];
             }
-        } else if ( 0 == strcmp("-sip", argv[i])) {
+        } else if (0 == strcmp("-sip", argv[i])) {
             stressInstallPolicy = true;
+        } else if (0 == strcmp("-p2", argv[i])) {
+            peer1 = false;
+        } else if (0 == strcmp("-reset", argv[i])) {
+            reset = true;
         }
     }
 
@@ -417,6 +717,7 @@ int main(int argc, char *argv[]) {
     printf("Before calling EPS, calling SetApplicationState  %s \n", QCC_StatusText(status));
 
     PermissionConfigurator::ApplicationState state;
+    printf("Application state is %s \n", PermissionConfigurator::ToString(state));
     status = pc1.GetApplicationState(state);
     printf("Before calling EPS, calling GetApplicationState  %s \n", QCC_StatusText(status));
     printf("Application state is %s \n", PermissionConfigurator::ToString(state));
@@ -522,10 +823,10 @@ int main(int argc, char *argv[]) {
     g_msgBus->RegisterBusListener(busListener);
     status = g_msgBus->FindAdvertisedName(g_wellKnownName.c_str());
     assert(status == ER_OK);
-    printf("Waiting to JoinSession with %s \n",g_wellKnownName.c_str());
-     while(g_sessionId == 0){ 
-       qcc::Sleep(200);
-     }
+    printf("Waiting to JoinSession with %s \n", g_wellKnownName.c_str());
+    while (g_sessionId == 0) {
+        qcc::Sleep(200);
+    }
 
     printf("Waiting for State notification from service.. \n");
     while (!g_recd)
@@ -552,20 +853,33 @@ int main(int argc, char *argv[]) {
     cout << endl;
     printf("-----------------------------------------------\n");
 
+    //CreateMembershipCertChain for peer 1
+    CreateMembershipCertChainPeer1();
+    //CreateMembershipCertChain for peer 2
+    CreateMembershipCertChainPeer2();
 
     //Create the ICC chain
-
-    //Create the root DSA key Pair
-    //Crypto_ECC rootDsaKeyPair;
-    //status = rootDsaKeyPair.GenerateDSAKeyPair();
-
+    //The CA cert is already created, it is stored in g_CACert
+    // The admin cert is signed by CA
+    qcc::CertificateX509 adminCertSignedByCA;
+    adminCertSignedByCA.SetSerial((uint8_t*)"admin-cert-signed-by-ca", 24);
+    uint8_t CN[] = { 111, 222, 133, 144 };
+    adminCertSignedByCA.SetIssuerCN(CN, 4);
+    adminCertSignedByCA.SetSubjectCN(adminSubjectCN, 4);
+    CertificateX509::ValidPeriod validitytemp;
+    validitytemp.validFrom = 1427404154;
+    validitytemp.validTo = 1427404154 + 630720000;
+    adminCertSignedByCA.SetValidity(&validitytemp);
+    adminCertSignedByCA.SetSubjectPublicKey(g_adminpublicKeyInfo.GetPublicKey());
+    adminCertSignedByCA.SetCA(true);
+    adminCertSignedByCA.Sign(&g_caPrivateKey);
 
     uint8_t subjectCN[] = { 1, 2, 3, 4 };
-    uint8_t issuerCN[] = { 111, 222, 133, 144 };
+    //uint8_t issuerCN[] = { 111, 222, 133, 144 };
 
     qcc::IdentityCertificate leafCert;
     leafCert.SetSerial((uint8_t*)"1234", 5);
-    leafCert.SetIssuerCN(issuerCN, 4);
+    leafCert.SetIssuerCN(adminSubjectCN, 4);
     leafCert.SetSubjectCN(subjectCN, 4);
     CertificateX509::ValidPeriod validityLeaf;
     validityLeaf.validFrom = 1427404154;
@@ -577,27 +891,37 @@ int main(int argc, char *argv[]) {
     //leafCert.SetAlias("leaf-cert-alias-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     leafCert.SetAlias("leaf-cert-alias-0123456789abcdef");
     leafCert.SetCA(false);
-    //sign the leaf cert
-    leafCert.Sign(&g_caPrivateKey);
+    //sign the leaf cert using admin's private key
+    pc1.SignCertificate(leafCert);
 
     //Form the Identity chain
     //qcc::IdentityCertificate certChain[2];
-    qcc::CertificateX509 certChain[2];
+    qcc::CertificateX509 certChain[3];
+    //This is the leaf cert, signed by the admin
     certChain[0] = leafCert;
-    certChain[1] = g_CACert;
+    //This is the admin cert signed by CA
+    certChain[1] = adminCertSignedByCA;
+    //This CA cert is self signed
+    certChain[2] = g_CACert;
 
 
-    String leafPEM, rootPEM;
+    String leafPEM, adminPEM, rootPEM;
     status = certChain[0].EncodeCertificatePEM(leafPEM);
     assert(status == ER_OK);
-    status = certChain[1].EncodeCertificatePEM(rootPEM);
+    status = certChain[1].EncodeCertificatePEM(adminPEM);
+    assert(status == ER_OK);
+    status = certChain[2].EncodeCertificatePEM(rootPEM);
     assert(status == ER_OK);
 
     status = certChain[0].Verify(certChain[1].GetSubjectPublicKey());
-    printf("Verify status is %s \n", QCC_StatusText(status));
+    printf("Verify statu 0-1 s is %s \n", QCC_StatusText(status));
+    status = certChain[1].Verify(certChain[2].GetSubjectPublicKey());
+    printf("Verify statu 1-2 s is %s \n", QCC_StatusText(status));
 
     printf("leaf PEM \n");
     cout << leafPEM.c_str() << endl;
+    printf("admin PEM \n");
+    cout << adminPEM.c_str() << endl;
     printf("root PEM \n");
     cout << rootPEM.c_str() << endl;
 
@@ -607,7 +931,7 @@ int main(int argc, char *argv[]) {
     //printf("BUG Reset status is %s  \n",QCC_StatusText(status));
 
     //All set to claim
-    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, (qcc::IdentityCertificate *)certChain, 2, manifest, 1);
+    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, (qcc::IdentityCertificate*)certChain, 3, manifest, 1);
     printf("Service Claim status is %s \n", QCC_StatusText(status));
 
     qcc::Sleep(2000);
@@ -621,29 +945,74 @@ int main(int argc, char *argv[]) {
     PermissionPolicy myPolicy;
     createPermissionPolicy(myPolicy);
 
-   if(stressInstallPolicy) {
-    for(int i=0; i<1000; i++){
-    myPolicy.SetVersion(5555+i);
-    status = securityAppProxy.UpdatePolicy(myPolicy);
-    printf("Service Update policy stress (%d)th time status is %s \n", i, QCC_StatusText(status));
+    if (stressInstallPolicy) {
+        for (int i = 0; i < 1000; i++) {
+            myPolicy.SetVersion(5555 + i);
+            status = securityAppProxy.UpdatePolicy(myPolicy);
+            printf("Service Update policy stress (%d)th time status is %s \n", i, QCC_StatusText(status));
 
-    // ASACORE-2331 Dummy reset the policy. This call will fail.
-    status = securityAppProxy.ResetPolicy();
+            // ASACORE-2331 Dummy reset the policy. This call will fail.
+            status = securityAppProxy.ResetPolicy();
 
-    //Actual reset the policy.
-    status = securityAppProxy.ResetPolicy();
-    printf("Service Reset policy (%d)th time status is %s \n", i, QCC_StatusText(status));
+            //Actual reset the policy.
+            status = securityAppProxy.ResetPolicy();
+            printf("Service Reset policy (%d)th time status is %s \n", i, QCC_StatusText(status));
+        }
     }
 
-   } else {
-      status = securityAppProxy.UpdatePolicy(myPolicy);
-      printf("Service Update policy status is %s \n",QCC_StatusText(status));
-   }
+    //Install Membership certificates
+    if (peer1) {
+        printf("Peer 1 \n");
+        status = securityAppProxy.InstallMembership((qcc::MembershipCertificate*) SGID1Chain, 3);
+        printf("Service InstallMembership status is %s \n", QCC_StatusText(status));
+    } else {
+        printf("Peer 2 \n");
+        status =  securityAppProxy.InstallMembership((qcc::MembershipCertificate*) SGID2Chain, 3);
+        printf("Service InstallMembership status is %s \n", QCC_StatusText(status));
+    }
 
-    //Try to call Reset on service bus.
-    status = securityAppProxy.Reset();
-    printf("Service Reset status is %s \n", QCC_StatusText(status));
+    //Verify the membership summaries
+    MsgArg arg;
+    status =  securityAppProxy.GetMembershipSummaries(arg);
+    printf("Service GetMembership summaries status is %s \n", QCC_StatusText(status));
+    size_t count = arg.v_array.GetNumElements();
+    printf("Membership summaries returned %lu \n", count);
 
+    KeyInfoNISTP256* keyInfos = new KeyInfoNISTP256[count];
+    String* serials = new String[count];
+    status = SecurityApplicationProxy::MsgArgToCertificateIds(arg, serials, keyInfos, count);
+    for (size_t i = 0; i < count; i++) {
+        printf("Serial %lu = %s \n", i, serials[i].c_str());
+    }
+
+
+    //Install the policy
+    if (peer1) {
+        PermissionPolicy myPolicyPeer1;
+        createPermissionPolicyForPeer1(myPolicyPeer1);
+        status = securityAppProxy.UpdatePolicy(myPolicyPeer1);
+        printf("Service Update policy status is %s \n", QCC_StatusText(status));
+        printf("Installed policy is \n %s \n", myPolicyPeer1.ToString().c_str());
+    } else {
+        PermissionPolicy myPolicyPeer2;
+        createPermissionPolicyForPeer2(myPolicyPeer2);
+        status = securityAppProxy.UpdatePolicy(myPolicyPeer2);
+        printf("Service Update policy status is %s \n", QCC_StatusText(status));
+        printf("Installed policy is \n %s \n", myPolicyPeer2.ToString().c_str());
+    }
+
+
+    //This is a dummy secure method call which we know will fail.
+    //ECCPublicKey tempPublicKey;
+    //status =  securityAppProxy.GetEccPublicKey(tempPublicKey);
+    //printf("[We know this will fail] Service GetEccPublicKey status is %s \n", QCC_StatusText(status));
+
+
+    if (reset) {
+        //Try to call Reset on service bus.
+        status = securityAppProxy.Reset();
+        printf("Service Reset status is %s \n", QCC_StatusText(status));
+    }
     while (true) {
         qcc::Sleep(500);
     }
