@@ -63,6 +63,7 @@ static qcc::KeyInfoNISTP256 g_publicKeyInfo;
 static qcc::KeyInfoNISTP256 g_adminpublicKeyInfo;
 static bool g_recd = false;
 static bool peer1 = true;
+static bool g_recvdAdminSLS = false;
 
 static KeyInfoNISTP256 g_cakeyInfo;
 static KeyInfoNISTP256 g_asgakeyInfo;
@@ -513,7 +514,7 @@ class MyApplicationStateListener : public ApplicationStateListener {
     void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
         QCC_UNUSED(publicKeyInfo);
         if (strcmp(busName, g_wellKnownName.c_str()) == 0) { g_publicKeyInfo = publicKeyInfo; g_recd = true; }
-        if (strcmp(busName, g_msgBus->GetUniqueName().c_str()) == 0) { g_adminpublicKeyInfo = publicKeyInfo; }
+        if (strcmp(busName, g_msgBus->GetUniqueName().c_str()) == 0) { g_adminpublicKeyInfo = publicKeyInfo; g_recvdAdminSLS = true; }
         String stateStr;
         switch (state) {
         case PermissionConfigurator::ApplicationState::CLAIMABLE:
@@ -739,6 +740,18 @@ int main(int argc, char*argv[]) {
     assert(status == ER_OK);
     qcc::Sleep(2000);
 
+    //Set manifest template, ASACORE-2341 if no manifest template set, then no SLS emitted
+    // All Inclusive manifest template
+    {
+        PermissionPolicy::Rule::Member member[1];
+        member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        const size_t manifestSize = 1;
+        PermissionPolicy::Rule manifestTemplate[manifestSize];
+        manifestTemplate[0].SetObjPath("*");
+        manifestTemplate[0].SetInterfaceName("*");
+        manifestTemplate[0].SetMembers(1, member);
+        status = pc1.SetPermissionManifest(manifestTemplate, manifestSize);
+    }
 
     //Self-Claim and install a membership for myself. I am the ASGA.
 
@@ -751,6 +764,12 @@ int main(int argc, char*argv[]) {
     //KeyInfoNISTP256 caKey;
     //caKey.SetKeyId(caAKI, 2);
     //caKey.SetPublicKey(caDsaKeyPair.GetDSAPublicKey());
+
+    // Wait for SLS to be received from Admin
+    while (!g_recvdAdminSLS) {
+        // do nothing;
+        qcc::Sleep(50);
+    }
 
     //Set the ASGA KeyInfo
     setasgaKeyInfo(g_asgakeyInfo);

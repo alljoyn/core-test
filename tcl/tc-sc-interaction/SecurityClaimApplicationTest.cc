@@ -460,7 +460,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_caPublicKe
      * Since we are only interested in claiming the peer we are using an all
      * inclusive manifest.
      */
-    ASSERT_EQ(0, caKey.GetKeyIdLen());
+    ASSERT_EQ(static_cast<size_t>(0), caKey.GetKeyIdLen());
     EXPECT_NE(ER_OK, sapWithTC.Claim(caKey,
                                         securityManagerGuid,
                                         securityManagerKey,
@@ -556,7 +556,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_adminGroup
      * Since we are only interested in claiming the peer we are using an all
      * inclusive manifest.
      */
-    ASSERT_EQ(0, securityManagerKey.GetKeyIdLen());
+    ASSERT_EQ(static_cast<size_t>(0), securityManagerKey.GetKeyIdLen());
     EXPECT_NE(ER_OK, sapWithTC.Claim(caKey,
                                         securityManagerGuid,
                                         securityManagerKey,

@@ -395,6 +395,18 @@ int main(int argc, char*argv[]) {
 
     PermissionConfigurator& PC = g_msgBus->GetPermissionConfigurator();
     PermissionConfigurator::ApplicationState appState;
+    //Set the manifest template
+    {
+        PermissionPolicy::Rule::Member member[1];
+        member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        const size_t manifestSize = 1;
+        PermissionPolicy::Rule manifestTemplate[manifestSize];
+        manifestTemplate[0].SetObjPath("*");
+        manifestTemplate[0].SetInterfaceName("*");
+        manifestTemplate[0].SetMembers(1, member);
+        status = PC.SetPermissionManifest(manifestTemplate, manifestSize);
+    }
+
 
     if (g_transport == TRANSPORT_NONE) {
         printf("Transport mask not selected \n");
