@@ -2718,15 +2718,15 @@ TEST_P(SecurityPolicyRulesSetProperty, PolicyRulesSC)
     if (GetParam().proxyObjAllowedToCallSetProperty && GetParam().busObjAllowedToRespondToSetPropertyCall) {
         EXPECT_EQ(ER_OK, setPropertyStatus);
         //Verify Prop1 is changed.
-        EXPECT_EQ(513, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
     } else if (GetParam().proxyObjAllowedToCallSetProperty && !GetParam().busObjAllowedToRespondToSetPropertyCall) {
         EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, setPropertyStatus);
         //Currently no way to find out that the error string is org.alljoyn.Bus.Security.Error.PermissionDenied
         //Verify Prop1 is unchanged (note prop1 defaults to 42 by the constructor)
-        EXPECT_EQ(42, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
     } else { //!GetParam().proxyObjAllowedToCallSetProperty
         EXPECT_EQ(ER_PERMISSION_DENIED, setPropertyStatus);
-        EXPECT_EQ(42, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
     }
 
     /* clean up */
@@ -3055,10 +3055,10 @@ TEST_P(SecurityPolicyRulesSetPropertyManifest, PolicyRulesSC)
     if (GetParam().proxyObjAllowedToCallSetProperty && GetParam().busObjAllowedToRespondToSetPropertyCall) {
         EXPECT_EQ(ER_OK, setPropertyStatus);
         //Verify Prop1 is changed.
-        EXPECT_EQ(513, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
     } else { //!GetParam().proxyObjAllowedToCallSetProperty
         EXPECT_TRUE(ER_PERMISSION_DENIED == setPropertyStatus || ER_BUS_REPLY_IS_ERROR_MESSAGE == setPropertyStatus);
-        EXPECT_EQ(42, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
     }
 
     /* clean up */
@@ -5417,7 +5417,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_1_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -5742,7 +5742,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_2_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -6060,7 +6060,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_3_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -6376,7 +6376,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_4_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -6697,7 +6697,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_7_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -7024,7 +7024,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_8_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -8052,7 +8052,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_11_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -8528,7 +8528,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_12_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -8962,7 +8962,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_13_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -9349,7 +9349,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_14_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -9660,7 +9660,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_15_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -9898,7 +9898,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_16_SC)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
