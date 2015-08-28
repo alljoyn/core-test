@@ -100,7 +100,7 @@ static const char* const someSessionlessSignalDesc[] = { "An example sessionless
 #define SAMPLE_SOMESIGNAL_ARG_DESC          AJ_DESCRIPTION_ID(SAMPLE_OBJECT_ID, 1, 3, 1)
 #define SAMPLE_SOMESESSIONLESSSIGNAL_DESC   AJ_DESCRIPTION_ID(SAMPLE_OBJECT_ID, 1, 4, 0)
 
-static const char* const languages[] = { "en", "es" };
+static const char* const languages[] = { "en", "es", NULL };
 
 //Unit Test 1 Globals
 bool messageReceived = FALSE; //Boolean used as a flag to terminate thin client message loop.
@@ -117,9 +117,9 @@ static const char* MyTranslator(uint32_t descId, const char* lang) {
      * the translator will return strings for index 0.
      */
     langIndex = 0;
-    if(lang != NULL && strlen(lang) > 0){
-        //Valid string passed as argument.
-        while (langIndex < ARRAY_SIZE(languages)) {
+    if (lang != NULL && strlen(lang) > 0) {
+        // Valid string passed as argument.
+        while (languages[langIndex] != NULL) {
             if (strcmp(lang, languages[langIndex]) == 0) {
                 break;
             }
@@ -199,6 +199,7 @@ class EventsActionsTest : public testing::Test {
 
         AJ_Initialize();
 
+        AJ_RegisterDescriptionLanguages(languages);
         AJ_RegisterObjectListWithDescriptions(AppObjects, 1, MyTranslator);
         // Ensure that a routing node is found as quickly as possible
         AJ_SetSelectionTimeout(0);
@@ -274,31 +275,31 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
-    "<description>Sample object description</description>\n"
+    "<description language=\"en\">Sample object description</description>\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
-    "<description>Sample interface</description>\n"
+    "<description language=\"en\">Sample interface</description>\n"
     "  <method name=\"dummyMethod\">\n"
     "    <arg name=\"foo\" type=\"i\" direction=\"in\"/>\n"
     "  </method>\n"
     "  <method name=\"joinMethod\">\n"
     "    <arg name=\"inStr1\" type=\"s\" direction=\"in\">\n"
-    "        <description>First part of string</description>\n"
+    "        <description language=\"en\">First part of string</description>\n"
     "    </arg>\n"
     "    <arg name=\"inStr2\" type=\"s\" direction=\"in\">\n"
-    "        <description>Second part of string</description>\n"
+    "        <description language=\"en\">Second part of string</description>\n"
     "    </arg>\n"
     "    <arg name=\"outStr\" type=\"s\" direction=\"out\">\n"
-    "        <description>Return result</description>\n"
+    "        <description language=\"en\">Return result</description>\n"
     "    </arg>\n"
-    "    <description>Join two strings and return the result</description>\n"
+    "    <description language=\"en\">Join two strings and return the result</description>\n"
     "  </method>\n"
     "  <signal name=\"someSignal\" sessionless=\"false\">\n"
     "    <arg name=\"name\" type=\"s\">\n"
-    "        <description>EN: Some replacement value</description>\n"
+    "        <description language=\"en\">EN: Some replacement value</description>\n"
     "    </arg>\n"
     "  </signal>\n"
     "  <signal name=\"someSessionlessSignal\" sessionless=\"true\">\n"
-    "    <description>An example sessionless signal</description>\n"
+    "    <description language=\"en\">An example sessionless signal</description>\n"
     "  </signal>\n</interface>\n</node>\n";
 
     //Compared XML recieved from the tc object to the expected XML output.
@@ -423,31 +424,31 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unsupported_Language_Tag) {
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
-    "<description>Sample object description</description>\n"
+    "<description language=\"en\">Sample object description</description>\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
-    "<description>Sample interface</description>\n"
+    "<description language=\"en\">Sample interface</description>\n"
     "  <method name=\"dummyMethod\">\n"
     "    <arg name=\"foo\" type=\"i\" direction=\"in\"/>\n"
     "  </method>\n"
     "  <method name=\"joinMethod\">\n"
     "    <arg name=\"inStr1\" type=\"s\" direction=\"in\">\n"
-    "        <description>First part of string</description>\n"
+    "        <description language=\"en\">First part of string</description>\n"
     "    </arg>\n"
     "    <arg name=\"inStr2\" type=\"s\" direction=\"in\">\n"
-    "        <description>Second part of string</description>\n"
+    "        <description language=\"en\">Second part of string</description>\n"
     "    </arg>\n"
     "    <arg name=\"outStr\" type=\"s\" direction=\"out\">\n"
-    "        <description>Return result</description>\n"
+    "        <description language=\"en\">Return result</description>\n"
     "    </arg>\n"
-    "    <description>Join two strings and return the result</description>\n"
+    "    <description language=\"en\">Join two strings and return the result</description>\n"
     "  </method>\n"
     "  <signal name=\"someSignal\" sessionless=\"false\">\n"
     "    <arg name=\"name\" type=\"s\">\n"
-    "        <description>EN: Some replacement value</description>\n"
+    "        <description language=\"en\">EN: Some replacement value</description>\n"
     "    </arg>\n"
     "  </signal>\n"
     "  <signal name=\"someSessionlessSignal\" sessionless=\"true\">\n"
-    "    <description>An example sessionless signal</description>\n"
+    "    <description language=\"en\">An example sessionless signal</description>\n"
     "  </signal>\n</interface>\n</node>\n";
 
     //Compared XML recieved from the tc object to the expected XML output.
