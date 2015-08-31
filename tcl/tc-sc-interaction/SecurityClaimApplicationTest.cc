@@ -212,6 +212,19 @@ class SecurityClaimApplicationTest : public testing::Test {
         delete SCKeyListener;
     }
 
+    void SetManifestTemplate(BusAttachment& bus)
+    {
+        // All Inclusive manifest template
+        PermissionPolicy::Rule::Member member[1];
+        member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        const size_t manifestSize = 1;
+        PermissionPolicy::Rule manifestTemplate[manifestSize];
+        manifestTemplate[0].SetObjPath("*");
+        manifestTemplate[0].SetInterfaceName("*");
+        manifestTemplate[0].SetMembers(1, member);
+        EXPECT_EQ(ER_OK, bus.GetPermissionConfigurator().SetPermissionManifest(manifestTemplate, manifestSize));
+    }
+
     BusAttachment securityManagerBus;
     BusAttachment SCBus;
 
@@ -278,10 +291,13 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     securityManagerBus.RegisterApplicationStateListener(appStateListener);
     securityManagerBus.AddApplicationStateRule();
 
-    //EnablePeerSecurity
     appStateListener.stateChanged = false;
+    //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -331,6 +347,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -388,7 +405,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
  * caPublic key == adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
  */
-TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_caPublicKeyIdentifier)
+TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifier)
 {
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -432,6 +449,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_caPublicKe
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -482,7 +500,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_caPublicKe
  * caPublic key == adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
  */
-TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_adminGroupSecurityPublicKeyIdentifier)
+TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityPublicKeyIdentifier)
 {
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -528,6 +546,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_claim_fails_using_empty_adminGroup
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -587,6 +606,9 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -611,6 +633,9 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
 
     SCKeyListener = new DefaultECDHEAuthListener();
     SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", SCKeyListener);
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(SCBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -654,6 +679,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
                   PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -727,6 +753,9 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     securityManagerKeyListener = new DefaultECDHEAuthListener(psk, 16);
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -773,6 +802,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -838,6 +868,9 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -883,6 +916,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -896,6 +930,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
     PermissionPolicy::Rule::Member member2[1];
     member2[0].Set("*", PermissionPolicy::Rule::Member::METHOD_CALL, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     PermissionPolicy::Rule manifest2[manifestSize];
+    manifest2[0].SetObjPath("*");
     manifest2[0].SetInterfaceName("*");
     manifest2[0].SetMembers(1, member2);
 
@@ -953,6 +988,9 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -998,6 +1036,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1073,6 +1112,9 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1118,6 +1160,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1174,6 +1217,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
                   PermissionPolicy::Rule::Member::ACTION_PROVIDE |
                   PermissionPolicy::Rule::Member::ACTION_MODIFY);
     PermissionPolicy::Rule manifest2[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member2);
 
@@ -1214,6 +1258,9 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1264,6 +1311,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1329,6 +1377,9 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     SCKeyListener = new DefaultECDHEAuthListener();
     SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", SCKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(SCBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1358,6 +1409,7 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1400,6 +1452,9 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1429,6 +1484,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1494,6 +1550,7 @@ class ClaimThread1 : public Thread {
         member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
         const size_t manifestSize = 1;
         PermissionPolicy::Rule manifest[manifestSize];
+        manifest[0].SetObjPath("*");
         manifest[0].SetInterfaceName("*");
         manifest[0].SetMembers(1, member);
 
@@ -1550,6 +1607,7 @@ class ClaimThread2 : public Thread {
         member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
         const size_t manifestSize = 1;
         PermissionPolicy::Rule manifest[manifestSize];
+        manifest[0].SetObjPath("*");
         manifest[0].SetInterfaceName("*");
         manifest[0].SetMembers(1, member);
 
@@ -1593,6 +1651,9 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1617,6 +1678,9 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
 
     SCKeyListener = new DefaultECDHEAuthListener();
     SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", SCKeyListener);
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(SCBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1684,6 +1748,9 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     securityManagerKeyListener = new DefaultECDHEAuthListener(psk, 16);
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1724,6 +1791,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1770,6 +1838,9 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -1815,6 +1886,7 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -1949,6 +2021,9 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     EXPECT_FALSE(appStateListener.stateChanged);
     securityManagerBus.AddApplicationStateRule();
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2019,6 +2094,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -2105,6 +2181,9 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
 
     securityManagerBus.AddApplicationStateRule();
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2164,6 +2243,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -2404,6 +2484,9 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 
     securityManagerBus.AddApplicationStateRule();
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2466,6 +2549,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -2515,6 +2599,8 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     EXPECT_EQ(ER_OK, managerClaimingBus.Connect());
     EXPECT_EQ(ER_OK, managerClaimingBus.RegisterKeyStoreListener(securityManagerKeyStoreListener));
     EXPECT_EQ(ER_OK, managerClaimingBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(managerClaimingBus);
 
     SecurityApplicationProxy sapWithManagerClaimingBus(managerClaimingBus, securityManagerBus.GetUniqueName().c_str());
 
@@ -2654,6 +2740,9 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
 
     securityManagerBus.AddApplicationStateRule();
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2716,6 +2805,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -2810,6 +2900,9 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
 
     securityManagerBus.AddApplicationStateRule();
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2881,6 +2974,9 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2926,6 +3022,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     const size_t manifestSize = 1;
     PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
@@ -2938,6 +3035,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     PermissionPolicy::Rule::Member member2[1];
     member2[0].Set("*", PermissionPolicy::Rule::Member::METHOD_CALL, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
     PermissionPolicy::Rule manifest2[manifestSize];
+    manifest2[0].SetObjPath("*");
     manifest2[0].SetInterfaceName("*");
     manifest2[0].SetMembers(1, member2);
 
@@ -2995,6 +3093,9 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
     securityManagerBus.AddApplicationStateRule();
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -3077,6 +3178,9 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
     securityManagerBus.AddApplicationStateRule();
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
