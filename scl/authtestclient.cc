@@ -214,6 +214,7 @@ void CreateMembershipCertChainPeer1() {
     QStatus status = tempIA.Sign(&g_caPrivateKey);
     assert(status == ER_OK);
     SGID1Chain[1] = tempIA;
+    QCC_UNUSED(status);
 
     //SGID1 Chain, leaf, signed by IA
     qcc::MembershipCertificate leaf;
@@ -270,6 +271,7 @@ void CreateMembershipCertChainPeer2() {
     QStatus status = tempIA.Sign(&g_caPrivateKey);
     assert(status == ER_OK);
     SGID2Chain[1] = tempIA;
+    QCC_UNUSED(status);
 
     //SGID2 Chain, leaf, signed by IA
     qcc::MembershipCertificate leaf;

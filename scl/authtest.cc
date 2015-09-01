@@ -220,6 +220,7 @@ class LocalTestObject : public BusObject {
         };
         status = AddMethodHandlers(methodEntries, ArraySize(methodEntries));
         assert(status == ER_OK);
+        QCC_UNUSED(status);
     }
 
     void SignalHandler(const InterfaceDescription::Member* member, const char* sourcePath,  Message& msg)
@@ -246,6 +247,7 @@ class LocalTestObject : public BusObject {
         }
         QStatus status = MethodReply(msg, arg, 1);
         assert(status == ER_OK);
+        QCC_UNUSED(status);
     }
 
     QStatus Get(const char* ifcName, const char* propName, MsgArg& val)
@@ -455,17 +457,15 @@ int main(int argc, char*argv[]) {
     if (g_server) {
         printf("Press Y to EnablePeerSecurity for app-app \n");
         char option[2];
-        scanf("%s", option);
-        //status = g_msgBus->EnablePeerSecurity(NULL, new MyAuthListener(), "authserver-keystore", false);
-        //assert(status == ER_OK);
+        int i = scanf("%s", option);
+        QCC_UNUSED(i);
         status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authserver-keystore", false);
         assert(status == ER_OK);
     } else {
         printf("Press Y to EnablePeerSecurity for app-app \n");
         char option[2];
-        scanf("%s", option);
-        //status = g_msgBus->EnablePeerSecurity(NULL, new MyAuthListener(), "authclient-keystore", false);
-        //assert(status == ER_OK);
+        int i = scanf("%s", option);
+        QCC_UNUSED(i);
         status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authclient-keystore", false);
         assert(status == ER_OK);
     }
@@ -473,8 +473,8 @@ int main(int argc, char*argv[]) {
     if (!g_server) {
         printf("Press Y to start the message flow \n");
         char option[2];
-        scanf("%s", option);
-
+        int i = scanf("%s", option);
+        QCC_UNUSED(i);
         printf("----------------------------------------------- \n");
         //The client sends method call, get prop, set prop, GetAllPop signal to service
         ProxyBusObject clientProxy(*g_msgBus, g_proxyName.c_str(), "/a/b", g_sessionId);
@@ -552,8 +552,8 @@ int main(int argc, char*argv[]) {
 
         printf("Press Y to start the message flow \n");
         char option[2];
-        scanf("%s", option);
-
+        int i = scanf("%s", option);
+        QCC_UNUSED(i);
         printf("----------------------------------------------- \n");
         //The server side sends method call, get prop, set prop, GetAllPop signal to service
         ProxyBusObject clientProxy(*g_msgBus, g_proxyName.c_str(), "/a/b", g_sessionId);
@@ -631,7 +631,8 @@ int main(int argc, char*argv[]) {
 
     printf("Press Y to exit app. \n");
     char option[2];
-    scanf("%s", option);
+    int i = scanf("%s", option);
+    QCC_UNUSED(i);
 
     g_msgBus->Disconnect();
     g_msgBus->Stop();
