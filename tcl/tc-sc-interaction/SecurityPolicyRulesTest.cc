@@ -366,7 +366,6 @@ class TCThread : public Thread {
         //This resets the keystore
         AJ_ClearCredentials(0);
         AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        PrintXML(AppObjects);
         RegisterObjects(AppObjects, AppObjects);
         running = TRUE;
         sessionPort = 0;
@@ -406,9 +405,6 @@ class TCThread : public Thread {
     }
     void SetPermissionManifest(AJ_Manifest* manifest) {
         AJ_ManifestTemplateSet(manifest);
-    }
-    void PrintXML(const AJ_Object* objs) {
-        AJ_PrintXML(objs);
     }
     void RegisterObjects(const AJ_Object* objs, const AJ_Object* prxs) {
         AJ_RegisterObjects(objs, prxs);
