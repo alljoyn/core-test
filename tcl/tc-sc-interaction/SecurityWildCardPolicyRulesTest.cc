@@ -21,6 +21,11 @@
 #include "PermissionMgmtTest.h"
 #include "InMemoryKeyStore.h"
 
+#include <queue>
+#include <functional>
+#include <mutex>
+#include <future>
+
 using namespace ajn;
 using namespace qcc;
 using namespace std;
@@ -30,6 +35,7 @@ using namespace std;
  * Also busy wait loops do not require any platform specific threading code.
  */
 #define WAIT_MSECS 5
+#define WAIT_SIGNAL 10000
 
 static const char argentinaObjPath[] = "/test/argentina";
 static const char arabicObjPath[] = "/test/arabic";
@@ -189,17 +195,78 @@ static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, 
 
 static void AuthCallback(const void* context, AJ_Status status)
 {
-    *((AJ_Status*)context) = status;
+    //*((AJ_Status*)context) = status;
+    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
+    p->set_value(status);
 }
 
 #define UNMARSHAL_TIMEOUT  (1000 * 5)
-class TCThread : public Thread {
+class TCThread_wildcard : public Thread {
+
+    typedef std::function<void (void)> Function;
+    std::queue<Function> funcs;
+    qcc::Mutex funcs_lock;
+
+
+    void HandleQueuedMessages() {
+        //std::lock_guard<std::mutex> guard(funcs_lock);
+        funcs_lock.Lock();
+        while (!funcs.empty()) {
+            Function f = funcs.front();
+            f();
+            funcs.pop();
+        }
+        funcs_lock.Unlock();
+    }
+
+    void Enqueue(Function f) {
+        //std::lock_guard<std::mutex> guard(funcs_lock);
+        funcs_lock.Lock();
+        funcs.push(f);
+        AJ_Net_Interrupt();
+        funcs_lock.Unlock();
+    }
+
+    typedef std::map<uint32_t, Function> MsgHandlerMap;
+    MsgHandlerMap message_handlers;
+
+    void HandleMessage(AJ_Message* msg) {
+        auto it = message_handlers.find(msg->msgId);
+
+        if (it != message_handlers.end()) {
+            Function handler = it->second;
+            handler();
+            message_handlers.erase(it);
+        }
+    }
 
   public:
-    qcc::ThreadReturn STDCALL Run(void* arg){
+    qcc::ThreadReturn Run(void* arg){
         QCC_UNUSED(arg);
+        AJ_Status status;
         AJ_Message msg;
+        AJ_Message reply;
+
+        AJ_AlwaysPrintf(("TC SetUp %s\n", router.c_str()));
+        AJ_Initialize();
+        // Ensure that a routing node is found as quickly as possible
+        //AJ_SetSelectionTimeout(10);
+        AJ_FindBusAndConnect(&bus, router.c_str(), TC_LEAFNODE_CONNECT_TIMEOUT);
+        //This resets the keystore
+        AJ_ClearCredentials(0);
+        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
+        RegisterObjects(AppObjects, AppObjects);
+        running = TRUE;
+        sessionPort = 0;
+        arg_calc_mayo = 42;
+        arg_cali_meal = 17;
+        ara_came_motel = 42;
+        ara_cash_mini = 17;
+        signalReceivedFlag = FALSE;
+
         while (running) {
+            HandleQueuedMessages();
+
             TCStatus = AJ_UnmarshalMsg(&bus, &msg, UNMARSHAL_TIMEOUT);
             //printf("TC unmarshal ... %s\n", AJ_StatusText(TCStatus));
             if (AJ_ERR_TIMEOUT == TCStatus && AJ_ERR_LINK_TIMEOUT == AJ_BusLinkStateProc(&bus)) {
@@ -209,49 +276,57 @@ class TCThread : public Thread {
                 running = FALSE;
                 break;
             } else if (AJ_OK == TCStatus) {
+                bool busMessage = FALSE;
                 uint16_t port;
                 uint32_t sessionId;
                 const char* str;
                 switch (msg.msgId) {
-                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
-                    uint32_t disposition;
-                    if (msg.hdr->msgType == AJ_MSG_ERROR) {
-                        printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT: %s\n", &bus, msg.error);
+                case AJ_METHOD_ACCEPT_SESSION:
+                    status = AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
+                    AJ_ASSERT(AJ_OK == status);
+                    if (port == sessionPort) {
+                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s OK\n", &bus, port, sessionId, str);
+                        AJ_BusReplyAcceptSession(&msg, TRUE);
                     } else {
-                        AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
+                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s BUS\n", &bus, port, sessionId, str);
+                        AJ_ResetArgs(&msg);
+                        busMessage = TRUE;
+                    }
+                    break;
+
+                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        /* Can't tell if this was destined for app or bus */
+                        AJ_ASSERT(0);
+                    } else {
+                        uint32_t disposition;
+                        status = AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
+                        AJ_ASSERT(AJ_OK == status);
                         if (port == sessionPort) {
-                            printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
+                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
                             bound = TRUE;
                         } else {
-                            printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
+                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
                             AJ_ResetArgs(&msg);
-                            AJ_BusHandleBusMessage(&msg);
+                            busMessage = TRUE;
                         }
                     }
                     break;
 
                 case AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION):
-                    uint32_t replyCode;
-                    if (AJ_MSG_ERROR != msg.hdr->msgType) {
-                        AJ_UnmarshalArgs(&msg, "uu", &replyCode, &sessionId);
-                        if (replyCode == AJ_JOINSESSION_REPLY_SUCCESS) {
-                            printf("Joined session session_id=%u\n", sessionId);
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
+                    } else {
+                        uint32_t code;
+                        status = AJ_UnmarshalArgs(&msg, "uu", &code, &sessionId);
+                        AJ_ASSERT(AJ_OK == status);
+                        if (code == AJ_JOINSESSION_REPLY_SUCCESS) {
+                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d OK\n", &bus, sessionId);
                             session = sessionId;
                         } else {
-                            printf("Joined session failed\n");
+                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d FAIL\n", &bus, sessionId);
                         }
-                    }
-                    break;
-
-                case AJ_METHOD_ACCEPT_SESSION:
-                    AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
-                    if (port == sessionPort) {
-                        session = sessionId;
-                        AJ_BusReplyAcceptSession(&msg, TRUE);
-                        printf("Accepted session session_id=%u joiner=%s\n", sessionId, str);
-                    } else {
-                        AJ_ResetArgs(&msg);
-                        AJ_BusHandleBusMessage(&msg);
                     }
                     break;
 
@@ -260,7 +335,6 @@ class TCThread : public Thread {
                 case APP_ARG_CALI_METAL:
                 case APP_ARA_CAME_MOB:
                 case APP_ARA_CASH_MINT:
-                    AJ_Message reply;
                     AJ_MarshalReplyMsg(&msg, &reply);
                     AJ_DeliverMsg(&reply);
                     break;
@@ -319,38 +393,25 @@ class TCThread : public Thread {
                     break;
 
                 default:
-                    /*
-                     * Pass to the built-in bus message handlers
-                     */
-                    AJ_BusHandleBusMessage(&msg);
+                    busMessage = TRUE;
                     break;
+                }
+                if (busMessage) {
+                    AJ_BusHandleBusMessage(&msg);
+                } else {
+                    HandleMessage(&msg);
                 }
             }
             AJ_CloseMsg(&msg);
         }
+
+        AJ_Disconnect(&bus);
         return this;
     }
-    void SetUp(const char* router) {
-        AJ_AlwaysPrintf(("TC SetUp %s\n", router));
-        AJ_Initialize();
-        // Ensure that a routing node is found as quickly as possible
-        //AJ_SetSelectionTimeout(10);
-        AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT);
-        //This resets the keystore
-        AJ_ClearCredentials(0);
-        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        RegisterObjects(AppObjects, AppObjects);
-        running = TRUE;
-        sessionPort = 0;
-        arg_calc_mayo = 42;
-        arg_cali_meal = 17;
-        ara_came_motel = 42;
-        ara_cash_mini = 17;
-        signalReceivedFlag = FALSE;
-    }
+
     QStatus Stop() {
-        AJ_Disconnect(&bus);
         running = FALSE;
+        AJ_Net_Interrupt();
         return Thread::Stop();
     }
     qcc::String GetUniqueName() {
@@ -361,18 +422,26 @@ class TCThread : public Thread {
         QCC_UNUSED(keystore);
         QCC_UNUSED(shared);
         qcc::String str(mechanisms);
-        uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
-        size_t numsuites = 0;
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
-        }
-        AJ_BusEnableSecurity(&bus, suites, numsuites);
+
+        std::promise<void> p;
+        auto func = [this, &p, str] () {
+            uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
+            size_t numsuites = 0;
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
+            }
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
+            }
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
+            }
+            AJ_BusEnableSecurity(&bus, suites, numsuites);
+            p.set_value();
+        };
+
+        Enqueue(func);
+        p.get_future().wait();
         return ER_OK;
     }
     void SetApplicationState(uint16_t state) {
@@ -385,115 +454,203 @@ class TCThread : public Thread {
         AJ_RegisterObjects(objs, prxs);
     }
     QStatus BindSessionPort(uint16_t port) {
-        bound = FALSE;
-        sessionPort = port;
-        AJ_BusBindSessionPort(&bus, port, NULL, 0);
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (bound) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
+        std::promise<bool> p;
+
+        auto func = [this, port, &p] () {
+            bound = FALSE;
+            sessionPort = port;
+            AJ_BusBindSessionPort(&bus, port, NULL, 0);
+
+            message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
+                p.set_value(bound);
+            };
+        };
+
+        Enqueue(func);
+
+        bool bound = false;
+        std::future<bool> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            bound = f.get();
         }
+
         return bound ? ER_OK : ER_FAIL;
     }
     QStatus JoinSession(const char* host, uint16_t port, SessionListener* listener, uint32_t& id, SessionOpts& opts) {
         QCC_UNUSED(listener);
         QCC_UNUSED(opts);
-        session = 0;
-        sessionPort = port;
-        AJ_BusJoinSession(&bus, host, port, NULL);
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (session) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
+        std::promise<uint32_t> p;
+
+        auto func = [this, host, port, &p] () {
+            session = 0;
+            sessionPort = port;
+            AJ_BusJoinSession(&bus, host, port, NULL);
+
+            message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &p] () {
+                p.set_value(session);
+            };
+        };
+
+        Enqueue(func);
+
+        uint32_t session = 0;
+        std::future<uint32_t> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            session = f.get();
         }
+
         if (!session) {
             return ER_FAIL;
         }
+
         id = session;
+
+        std::promise<AJ_Status> p2;
+        auto func2 = [this, host, &p2] () {
+            // AuthCallback will set p2's value
+            AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &p2);
+        };
+
+        Enqueue(func2);
+
         AJ_Status authStatus = AJ_ERR_NULL;
-        if (session) {
-            AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &authStatus);
-            /* Wait for authentication to pass */
-            for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-                if (AJ_ERR_NULL != authStatus) {
-                    break;
-                }
-                qcc::Sleep(WAIT_MSECS);
-            }
+        std::future<AJ_Status> f2 = p2.get_future();
+        st = f2.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            authStatus = f2.get();
         }
+
         return (AJ_OK == authStatus) ? ER_OK : ER_FAIL;
     }
+
     QStatus GetProperty(const char* peer, uint32_t id) {
-        AJ_Status status;
-        AJ_Message msg;
-        if (0x00000000 == (0x000F0000 & id)) {
-            AJ_MarshalMethodCall(&bus, &msg, PRX_ARG_GET_PROP, peer, session, 0, 25000);
-        } else {
-            AJ_MarshalMethodCall(&bus, &msg, PRX_ARA_GET_PROP, peer, session, 0, 25000);
-        }
-        SCStatus = ER_FAIL;
-        response[0] = '\0';
-        status = AJ_MarshalPropertyArgs(&msg, id);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            int get_propid = PRX_ARA_GET_PROP;
+
+            if (0x00000000 == (0x000F0000 & id)) {
+            	get_propid = PRX_ARG_GET_PROP;
+                AJ_MarshalMethodCall(&bus, &msg, PRX_ARG_GET_PROP, peer, session, 0, 25000);
+            } else {
+                AJ_MarshalMethodCall(&bus, &msg, PRX_ARA_GET_PROP, peer, session, 0, 25000);
             }
-            return ER_FAIL;
+
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+            prop = 0;
+
+            propid = id;
+            status = AJ_MarshalPropertyArgs(&msg, propid);
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                	SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                	SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
+            }
+            AJ_DeliverMsg(&msg);
+
+            // need to wait for reply here
+            message_handlers[AJ_REPLY_ID(get_propid)] = [this, &p] () {
+                p.set_value(SCStatus);
+            };
+        };
+
+        Enqueue(func);
+
+        QStatus ret = ER_FAIL;
+        std::future<QStatus> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            ret = f.get();
         }
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
+
+        return ret;
     }
+
     QStatus GetPropertyReply(int32_t& i) {
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (ER_FAIL != SCStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
-        if (ER_OK == SCStatus) {
-            i = prop;
-        }
+        i = prop;
         return SCStatus;
     }
+
+
     QStatus MethodCall(const char* peer, uint32_t id) {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response[0] = '\0';
-        status = AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+            status = AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000);
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                    SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                    SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
             }
-            return ER_FAIL;
+
+            AJ_DeliverMsg(&msg);
+
+            message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
+                p.set_value(SCStatus);
+            };
+        };
+
+        Enqueue(func);
+
+        QStatus status = ER_FAIL;
+        std::future<QStatus> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            status = f.get();
         }
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
+
+        return status;
     }
+
     QStatus MethodCallReply() {
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (ER_FAIL != SCStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
         return SCStatus;
     }
+
     QStatus Signal(const char* peer, uint32_t id) {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        status = AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            SCStatus = ER_FAIL;
+            status = AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                    SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                    SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
             }
-            return ER_FAIL;
-        }
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
+            AJ_DeliverMsg(&msg);
+            SCStatus = ER_OK;
+
+            p.set_value(SCStatus);
+        };
+
+        Enqueue(func);
+        return p.get_future().get();
     }
     const char* GetErrorName() {
         return response;
@@ -502,6 +659,7 @@ class TCThread : public Thread {
         return response;
     }
 
+    qcc::String router;
     bool running;
     bool bound;
     AJ_Status TCStatus;
@@ -838,7 +996,7 @@ class SecurityWildCardPolicyRulesTest : public testing::Test {
 
     BusAttachment managerBus;
     BusAttachment SCBus;
-    TCThread TCBus;
+    TCThread_wildcard TCBus;
 
     SessionPort managerSessionPort;
     SessionPort SCSessionPort;
@@ -889,7 +1047,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     qcc::String advertisingPrefix = "quiet@" + routingNodePrefix;
     ASSERT_EQ(ER_OK, managerBus.AdvertiseName(advertisingPrefix.c_str(), ajn::TRANSPORT_ANY));
 
-    TCBus.SetUp(routingNodePrefix.c_str());
+    TCBus.router = routingNodePrefix;
     TCBus.Start();
 
     EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, true));
@@ -1157,6 +1315,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     }
 
     EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 }
 
 void SecurityWildCardPolicyRulesTest::TearDown()
@@ -1635,6 +1794,7 @@ TEST_F(SecurityWildCardPolicyRulesTest, object_path_not_specified_rule_not_consi
         {
             PermissionPolicy::Rule rules[1];
             rules[0].SetInterfaceName("*");
+            rules[0].SetObjPath("");
             {
                 PermissionPolicy::Rule::Member members[1];
                 members[0].SetMemberName("*");

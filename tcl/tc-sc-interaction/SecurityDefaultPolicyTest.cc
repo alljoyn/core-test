@@ -18,6 +18,9 @@
 #include <alljoyn/SecurityApplicationProxy.h>
 
 #include <queue>
+#include <functional>
+#include <mutex>
+#include <future>
 
 #include "InMemoryKeyStore.h"
 #include "PermissionMgmtObj.h"
@@ -31,7 +34,9 @@ using namespace std;
  * over thread sleeps because of the ease of understanding the busy wait loops.
  * Also busy wait loops do not require any platform specific threading code.
  */
-#define WAIT_MSECS 5
+#define WAIT_MSECS  5
+#define WAIT_SIGNAL 1000
+#define TEN_MINS    600
 
 static const char* const testInterface[] = {
     "org.allseen.test.SecurityApplication.rules",
@@ -44,6 +49,7 @@ static const char* const testInterface[] = {
 
 #define APP_GET_PROP        AJ_APP_MESSAGE_ID(0, 0, AJ_PROP_GET)
 #define APP_SET_PROP        AJ_APP_MESSAGE_ID(0, 0, AJ_PROP_SET)
+#define APP_ALL_PROP        AJ_APP_MESSAGE_ID(0, 0, AJ_PROP_GET_ALL)
 #define APP_ECHO            AJ_APP_MESSAGE_ID(0, 1, 0)
 #define APP_CHIRP           AJ_APP_MESSAGE_ID(0, 1, 1)
 #define APP_PROP1           AJ_APP_PROPERTY_ID(0, 1, 2)
@@ -51,6 +57,7 @@ static const char* const testInterface[] = {
 
 #define PRX_GET_PROP        AJ_PRX_MESSAGE_ID(0, 0, AJ_PROP_GET)
 #define PRX_SET_PROP        AJ_PRX_MESSAGE_ID(0, 0, AJ_PROP_SET)
+#define PRX_ALL_PROP        AJ_PRX_MESSAGE_ID(0, 0, AJ_PROP_GET_ALL)
 #define PRX_ECHO            AJ_PRX_MESSAGE_ID(0, 1, 0)
 #define PRX_CHIRP           AJ_PRX_MESSAGE_ID(0, 1, 1)
 #define PRX_PROP1           AJ_PRX_PROPERTY_ID(0, 1, 2)
@@ -63,8 +70,34 @@ static const AJ_InterfaceDescription testInterfaces[] = {
 };
 
 static AJ_Object AppObjects[] = {
-    { "/test", testInterfaces, 0 },
+    { "/test", testInterfaces, AJ_OBJ_FLAG_ANNOUNCED },
     { NULL }
+};
+
+class TCProps {
+  public:
+    TCProps() { }
+    void SetElement(String name, int32_t value)
+    {
+        props[name] = value;
+    }
+    QStatus GetElement(String name, int32_t& value)
+    {
+        map<String, int32_t>::iterator it;
+        it = props.find(name);
+        if (it == props.end()) {
+            return ER_BUS_ELEMENT_NOT_FOUND;
+        }
+        value = it->second;
+        return ER_OK;
+    }
+    void Clear()
+    {
+        props.clear();
+    }
+
+  private:
+    map<String, int32_t> props;
 };
 
 static int32_t prop1;
@@ -108,6 +141,45 @@ static AJ_Status PropSetHandler(AJ_Message* msg, uint32_t id, void* context)
     }
 }
 
+static AJ_Status PropAllHandler(AJ_Message* msg, AJ_Message* reply)
+{
+    AJ_Status status;
+    const char* ifn;
+    AJ_Arg container;
+    status = AJ_UnmarshalArgs(msg, "s", &ifn);
+    AJ_ASSERT(AJ_OK == status);
+    printf("Get All for %s\n", ifn);
+    status = AJ_MarshalContainer(reply, &container, AJ_ARG_ARRAY);
+    AJ_ASSERT(AJ_OK == status);
+    status = AJ_MarshalArgs(reply, "{sv}", "Prop1", "i", prop1);
+    AJ_ASSERT(AJ_OK == status);
+    status = AJ_MarshalArgs(reply, "{sv}", "Prop2", "i", prop2);
+    AJ_ASSERT(AJ_OK == status);
+    status = AJ_MarshalCloseContainer(reply, &container);
+    AJ_ASSERT(AJ_OK == status);
+    return status;
+}
+
+static AJ_Status PropAllHandlerReply(AJ_Message* msg, TCProps& props)
+{
+    AJ_Status status;
+    AJ_Arg array;
+    const char* str;
+    int32_t val;
+    status = AJ_UnmarshalContainer(msg, &array, AJ_ARG_ARRAY);
+    while (AJ_OK == status) {
+        status = AJ_UnmarshalArgs(msg, "{sv}", &str, "i", &val);
+        if (AJ_OK != status) {
+            break;
+        }
+        props.SetElement(str, val);
+    }
+    AJ_ASSERT(AJ_ERR_NO_MORE == status);
+    status = AJ_UnmarshalCloseContainer(msg, &array);
+    AJ_ASSERT(AJ_OK == status);
+    return status;
+}
+
 static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, AJ_Credential* cred)
 {
     AJ_Status status = AJ_ERR_INVALID;
@@ -128,136 +200,252 @@ static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, 
 
 static void AuthCallback(const void* context, AJ_Status status)
 {
-    *((AJ_Status*)context) = status;
+    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
+    p->set_value(status);
+    //*((AJ_Status*)context) = status;
 }
 
-#define UNMARSHAL_TIMEOUT  (1000 * 5)
-class TCThread : public Thread {
+class TCDefaultPolicyThread : public Thread {
+
+    typedef std::function<void (void)> Function;
+    std::queue<Function> funcs;
+    qcc::Mutex funcs_lock;
+
+
+    void HandleQueuedMessages() {
+        //std::lock_guard<std::mutex> guard(funcs_lock);
+        funcs_lock.Lock();
+        while (!funcs.empty()) {
+            Function f = funcs.front();
+            f();
+            funcs.pop();
+        }
+        funcs_lock.Unlock();
+    }
+
+    void Enqueue(Function f) {
+        //std::lock_guard<std::mutex> guard(funcs_lock);
+        funcs_lock.Lock();
+        funcs.push(f);
+        AJ_Net_Interrupt();
+        funcs_lock.Unlock();
+    }
+
+    typedef std::map<uint32_t, Function> MsgHandlerMap;
+    MsgHandlerMap message_handlers;
+
+    void HandleMessage(AJ_Message* msg) {
+        auto it = message_handlers.find(msg->msgId);
+
+        if (it != message_handlers.end()) {
+            printf("HandleMessage %08X\n", msg->msgId);
+            Function handler = it->second;
+            handler();
+            message_handlers.erase(it);
+        }
+    }
 
   public:
-    qcc::ThreadReturn STDCALL Run(void* arg){
+
+    TCDefaultPolicyThread() : qcc::Thread("TCDefaultPolicyThread"), router() {
+    }
+
+    qcc::ThreadReturn Run(void* arg){
         QCC_UNUSED(arg);
-        AJ_Message msg;
+        AJ_Status status;
+        AJ_Message reply;
+
+        printf("RUNNING!\n");
+
+        AJ_AlwaysPrintf(("TC SetUp %s\n", router.c_str()));
+        AJ_Initialize();
+        // Ensure that a routing node is found as quickly as possible
+        //AJ_SetSelectionTimeout(10);
+
+        AJ_FindBusAndConnect(&bus, router.c_str(), TC_LEAFNODE_CONNECT_TIMEOUT);
+
+        //This resets the keystore
+        AJ_ClearCredentials(0);
+        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
+        RegisterObjects(AppObjects, AppObjects);
+        //PrintXML(AppObjects);
+
+        running = TRUE;
+        sessionPort = 0;
+        prop1 = 42;
+        prop2 = 17;
+        signalReceivedFlag = FALSE;
+
+
         while (running) {
-            TCStatus = AJ_UnmarshalMsg(&bus, &msg, UNMARSHAL_TIMEOUT);
-            //printf("TC unmarshal ... %s\n", AJ_StatusText(TCStatus));
-            if (AJ_ERR_TIMEOUT == TCStatus && AJ_ERR_LINK_TIMEOUT == AJ_BusLinkStateProc(&bus)) {
-                TCStatus = AJ_ERR_READ;
+            AJ_Message msg;
+            HandleQueuedMessages();
+
+            status = AJ_UnmarshalMsg(&bus, &msg, TC_UNMARSHAL_TIMEOUT);
+
+            if (AJ_ERR_TIMEOUT == status && AJ_ERR_LINK_TIMEOUT == AJ_BusLinkStateProc(&bus)) {
+                status = AJ_ERR_READ;
             }
-            if (AJ_ERR_READ == TCStatus) {
+            if (AJ_ERR_READ == status) {
                 running = FALSE;
                 break;
-            } else if (AJ_OK == TCStatus) {
+            } else if (AJ_OK == status) {
+                bool busMessage = FALSE;
                 uint16_t port;
                 uint32_t sessionId;
                 const char* str;
                 switch (msg.msgId) {
-                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
-                    uint32_t disposition;
-                    if (msg.hdr->msgType == AJ_MSG_ERROR) {
-                        printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT: %s\n", &bus, msg.error);
-                    } else {
-                        AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
-                        if (port == sessionPort) {
-                            printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
-                            bound = TRUE;
-                        } else {
-                            printf("BindSessionPort(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
-                            AJ_ResetArgs(&msg);
-                            AJ_BusHandleBusMessage(&msg);
-                        }
-                    }
-                    break;
-
-                case AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION):
-                    uint32_t replyCode;
-                    if (AJ_MSG_ERROR != msg.hdr->msgType) {
-                        AJ_UnmarshalArgs(&msg, "uu", &replyCode, &sessionId);
-                        if (replyCode == AJ_JOINSESSION_REPLY_SUCCESS) {
-                            printf("Joined session session_id=%u\n", sessionId);
-                            session = sessionId;
-                        } else {
-                            printf("Joined session failed\n");
-                        }
-                    }
-                    break;
-
                 case AJ_METHOD_ACCEPT_SESSION:
-                    AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
+                    status = AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
+                    AJ_ASSERT(AJ_OK == status);
                     if (port == sessionPort) {
-                        session = sessionId;
+                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s OK\n", &bus, port, sessionId, str);
                         AJ_BusReplyAcceptSession(&msg, TRUE);
-                        printf("Accepted session session_id=%u joiner=%s\n", sessionId, str);
                     } else {
+                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s BUS\n", &bus, port, sessionId, str);
                         AJ_ResetArgs(&msg);
-                        AJ_BusHandleBusMessage(&msg);
+                        busMessage = TRUE;
                     }
                     break;
 
                 case APP_ECHO:
-                    AJ_Message reply;
-                    AJ_UnmarshalArgs(&msg, "s", &str);
+                    status = AJ_UnmarshalArgs(&msg, "s", &str);
+                    AJ_ASSERT(AJ_OK == status);
                     printf("Echo: %s\n", str);
-                    AJ_MarshalReplyMsg(&msg, &reply);
-                    AJ_MarshalArgs(&reply, "s", str);
-                    AJ_DeliverMsg(&reply);
+                    status = AJ_MarshalReplyMsg(&msg, &reply);
+                    AJ_ASSERT(AJ_OK == status);
+                    status = AJ_MarshalArgs(&reply, "s", str);
+                    AJ_ASSERT(AJ_OK == status);
+                    status = AJ_DeliverMsg(&reply);
+                    AJ_ASSERT(AJ_OK == status);
                     break;
 
                 case APP_CHIRP:
-                    AJ_UnmarshalArgs(&msg, "s", &str);
+                    status = AJ_UnmarshalArgs(&msg, "s", &str);
+                    AJ_ASSERT(AJ_OK == status);
                     printf("Chirp: %s\n", str);
                     signalReceivedFlag = TRUE;
                     break;
 
                 case APP_GET_PROP:
-                    AJ_BusPropGet(&msg, PropGetHandler, NULL);
+                    status = AJ_BusPropGet(&msg, PropGetHandler, NULL);
+                    AJ_ASSERT(AJ_OK == status);
                     break;
 
                 case APP_SET_PROP:
-                    AJ_BusPropSet(&msg, PropSetHandler, NULL);
+                    status = AJ_BusPropSet(&msg, PropSetHandler, NULL);
+                    AJ_ASSERT(AJ_OK == status);
+                    break;
+
+                case APP_ALL_PROP:
+                    status = AJ_MarshalReplyMsg(&msg, &reply);
+                    AJ_ASSERT(AJ_OK == status);
+                    status = PropAllHandler(&msg, &reply);
+                    AJ_ASSERT(AJ_OK == status);
+                    status = AJ_DeliverMsg(&reply);
+                    AJ_ASSERT(AJ_OK == status);
+                    break;
+
+                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        /* Can't tell if this was destined for app or bus */
+                        AJ_ASSERT(0);
+                    } else {
+                        uint32_t disposition;
+                        status = AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
+                        AJ_ASSERT(AJ_OK == status);
+                        if (port == sessionPort) {
+                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
+                            bound = TRUE;
+                        } else {
+                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
+                            AJ_ResetArgs(&msg);
+                            busMessage = TRUE;
+                        }
+                    }
+                    break;
+
+                case AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION):
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
+                    } else {
+                        uint32_t code;
+                        status = AJ_UnmarshalArgs(&msg, "uu", &code, &sessionId);
+                        AJ_ASSERT(AJ_OK == status);
+                        if (code == AJ_JOINSESSION_REPLY_SUCCESS) {
+                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d OK\n", &bus, sessionId);
+                            session = sessionId;
+                        } else {
+                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d FAIL\n", &bus, sessionId);
+                        }
+                    }
+                    break;
+
+                case AJ_REPLY_ID(AJ_METHOD_MANAGED_RESET):
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
+                    } else {
+                        SCStatus = ER_OK;
+                    }
                     break;
 
                 case AJ_REPLY_ID(PRX_ECHO):
                     if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        strncpy(response, msg.error, sizeof (response));
                         SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
                     } else {
                         const char* resp;
-                        AJ_UnmarshalArgs(&msg, "s", &resp);
+                        status = AJ_UnmarshalArgs(&msg, "s", &resp);
+                        AJ_ASSERT(AJ_OK == status);
                         strncpy(response, resp, sizeof (response));
                         SCStatus = ER_OK;
+                        printf("Echo Reply: %s\n", response);
                     }
-                    printf("Echo Reply: %s\n", response);
                     break;
 
                 case AJ_REPLY_ID(PRX_GET_PROP):
                     if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        strncpy(response, msg.error, sizeof (response));
                         SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
                     } else {
                         const char* sig;
-                        AJ_UnmarshalVariant(&msg, &sig);
-                        AJ_UnmarshalArgs(&msg, sig, &propval);
+                        status = AJ_UnmarshalVariant(&msg, &sig);
+                        AJ_ASSERT(AJ_OK == status);
+                        status = AJ_UnmarshalArgs(&msg, sig, &propval);
+                        AJ_ASSERT(AJ_OK == status);
                         SCStatus = ER_OK;
                     }
                     break;
 
                 case AJ_REPLY_ID(PRX_SET_PROP):
-                case AJ_REPLY_ID(AJ_METHOD_MANAGED_RESET):
                     if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        strncpy(response, msg.error, sizeof (response));
                         SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
                     } else {
                         SCStatus = ER_OK;
                     }
                     break;
 
-                default:
-                    /*
-                     * Pass to the built-in bus message handlers
-                     */
-                    AJ_BusHandleBusMessage(&msg);
+                case AJ_REPLY_ID(PRX_ALL_PROP):
+                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
+                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                        strncpy(response, msg.error, sizeof (response));
+                    } else {
+                        PropAllHandlerReply(&msg, allprops);
+                        SCStatus = ER_OK;
+                    }
                     break;
+
+                default:
+                    busMessage = TRUE;
+                    break;
+                }
+                if (busMessage) {
+                    AJ_BusHandleBusMessage(&msg);
+                } else {
+                    HandleMessage(&msg);
                 }
             }
             AJ_CloseMsg(&msg);
@@ -266,22 +454,9 @@ class TCThread : public Thread {
         AJ_Disconnect(&bus);
         return this;
     }
-    void SetUp(const char* router) {
-        AJ_AlwaysPrintf(("TC SetUp %s\n", router));
-        AJ_Initialize();
-        // Ensure that a routing node is found as quickly as possible
-        //AJ_SetSelectionTimeout(10);
-        AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT);
-        //This resets the keystore
-        AJ_ClearCredentials(0);
-        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        AJ_PrintXML(AppObjects);
-        running = TRUE;
-        sessionPort = 0;
-        prop1 = 42;
-        prop2 = 17;
-        signalReceivedFlag = FALSE;
-    }
+
+
+
     QStatus Stop() {
         running = FALSE;
         AJ_Net_Interrupt();
@@ -290,32 +465,45 @@ class TCThread : public Thread {
     qcc::String GetUniqueName() {
         return qcc::String(bus.uniqueName);
     }
+
+
     QStatus EnablePeerSecurity(const char* mechanisms, AuthListener* listener, const char* keystore = NULL, bool shared = FALSE) {
         QCC_UNUSED(listener);
         QCC_UNUSED(keystore);
         QCC_UNUSED(shared);
         qcc::String str(mechanisms);
-        uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
-        size_t numsuites = 0;
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
-        }
-        AJ_BusEnableSecurity(&bus, suites, numsuites);
+
+        std::promise<void> p;
+
+        auto func = [this, &p, str] () {
+            uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
+            size_t numsuites = 0;
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
+            }
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
+            }
+            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
+                suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
+            }
+            AJ_BusEnableSecurity(&bus, suites, numsuites);
+            p.set_value();
+        };
+
+        Enqueue(func);
+        p.get_future().wait();
         return ER_OK;
     }
+
+
     void SetApplicationState(uint16_t state) {
         AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
     }
     void SetPermissionManifest(AJ_Manifest* manifest) {
         AJ_ManifestTemplateSet(manifest);
     }
-    void RegisterObjects(AJ_Object* objs, AJ_Object* prxs, uint8_t secure) {
+    void RegisterObjects(AJ_Object* objs, AJ_Object* prxs, uint8_t secure = true) {
         uint8_t n;
         AJ_Object* tmp;
         tmp = objs;
@@ -331,7 +519,7 @@ class TCThread : public Thread {
         tmp = prxs;
         n = 0;
         while (tmp[n].path) {
-            if (secure) {
+           if (secure) {
                 tmp[n].flags |= AJ_OBJ_FLAG_SECURE;
             } else {
                 tmp[n].flags &= ~AJ_OBJ_FLAG_SECURE;
@@ -340,168 +528,329 @@ class TCThread : public Thread {
         }
         AJ_RegisterObjects(objs, prxs);
     }
+
+    // called from main thread!
     QStatus BindSessionPort(uint16_t port) {
-        bound = FALSE;
-        sessionPort = port;
-        AJ_BusBindSessionPort(&bus, port, NULL, 0);
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (bound) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
+        std::promise<bool> p;
+
+        auto func = [this, port, &p] () {
+            bound = FALSE;
+            sessionPort = port;
+            AJ_BusBindSessionPort(&bus, port, NULL, 0);
+
+            message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
+                p.set_value(bound);
+            };
+        };
+
+        Enqueue(func);
+
+        bool bound = false;
+        std::future<bool> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            bound = f.get();
         }
+
         return bound ? ER_OK : ER_FAIL;
     }
-    QStatus JoinSession(const char* host, uint16_t port, SessionListener* listener, uint32_t& id, SessionOpts& opts) {
-        QCC_UNUSED(listener);
-        QCC_UNUSED(opts);
-        session = 0;
-        sessionPort = port;
-        AJ_BusJoinSession(&bus, host, port, NULL);
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (session) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
+
+    QStatus JoinSession(const char* host, uint16_t port, uint32_t& id) {
+
+        std::promise<uint32_t> p;
+
+        auto func = [this, host, port, &p] () {
+            session = 0;
+            sessionPort = port;
+            AJ_BusJoinSession(&bus, host, port, NULL);
+
+            message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &p] () {
+                p.set_value(session);
+            };
+        };
+
+        Enqueue(func);
+
+        uint32_t session = 0;
+        std::future<uint32_t> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            session = f.get();
         }
+
         if (!session) {
             return ER_FAIL;
         }
+
         id = session;
-        if (session) {
-            return AuthenticatePeer(host);
-        }
-        return ER_FAIL;
+
+        return AuthenticatePeer(host);
     }
+
     QStatus AuthenticatePeer(const char* host) {
+
+        std::promise<AJ_Status> p;
+        auto func = [this, host, &p] () {
+            // AuthCallback will set p's value
+            AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &p);
+        };
+
+        Enqueue(func);
+
         AJ_Status authStatus = AJ_ERR_NULL;
-        AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &authStatus);
-        /* Wait for authentication to pass */
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (AJ_ERR_NULL != authStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
+        std::future<AJ_Status> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            authStatus = f.get();
         }
+
         return (AJ_OK == authStatus) ? ER_OK : ER_FAIL;
     }
-    uint32_t ReadProp1() {
+
+    int32_t ReadProp1() {
         return prop1;
     }
-    uint32_t ReadProp2() {
+    int32_t ReadProp2() {
         return prop2;
     }
-    QStatus GetProperty(const char* peer, uint32_t id) {
-        AJ_Status status;
-        AJ_Message msg;
-        AJ_MarshalMethodCall(&bus, &msg, PRX_GET_PROP, peer, session, 0, 25000);
-        SCStatus = ER_FAIL;
-        response[0] = '\0';
-        propid = id;
-        status = AJ_MarshalPropertyArgs(&msg, propid);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
-            }
-            return ER_FAIL;
-        }
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
-    }
-    QStatus GetPropertyReply(int32_t& i) {
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (ER_FAIL != SCStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
-        if (ER_OK == SCStatus) {
-            i = propval;
-        }
-        return SCStatus;
-    }
-    QStatus SetProperty(const char* peer, uint32_t id, int32_t i) {
-        AJ_Status status;
-        AJ_Message msg;
-        AJ_MarshalMethodCall(&bus, &msg, PRX_SET_PROP, peer, session, 0, 25000);
-        SCStatus = ER_FAIL;
-        response[0] = '\0';
-        propid = id;
-        status = AJ_MarshalPropertyArgs(&msg, propid);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
-            }
-            return ER_FAIL;
-        }
-        AJ_MarshalArgs(&msg, "i", i);
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
-    }
-    QStatus SetPropertyReply() {
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (ER_FAIL != SCStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
-        return SCStatus;
-    }
-    QStatus MethodCall(const char* peer, uint32_t id, const char* str) {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response[0] = '\0';
-        status = AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                return ER_PERMISSION_DENIED;
-            }
-            return ER_FAIL;
-        }
-        if (NULL != str) {
-            AJ_MarshalArgs(&msg, "s", str);
-        }
-        AJ_DeliverMsg(&msg);
-        return ER_OK;
-    }
-    QStatus MethodCallReply() {
-        for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
-            if (ER_FAIL != SCStatus) {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
-        return SCStatus;
-    }
-    QStatus Signal(const char* peer, const char* mbr, const char* str) {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        if (0 == strncmp(mbr, "Chirp", 5)) {
-            status = AJ_MarshalSignal(&bus, &msg, PRX_CHIRP, peer, session, 0, 0);
+
+    QStatus GetProperty(const char* peer, uint32_t id, int32_t& i) {
+
+        struct RetVal {
+            int32_t i;
+            QStatus status;
+        };
+
+        std::promise<RetVal> p;
+
+        auto func = [this, peer, id, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            status = AJ_MarshalMethodCall(&bus, &msg, PRX_GET_PROP, peer, session, 0, 25000);
+            AJ_ASSERT(AJ_OK == status);
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+            propval = 0;
+            RetVal rv = { propval, ER_FAIL };
+
+            AJ_ASSERT((PRX_PROP1 == id) || (PRX_PROP2 == id));
+            propid = id;
+            status = AJ_MarshalPropertyArgs(&msg, propid);
             if (AJ_OK != status) {
                 if (AJ_ERR_ACCESS == status) {
-                    return ER_PERMISSION_DENIED;
+                    rv.status = ER_PERMISSION_DENIED;
+                } else {
+                    rv.status = ER_FAIL;
                 }
-                return ER_FAIL;
+                AJ_CloseMsg(&msg);
+                p.set_value(rv);
+                return;
+            }
+            AJ_DeliverMsg(&msg);
+
+            message_handlers[AJ_REPLY_ID(PRX_GET_PROP)] = [this, &p] () {
+                RetVal rv = { propval, SCStatus };
+                p.set_value(rv);
+            };
+        };
+
+        Enqueue(func);
+
+        RetVal ret = { 0, ER_FAIL };
+        std::future<RetVal> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            ret = f.get();
+            i = ret.i;
+        }
+
+        return ret.status;
+    }
+
+    QStatus SetProperty(const char* peer, uint32_t id, int32_t i) {
+
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, i, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            status = AJ_MarshalMethodCall(&bus, &msg, PRX_SET_PROP, peer, session, 0, 25000);
+            AJ_ASSERT(AJ_OK == status);
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+            propid = id;
+
+            status = AJ_MarshalPropertyArgs(&msg, propid);
+            if (AJ_ERR_ACCESS == status) {
+                AJ_CloseMsg(&msg);
+                p.set_value(ER_PERMISSION_DENIED);
+                return;
+            } else if (AJ_OK != status) {
+                AJ_CloseMsg(&msg);
+                p.set_value(ER_FAIL);
+                return;
+            }
+            AJ_MarshalArgs(&msg, "i", i);
+            AJ_DeliverMsg(&msg);
+
+            message_handlers[AJ_REPLY_ID(PRX_SET_PROP)] = [this, &p] () {
+                p.set_value(SCStatus);
+            };
+        };
+
+        Enqueue(func);
+
+        // wait for the results to come back!
+        QStatus status = ER_FAIL;
+        std::future<QStatus> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            status = f.get();
+        }
+
+        return status;
+    }
+
+    QStatus GetAllProperties(const char* peer, const char* ifn, TCProps& props) {
+
+        struct RetVal {
+            TCProps props;
+            QStatus status;
+        };
+
+        std::promise<RetVal> p;
+
+        auto func = [this, peer, ifn, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            allprops.Clear();
+            status = AJ_MarshalMethodCall(&bus, &msg, PRX_ALL_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
+            AJ_ASSERT(AJ_OK == status);
+            status = AJ_MarshalArgs(&msg, "s", ifn);
+            AJ_ASSERT(AJ_OK == status);
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+
+            #ifdef DISABLED_CLOSE_MESSAGE
+            RetVal rv;
+            rv.status = ER_FAIL;
+            if (AJ_ERR_ACCESS == status) {
+                rv.status = ER_PERMISSION_DENIED;
+                p.set_value(rv);
+                AJ_CloseMsg(&msg);
+                return;
+            } else if (AJ_OK != status) {
+                rv.status = ER_FAIL;
+                p.set_value(rv);
+                AJ_CloseMsg(&msg);
+                return;
+            }
+            #endif
+            AJ_DeliverMsg(&msg);
+
+            message_handlers[AJ_REPLY_ID(PRX_ALL_PROP)] = [this, &p] () {
+                RetVal rv = { allprops, SCStatus };
+                p.set_value(rv);
+            };
+        };
+
+        Enqueue(func);
+
+        // wait for the results to come back!
+        RetVal ret;
+        ret.status = ER_FAIL;
+        std::future<RetVal> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            ret = f.get();
+            props = ret.props;
+        }
+
+        return ret.status;
+    }
+
+    QStatus MethodCall(const char* peer, uint32_t id, const char* str) {
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, str, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            SCStatus = ER_FAIL;
+            response[0] = '\0';
+            status = AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000);
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                    SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                    SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
+            }
+
+            if (str) {
+                AJ_MarshalArgs(&msg, "s", str);
+            }
+            AJ_DeliverMsg(&msg);
+
+            message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
+                p.set_value(SCStatus);
+            };
+        };
+
+        Enqueue(func);
+
+        QStatus status = ER_FAIL;
+        std::future<QStatus> f = p.get_future();
+        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
+        if (st == std::future_status::ready) {
+            status = f.get();
+        }
+
+        return status;
+    }
+
+    QStatus Signal(const char* peer, uint32_t id, const char* str) {
+        std::promise<QStatus> p;
+
+        auto func = [this, peer, id, str, &p] () {
+            AJ_Status status;
+            AJ_Message msg;
+            SCStatus = ER_FAIL;
+            status = AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                    SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                    SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
             }
             AJ_MarshalArgs(&msg, "s", str);
             AJ_DeliverMsg(&msg);
-            return ER_OK;
-        }
-        return SCStatus;
+            SCStatus = ER_OK;
+
+            p.set_value(SCStatus);
+        };
+
+        Enqueue(func);
+        return p.get_future().get();
     }
+
     const char* GetErrorName() {
         return response;
     }
+
     const char* GetResponse() {
         return response;
     }
 
+    qcc::String router;
     bool running;
     bool bound;
-    AJ_Status TCStatus;
     AJ_BusAttachment bus;
     uint16_t sessionPort;
     uint32_t session;
@@ -510,8 +859,14 @@ class TCThread : public Thread {
     char response[1024];
     uint32_t propid;
     int32_t propval;
+    TCProps allprops;
 };
 
+/*
+ * The unit test use many busy wait loops.  The busy wait loops were chosen
+ * over thread sleeps because of the ease of understanding the busy wait loops.
+ * Also busy wait loops do not require any platform specific threading code.
+ */
 class DefaultPolicy_ApplicationStateListener : public ApplicationStateListener {
   public:
     DefaultPolicy_ApplicationStateListener() : stateMap() { }
@@ -628,6 +983,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
     SecurityDefaultPolicyTest() :
         managerBus("SecurityPolicyRulesManager"),
         SCBus("SecurityPolicyRulesSC"),
+        TCBus(),
         managerSessionPort(42),
         SCSessionPort(42),
         TCSessionPort(42),
@@ -639,6 +995,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
         SCAuthListener(NULL),
         appStateListener()
     {
+        TCBus = new TCDefaultPolicyThread();
     }
 
     virtual void SetUp() {
@@ -661,12 +1018,12 @@ class SecurityDefaultPolicyTest : public testing::Test {
         qcc::String advertisingPrefix = "quiet@" + routingNodePrefix;
         ASSERT_EQ(ER_OK, managerBus.AdvertiseName(advertisingPrefix.c_str(), ajn::TRANSPORT_ANY));
 
-        TCBus.SetUp(routingNodePrefix.c_str());
-        TCBus.Start();
+        TCBus->router = routingNodePrefix.c_str();
+        TCBus->Start();
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", SCAuthListener));
-        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", NULL));
+        EXPECT_EQ(ER_OK, TCBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", NULL));
 
         // We are not marking the interface as a secure interface. Some of the
         // tests don't use security. So we use Object based security for any
@@ -695,11 +1052,11 @@ class SecurityDefaultPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, SCBus.BindSessionPort(SCSessionPort, opts2, SCSessionPortListener));
 
         SessionOpts opts3;
-        EXPECT_EQ(ER_OK, TCBus.BindSessionPort(TCSessionPort));
+        EXPECT_EQ(ER_OK, TCBus->BindSessionPort(TCSessionPort));
 
         EXPECT_EQ(ER_OK, managerBus.JoinSession(managerBus.GetUniqueName().c_str(), managerSessionPort, NULL, managerToManagerSessionId, opts1));
         EXPECT_EQ(ER_OK, managerBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, managerToSCSessionId, opts2));
-        EXPECT_EQ(ER_OK, managerBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, managerToTCSessionId, opts3));
+        EXPECT_EQ(ER_OK, managerBus.JoinSession(TCBus->GetUniqueName().c_str(), TCSessionPort, NULL, managerToTCSessionId, opts3));
 
         SecurityApplicationProxy sapWithManager(managerBus, managerBus.GetUniqueName().c_str(), managerToManagerSessionId);
         PermissionConfigurator::ApplicationState applicationStateManager;
@@ -711,7 +1068,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, sapWithSC.GetApplicationState(applicationStateSC));
         EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC);
 
-        SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+        SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
         PermissionConfigurator::ApplicationState applicationStateTC;
         EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
         EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
@@ -744,7 +1101,6 @@ class SecurityDefaultPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, pcSC.GetSigningPublicKey(SCKey));
 
         //Create TC key
-        ECCPublicKey TCPublicKey;
         EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
 
         uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
@@ -843,7 +1199,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
-        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", NULL));
+        EXPECT_EQ(ER_OK, TCBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", NULL));
     }
 
     virtual void TearDown() {
@@ -851,8 +1207,8 @@ class SecurityDefaultPolicyTest : public testing::Test {
         managerBus.Join();
         SCBus.Stop();
         SCBus.Join();
-        TCBus.Stop();
-        TCBus.Join();
+        TCBus->Stop();
+        TCBus->Join();
         delete managerAuthListener;
         delete SCAuthListener;
     }
@@ -900,16 +1256,13 @@ class SecurityDefaultPolicyTest : public testing::Test {
     }
 
     void InstallMemberShipOnTC() {
-        SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
-        //Create TC key
-        ECCPublicKey TCPublicKey;
-        EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
+        SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
 
         String membershipSerial = "1";
         qcc::MembershipCertificate TCMembershipCertificate[1];
         EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateMembershipCert(membershipSerial,
                                                                         managerBus,
-                                                                        TCBus.GetUniqueName(),
+                                                                        TCBus->GetUniqueName(),
                                                                         &TCPublicKey,
                                                                         managerGuid,
                                                                         false,
@@ -998,7 +1351,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
     }
     BusAttachment managerBus;
     BusAttachment SCBus;
-    TCThread TCBus;
+    TCDefaultPolicyThread* TCBus;
 
     SessionPort managerSessionPort;
     SessionPort SCSessionPort;
@@ -1023,6 +1376,9 @@ class SecurityDefaultPolicyTest : public testing::Test {
 
     //Random GUID used for the SecurityManager
     GUID128 managerGuid;
+
+    //TC key
+    ECCPublicKey TCPublicKey;
 };
 
 /*
@@ -1069,22 +1425,27 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
 
     DefaultRulesTestBusObject SCBusObject(SCBus, "/test", interfaceName);
     EXPECT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, true));
-    TCBus.RegisterObjects(AppObjects, AppObjects, true);
+    TCBus->RegisterObjects(AppObjects, AppObjects, true);
 
     /* install all permissive permission policy for SC*/
     //Permission policy that will be installed on SC
     PermissionPolicy SCPolicy;
     GeneratePermissivePolicy(SCPolicy, 1);
-
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
+    {
+        PermissionPolicy defaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithSC.GetDefaultPolicy(defaultPolicy));
+        EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, SCPolicy));
+    }
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
 
     ProxyBusObject proxy;
-    proxy = ProxyBusObject(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
+    proxy = ProxyBusObject(SCBus, TCBus->GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
     
     // SC to TC
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
@@ -1106,7 +1467,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed SetProperty call";
-    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus->ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed GetProperty call";;
@@ -1131,19 +1492,16 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     // TC to SC
     // Verify Method call
     const char* s = "String that should be Echoed back.";
-    EXPECT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
-    EXPECT_EQ(ER_OK, TCBus.MethodCallReply());
-    EXPECT_STREQ(s, TCBus.GetResponse());
+    EXPECT_EQ(ER_OK, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+    EXPECT_STREQ(s, TCBus->GetResponse());
 
     // Verify Set/Get Property and GetAll Properties
     int32_t prop = 513;
-    EXPECT_EQ(ER_OK, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
-    EXPECT_EQ(ER_OK, TCBus.SetPropertyReply());
+    EXPECT_EQ(ER_OK, TCBus->SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
     EXPECT_EQ(513, SCBusObject.ReadProp1());
 
     prop = 0;
-    EXPECT_EQ(ER_OK, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1));
-    EXPECT_EQ(ER_OK, TCBus.GetPropertyReply(prop));
+    EXPECT_EQ(ER_OK, TCBus->GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
     EXPECT_EQ(513, prop);
 
     #ifdef NOT_DEFINED
@@ -1163,23 +1521,23 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     // SC can Send Signal
     arg.Set("s", "Chirp this String out in the signal.");
     // Signals are send and forget.  They will always return ER_OK.
-    EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(), SCToTCSessionId, *SCBus.GetInterface(interfaceName)->GetMember("Chirp"), &arg, 1, 0, 0));
+    EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus->GetUniqueName().c_str(), SCToTCSessionId, *SCBus.GetInterface(interfaceName)->GetMember("Chirp"), &arg, 1, 0, 0));
 
     //Wait for a maximum of 2 sec for the Chirp Signal.
     for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
-        if (TCBus.signalReceivedFlag) {
+        if (TCBus->signalReceivedFlag) {
             break;
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    EXPECT_TRUE(TCBus.signalReceivedFlag) << "TC failed to receive the Signal from SC";
+    EXPECT_TRUE(TCBus->signalReceivedFlag) << "TC failed to receive the Signal from SC";
 
     // TC can Send Signal
     ChirpSignalReceiver chirpSignalReceiver;
     EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&chirpSignalReceiver, static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler), SCBus.GetInterface(interfaceName)->GetMember("Chirp"), NULL));
 
     // Signals are send and forget.  They will always return ER_OK.
-    EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), "Chirp", "Chirp this String out in the signal."));
+    EXPECT_EQ(ER_OK, TCBus->Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
 
     //Wait for a maximum of 2 sec for the Chirp Signal.
     for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1191,7 +1549,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     EXPECT_TRUE(chirpSignalReceiver.signalReceivedFlag) << "SC failed to receive the Signal from TC";
     SCBus.UnregisterSignalHandler(&chirpSignalReceiver, static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler), SCBus.GetInterface(interfaceName)->GetMember("Chirp"), NULL);
 
-    SecurityApplicationProxy sapSCtoTC(SCBus, TCBus.GetUniqueName().c_str(), SCToTCSessionId);
+    SecurityApplicationProxy sapSCtoTC(SCBus, TCBus->GetUniqueName().c_str(), SCToTCSessionId);
     EXPECT_EQ(ER_OK, sapSCtoTC.Reset());
 
     /* clean up */
@@ -1238,41 +1596,46 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
 
     DefaultRulesTestBusObject SCBusObject(SCBus, "/test", interfaceName);
     EXPECT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, true));
-    TCBus.RegisterObjects(AppObjects, AppObjects, true);
+    TCBus->RegisterObjects(AppObjects, AppObjects, true);
 
     /* install all permissive permission policy for SC*/
     //Permission policy that will be installed on SC
     PermissionPolicy SCPolicy;
     GeneratePermissivePolicy(SCPolicy, 1);
-
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
+    {
+        PermissionPolicy defaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithSC.GetDefaultPolicy(defaultPolicy));
+        EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, SCPolicy));
+    }
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     // Stitch the auth mechanism to ECDHE_NULL
     EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", SCAuthListener));
-    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", NULL));
+    EXPECT_EQ(ER_OK, TCBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", NULL));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
 
     //1 . App. bus makes a method call, get property call, set property call,
     //    getall properties call on the ASG bus.
     // verify: The messages cannot be sent or received successfully by the app. bus.
     {
         // TC to SC
-        EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
+        EXPECT_EQ(ER_OK, TCBus->AuthenticatePeer(SCBus.GetUniqueName().c_str()));
         // Verify Method call
         const char* s = "String that should be Echoed back.";
-        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
 
         // Verify Set/Get Property and GetAll Properties
         int32_t prop = 513;
-        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
+        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus->SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(42, SCBusObject.ReadProp1());
 
         prop = 0;
-        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1));
+        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus->GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
 
         #ifdef NOT_DEFINED
         MsgArg props;
@@ -1284,35 +1647,35 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
     // verify: The signal cannot be received successfully by the ASG bus.
     {
         // TC Send Signal
-        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.Signal(SCBus.GetUniqueName().c_str(), "Chirp", "Chirp this String out in the signal."));
+        EXPECT_EQ(ER_PERMISSION_DENIED, TCBus->Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
     }
 
     //3. ASG bus makes a method call, get property call, set property call, getall
     //   properties call on the app. bus.
     // verify: The messages cannot be sent or received successfully by the app. bus.
     {
-        ProxyBusObject proxy(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
+        ProxyBusObject proxy(SCBus, TCBus->GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
         EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
         EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
 
         // Verify Method call
         MsgArg arg("s", "String that should be Echoed back.");
         Message replyMsg(SCBus);
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
         EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", replyMsg->GetErrorName());
 
         // Verify Set/Get Property and GetAll Properties
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus->ReadProp1());
 
         MsgArg prop1ArgOut;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
 
         #ifdef NOT_DEFINED
         MsgArg props;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
         EXPECT_EQ((size_t)0, props.v_array.GetNumElements());
         #endif
     }
@@ -1322,24 +1685,24 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
         // SC Send Signal
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
-        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
+        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus->GetUniqueName().c_str(),
                                                SCToTCSessionId,
                                                *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                                &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
-            if (TCBus.signalReceivedFlag) {
+            if (TCBus->signalReceivedFlag) {
                 break;
             }
             qcc::Sleep(WAIT_MSECS);
         }
-        EXPECT_FALSE(TCBus.signalReceivedFlag) << "TC failed to receive the Signal from SC";
+        EXPECT_FALSE(TCBus->signalReceivedFlag) << "TC failed to receive the Signal from SC";
     }
     // 5. ASG bus calls Reset on the app. bus.
     // verify: The Reset cannot be sent or received successfully on the app. bus.
     {
-        SecurityApplicationProxy sapSCtoTC(SCBus, TCBus.GetUniqueName().c_str(), SCToTCSessionId);
+        SecurityApplicationProxy sapSCtoTC(SCBus, TCBus->GetUniqueName().c_str(), SCToTCSessionId);
         EXPECT_EQ(ER_PERMISSION_DENIED, sapSCtoTC.Reset());
     }
 
@@ -1396,7 +1759,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
      */
     DefaultRulesTestBusObject SCBusObject(SCBus, "/test", interfaceName);
     EXPECT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, true));
-    TCBus.RegisterObjects(AppObjects, AppObjects, true);
+    TCBus->RegisterObjects(AppObjects, AppObjects, true);
 
     /* install all permissive permission policy for SC*/
     //Permission policy that will be installed on SC
@@ -1415,29 +1778,26 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
 
     // 1. App. bus (TC) makes a method call, get property call, set property call,
     //   getall properties call on Peer A (SC).
     // verify: Method call, get property, set property, getall properties are successful.
     {
         // TC to SC
-        EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
+        EXPECT_EQ(ER_OK, TCBus->AuthenticatePeer(SCBus.GetUniqueName().c_str()));
         // Verify Method call
         const char* s = "String that should be Echoed back.";
-        EXPECT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
-        EXPECT_EQ(ER_OK, TCBus.MethodCallReply());
-        EXPECT_STREQ(s, TCBus.GetResponse());
+        EXPECT_EQ(ER_OK, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+        EXPECT_STREQ(s, TCBus->GetResponse());
 
         // Verify Set/Get Property and GetAll Properties
         int32_t prop = 513;
-        EXPECT_EQ(ER_OK, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
-        EXPECT_EQ(ER_OK, TCBus.SetPropertyReply());
+        EXPECT_EQ(ER_OK, TCBus->SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, SCBusObject.ReadProp1());
 
         prop = 0;
-        EXPECT_EQ(ER_OK, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1));
-        EXPECT_EQ(ER_OK, TCBus.GetPropertyReply(prop));
+        EXPECT_EQ(ER_OK, TCBus->GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, prop);
 
         #ifdef NOT_DEFINED
@@ -1465,7 +1825,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
                                                         SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                                         NULL));
 
-        EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), "Chirp", "Chirp this String out in the signal."));
+        EXPECT_EQ(ER_OK, TCBus->Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1486,24 +1846,24 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
     // verify: Method call, get property, set property, getall properties are not
     //         received by the app. bus. (TC)
     {
-        ProxyBusObject proxy(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
+        ProxyBusObject proxy(SCBus, TCBus->GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
         EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
         EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
 
         // Verify Method call
         MsgArg arg("s", "String that should be Echoed back.");
         Message replyMsg(SCBus);
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
         EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", replyMsg->GetErrorName());
 
         // Verify Set/Get Property and GetAll Properties
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus->ReadProp1());
 
         MsgArg prop1ArgOut;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
+        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
 
         #ifdef NOT_DEFINED
         MsgArg props;
@@ -1515,28 +1875,28 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
     // verify: The signal is not received by the app. bus (TC).
     {
         // SC can Send Signal
-        TCBus.signalReceivedFlag = FALSE;
+        TCBus->signalReceivedFlag = FALSE;
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
-        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
+        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus->GetUniqueName().c_str(),
                                                SCToTCSessionId,
                                                *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                                &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
-            if (TCBus.signalReceivedFlag) {
+            if (TCBus->signalReceivedFlag) {
                 break;
             }
             qcc::Sleep(WAIT_MSECS);
         }
-        //EXPECT_FALSE(TCBus.signalReceivedFlag) << "TC failed to receive the Signal from SC";
-        EXPECT_TRUE(TCBus.signalReceivedFlag);
+        //EXPECT_FALSE(TCBus->signalReceivedFlag) << "TC failed to receive the Signal from SC";
+        EXPECT_TRUE(TCBus->signalReceivedFlag);
     }
     // 5. Peer A (SC) calls Reset on the app. bus (TC)
     // verify: Reset method call should fail.
     {
-        SecurityApplicationProxy sapSCtoTC(SCBus, TCBus.GetUniqueName().c_str(), SCToTCSessionId);
+        SecurityApplicationProxy sapSCtoTC(SCBus, TCBus->GetUniqueName().c_str(), SCToTCSessionId);
         EXPECT_EQ(ER_PERMISSION_DENIED, sapSCtoTC.Reset());
     }
 
@@ -1584,11 +1944,11 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
     // when using Security2.0
     DefaultRulesTestBusObject SCBusObject(SCBus, "/test", interfaceName);
     EXPECT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, false));
-    TCBus.RegisterObjects(AppObjects, AppObjects, false);
+    TCBus->RegisterObjects(AppObjects, AppObjects, false);
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
 
     // 1. App. bus (TC) makes a method call, get property call, set property call,
     //   getall properties call on Peer A (SC).
@@ -1596,19 +1956,16 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
     {
         // Verify Method call
         const char* s = "String that should be Echoed back.";
-        EXPECT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
-        EXPECT_EQ(ER_OK, TCBus.MethodCallReply());
-        EXPECT_STREQ(s, TCBus.GetResponse());
+        EXPECT_EQ(ER_OK, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+        EXPECT_STREQ(s, TCBus->GetResponse());
 
         // Verify Set/Get Property and GetAll Properties
         int32_t prop = 513;
-        EXPECT_EQ(ER_OK, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
-        EXPECT_EQ(ER_OK, TCBus.SetPropertyReply());
+        EXPECT_EQ(ER_OK, TCBus->SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, SCBusObject.ReadProp1());
 
         prop = 0;
-        EXPECT_EQ(ER_OK, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1));
-        EXPECT_EQ(ER_OK, TCBus.GetPropertyReply(prop));
+        EXPECT_EQ(ER_OK, TCBus->GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, prop);
 
         #ifdef NOT_DEFINED
@@ -1638,7 +1995,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
                                                         NULL));
 
         // Signals are send and forget.  They will always return ER_OK.
-        EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), "Chirp", "Chirp this String out in the signal."));
+        EXPECT_EQ(ER_OK, TCBus->Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1658,7 +2015,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
     //    properties call on the app. bus (TC).
     // verify:  Method call, get property, set property, getall properties are successful.
     {
-        ProxyBusObject proxy(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, false);
+        ProxyBusObject proxy(SCBus, TCBus->GetUniqueName().c_str(), "/test", SCToTCSessionId, false);
         EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
         EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
 
@@ -1708,19 +2065,19 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
 
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
-        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
+        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus->GetUniqueName().c_str(),
                                                SCToTCSessionId,
                                                *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                                &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
-            if (TCBus.signalReceivedFlag) {
+            if (TCBus->signalReceivedFlag) {
                 break;
             }
             qcc::Sleep(WAIT_MSECS);
         }
-        EXPECT_TRUE(TCBus.signalReceivedFlag) << "SC failed to receive the Signal from TC";
+        EXPECT_TRUE(TCBus->signalReceivedFlag) << "SC failed to receive the Signal from TC";
     }
 
     /* clean up */
@@ -1749,7 +2106,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
  *      ASGA =     managerBus
  *      app. bus = Peer1
  */
-TEST_F(SecurityDefaultPolicyTest, default_policy_overridden_when_a_new_policy_installed)
+TEST_F(SecurityDefaultPolicyTest, default_policy_overridden_when_a_new_policy_installed_SC)
 {
     InstallMemberShipOnManager();
 
@@ -1787,18 +2144,82 @@ TEST_F(SecurityDefaultPolicyTest, default_policy_overridden_when_a_new_policy_in
 
     EXPECT_NE(policy, defaultPolicy);
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(policy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
-    SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
     PermissionPolicy TCPolicy;
     GeneratePermissivePolicy(TCPolicy, 1);
+    {
+        PermissionPolicy defaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithTC.GetDefaultPolicy(defaultPolicy));
+        EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, TCPolicy));
+    }
     EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
-    EXPECT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), AJ_METHOD_MANAGED_RESET, NULL));
-    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.MethodCallReply());
-    EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", TCBus.GetErrorName());
+    EXPECT_EQ(ER_OK, TCBus->JoinSession(SCBus.GetUniqueName().c_str(), TCSessionPort, SCToTCSessionId));
+    EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), AJ_METHOD_MANAGED_RESET, NULL));
+    EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", TCBus->GetErrorName());
+}
+
+TEST_F(SecurityDefaultPolicyTest, default_policy_overridden_when_a_new_policy_installed_TC)
+{
+    InstallMemberShipOnManager();
+
+    PermissionPolicy policy;
+    policy.SetVersion(1);
+    {
+        PermissionPolicy::Acl acls[1];
+        {
+            PermissionPolicy::Peer peers[1];
+            peers[0].SetType(PermissionPolicy::Peer::PEER_ANY_TRUSTED);
+            acls[0].SetPeers(1, peers);
+        }
+        {
+            PermissionPolicy::Rule rules[1];
+            rules[0].SetObjPath("*");
+            rules[0].SetInterfaceName("*");
+            {
+                PermissionPolicy::Rule::Member members[1];
+                members[0].Set("Ping",
+                               PermissionPolicy::Rule::Member::METHOD_CALL,
+                               PermissionPolicy::Rule::Member::ACTION_PROVIDE |
+                               PermissionPolicy::Rule::Member::ACTION_MODIFY |
+                               PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+                rules[0].SetMembers(1, members);
+            }
+            acls[0].SetRules(1, rules);
+        }
+        policy.SetAcls(1, acls);
+    }
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
+
+    PermissionPolicy defaultPolicy;
+    EXPECT_EQ(ER_OK, sapWithTC.GetDefaultPolicy(defaultPolicy));
+    EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, policy));
+
+    EXPECT_NE(policy, defaultPolicy);
+    EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(policy));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
+
+    SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
+    PermissionPolicy SCPolicy;
+    GeneratePermissivePolicy(SCPolicy, 1);
+    {
+        PermissionPolicy defaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithSC.GetDefaultPolicy(defaultPolicy));
+        EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, SCPolicy));
+    }
+    EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
+
+    SessionOpts opts;
+    SessionId TCToSCSessionId;
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    SecurityApplicationProxy sapSCwithTC(SCBus, TCBus->GetUniqueName().c_str(), TCToSCSessionId);
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.Reset());
 }
 
 /*
@@ -1830,13 +2251,13 @@ TEST_F(SecurityDefaultPolicyTest, default_policy_overridden_when_a_new_policy_in
  *      ASG bus = Peer1
  *      app. Bus = Peer2
  */
-TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations)
+TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations_SC)
 {
     InstallMemberShipOnManager();
     InstallMemberShipOnSC();
 
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-    SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
     PermissionPolicy SCPolicy;
     GeneratePermissivePolicy(SCPolicy, 1);
 
@@ -1846,15 +2267,8 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
         UpdatePolicyWithValuesFromDefaultPolicy(SCDefaultPolicy, SCPolicy, true, true);
     }
 
-    sapWithSC.UpdatePolicy(SCPolicy);
-
-    /*
-     * After having a new policy installed, the target bus clears out all of
-     * its peer's secret and session keys, so the next call will get security
-     * violation.  So just make the call and ignore the outcome.
-     */
-    PermissionPolicy retPolicy;
-    sapWithSC.GetPolicy(retPolicy);
+    EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     const size_t manifestSize = 2;
     const size_t certChainSize = 1;
@@ -1906,13 +2320,10 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   SCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
     EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     /*************Update TC Manifest *************/
-    //TC key
-    ECCPublicKey TCPublicKey;
-    EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
-
-    // SC manifest
+    // TC manifest
     PermissionPolicy::Rule TCManifest[manifestSize];
     TCManifest[0].SetInterfaceName("*");
     TCManifest[0].SetObjPath("*");
@@ -1954,12 +2365,137 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   TCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), SCSessionPort, NULL, SCToTCSessionId, opts));
-    SecurityApplicationProxy sapSCwithTC(SCBus, TCBus.GetUniqueName().c_str(), SCToTCSessionId);
+    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus->GetUniqueName().c_str(), SCSessionPort, NULL, SCToTCSessionId, opts));
+    SecurityApplicationProxy sapSCwithTC(SCBus, TCBus->GetUniqueName().c_str(), SCToTCSessionId);
     EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.Reset());
 
     EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+}
+
+TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations_TC)
+{
+    InstallMemberShipOnManager();
+    InstallMemberShipOnTC();
+
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus->GetUniqueName().c_str(), managerToTCSessionId);
+    SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
+    PermissionPolicy TCPolicy;
+    GeneratePermissivePolicy(TCPolicy, 1);
+
+    {
+        PermissionPolicy TCDefaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithTC.GetDefaultPolicy(TCDefaultPolicy));
+        UpdatePolicyWithValuesFromDefaultPolicy(TCDefaultPolicy, TCPolicy, true, true);
+    }
+
+    EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
+
+    const size_t manifestSize = 2;
+    const size_t certChainSize = 1;
+    /*************Update TC Manifest *************/
+    // TC manifest
+    PermissionPolicy::Rule TCManifest[manifestSize];
+    TCManifest[0].SetInterfaceName("*");
+    TCManifest[0].SetObjPath("*");
+    {
+        PermissionPolicy::Rule::Member members[1];
+        members[0].Set("*",
+                       PermissionPolicy::Rule::Member::NOT_SPECIFIED,
+                       PermissionPolicy::Rule::Member::ACTION_PROVIDE |
+                       PermissionPolicy::Rule::Member::ACTION_MODIFY |
+                       PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        TCManifest[0].SetMembers(1, members);
+    }
+    TCManifest[1].SetInterfaceName(org::alljoyn::Bus::Security::ManagedApplication::InterfaceName);
+    TCManifest[1].SetObjPath(org::alljoyn::Bus::Security::ObjectPath);
+    {
+        PermissionPolicy::Rule::Member members[1];
+        // This will block the UpdateIdentity method from being called.
+        members[0].Set("UpdateIdentity",
+                       PermissionPolicy::Rule::Member::METHOD_CALL,
+                       0);
+        TCManifest[0].SetMembers(1, members);
+    }
+
+    uint8_t TCDigest[Crypto_SHA256::DIGEST_SIZE];
+    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
+                                                               TCManifest, manifestSize,
+                                                               TCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+
+    //Create TC identityCert
+    IdentityCertificate identityCertChainTC[certChainSize];
+
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerBus,
+                                                                  "1",
+                                                                  managerGuid.ToString(),
+                                                                  &TCPublicKey,
+                                                                  "TCAlias",
+                                                                  3600,
+                                                                  identityCertChainTC[0],
+                                                                  TCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+
+    EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
+
+    /*************Update SC Manifest *************/
+    //SC key
+    KeyInfoNISTP256 SCKey;
+    PermissionConfigurator& pcSC = SCBus.GetPermissionConfigurator();
+    EXPECT_EQ(ER_OK, pcSC.GetSigningPublicKey(SCKey));
+
+    // TC manifest
+    PermissionPolicy::Rule SCManifest[manifestSize];
+    SCManifest[0].SetInterfaceName("*");
+    SCManifest[0].SetObjPath("*");
+    {
+        PermissionPolicy::Rule::Member members[1];
+        members[0].Set("*",
+                       PermissionPolicy::Rule::Member::NOT_SPECIFIED,
+                       PermissionPolicy::Rule::Member::ACTION_PROVIDE |
+                       PermissionPolicy::Rule::Member::ACTION_MODIFY |
+                       PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        TCManifest[0].SetMembers(1, members);
+    }
+    SCManifest[1].SetInterfaceName(org::alljoyn::Bus::Security::ManagedApplication::InterfaceName);
+    SCManifest[1].SetObjPath(org::alljoyn::Bus::Security::ObjectPath);
+    {
+        PermissionPolicy::Rule::Member members[1];
+        // This will block the Reset method from being called.
+        members[0].Set("Reset",
+                       PermissionPolicy::Rule::Member::METHOD_CALL,
+                       0);
+        TCManifest[0].SetMembers(1, members);
+    }
+
+    uint8_t SCDigest[Crypto_SHA256::DIGEST_SIZE];
+    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
+                                                               SCManifest, manifestSize,
+                                                               SCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+
+    //Create SC identityCert
+    IdentityCertificate identityCertChainSC[certChainSize];
+
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerBus,
+                                                                  "1",
+                                                                  managerGuid.ToString(),
+                                                                  SCKey.GetPublicKey(),
+                                                                  "SCAlias",
+                                                                  3600,
+                                                                  identityCertChainSC[0],
+                                                                  SCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+
+    EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
+
+    SessionOpts opts;
+    SessionId TCToSCSessionId;
+    EXPECT_EQ(ER_OK, TCBus->JoinSession(SCBus.GetUniqueName().c_str(), TCSessionPort, TCToSCSessionId));
+    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), AJ_METHOD_MANAGED_RESET, NULL));
+    //EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, TCBus->MethodCall(SCBus.GetUniqueName().c_str(), AJ_METHOD_MANAGED_UPDATE_IDENTITY, NULL));
+    //EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", TCBus->GetErrorName());
 }
