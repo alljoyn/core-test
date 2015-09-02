@@ -686,6 +686,7 @@ int main(int argc, char*argv[]) {
     }
 #endif
     bool stressInstallPolicy = false;
+    bool updateIdentity = false;
     bool reset = false;
 
     /* Parse command line args */
@@ -700,6 +701,8 @@ int main(int argc, char*argv[]) {
             }
         } else if (0 == strcmp("-sip", argv[i])) {
             stressInstallPolicy = true;
+        } else if (0 == strcmp("-ui", argv[i])) {
+            updateIdentity = true;
         } else if (0 == strcmp("-p2", argv[i])) {
             peer1 = false;
         } else if (0 == strcmp("-reset", argv[i])) {
@@ -740,7 +743,6 @@ int main(int argc, char*argv[]) {
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
     assert(status == ER_OK);
-    qcc::Sleep(2000);
 
     //Set manifest template, ASACORE-2341 if no manifest template set, then no SLS emitted
     // All Inclusive manifest template
@@ -946,16 +948,12 @@ int main(int argc, char*argv[]) {
     printf("root PEM \n");
     cout << rootPEM.c_str() << endl;
 
-    qcc::Sleep(2000);
-
     //status = securityAppProxy.Reset();
     //printf("BUG Reset status is %s  \n",QCC_StatusText(status));
 
     //All set to claim
     status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, (qcc::IdentityCertificate*)certChain, 3, manifest, 1);
     printf("Service Claim status is %s \n", QCC_StatusText(status));
-
-    qcc::Sleep(2000);
 
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
@@ -979,6 +977,11 @@ int main(int argc, char*argv[]) {
             status = securityAppProxy.ResetPolicy();
             printf("Service Reset policy (%d)th time status is %s \n", i, QCC_StatusText(status));
         }
+    }
+
+    if (updateIdentity) {
+        status = securityAppProxy.UpdateIdentity((qcc::IdentityCertificate*)certChain, 3, manifest, 1);
+        printf("Service Update Identity status is %s \n", QCC_StatusText(status));
     }
 
     //Install Membership certificates
