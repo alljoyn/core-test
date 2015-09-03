@@ -1,0 +1,565 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+# wrapper for multiDaemonTest under jenkins
+
+# Return:
+# 0 - Success
+# 1 - Fail because of test failure
+# 2 - wget missing
+# 3 - Required SDK download failure
+# 4 - rename to legacy path fail
+# 5 - wrong arguments
+# 6 - Workspace local path not exist
+# 8 - Test script path not exist
+
+# Function name: usage
+# Description: display command parameter
+# Parameter: none
+# Return: none
+function usage() {
+   echo 'Usage: linuxJenkins -h -r [linux_release_url] -d [linux_debug_url] -a [offon_release_url] -b [offon_debug_url] -s [thin_release_url] -y [thin_debug_url] -p [policydb_release_url] -q [policydb_debug_url] -t [tools_release_url]  -g [tools_debug_url] -w [workspace_path] -e [expect_script_path] -c [policydb_config_path] -x [events_actions_log_path]'
+   echo ' -h help (optional)
+          -r linux release sdk url with br_on pd_off 
+          -d linux debug sdk url with br_on pd_off
+          -a linux release sdk url with br_off pd_on
+          -b linux debug sdk url with br_off pd_on
+          -s thin client release sdk url
+          -y thin client debug sdk url
+          -p policydb release sdk url with br_off pd_on
+          -q policydb debug sdk url with br_off pd_on
+          -t test tools release sdk url with br=on
+          -g test tools debug sdk url with br=on
+          -w workspace path
+          -e expect script path
+          -c policydb routing node config file path
+          -x events actions log path'
+}
+
+# Function name: parseArgs
+# Description: Parse command arguments
+# Parameter: none
+# Return:
+#   2 - invalid command
+function parseArgs() {
+
+    echo "Parsing arguments..."
+
+    args=`getopt hr:d:a:b:s:y:p:q:t:g:w:e:c:x: $*`
+
+    if [ $? != 0 ]; then
+        usage
+        exit 5
+    fi
+
+    set -- $args
+
+    # LINUX br=on pd=off release SDK url, with complete http path and file name
+    onOffRelUrl="http://[path]/alljoyn-0.0.0-linux_x64-sdk-rel.zip"
+    onOffRelSdk="alljoyn-0.0.0-linux_x64-sdk-rel"
+    
+    # LINUX br=on pd=off debug SDK url, with complete http path and file name
+    onOffDbgUrl="http://[path]/alljoyn-0.0.0-linux_x64-sdk-dbg.zip"
+    onOffDbgSdk="alljoyn-0.0.0-linux_x64-sdk-dbg"
+    
+    # LINUX br=off pd=on release SDK url, default url is for master
+    offOnRelUrl=""
+    offOnRelSdk="alljoyn-0.0.0-linux_x64-sdk-rel"
+    
+    # LINUX br=off pd=on debug SDK url, default url is for master
+    offOnDbgUrl=""
+    offOnDbgSdk="alljoyn-0.0.0-linux_x64-sdk-dbg"
+    
+    # Policydb release SDK url, default url is for master. 
+    # Policydb SDK includes test programs like policyService/policyClientAll
+    policyRelUrl=""
+    policyRelSdk="alljoyn-0.0.0-linux_x64-tools-rel"
+    
+    # Policydb debug SDK url, default url is for master
+    policyDbgUrl=""
+    policyDbgSdk="alljoyn-0.0.0-linux_x64-tools-dbg"
+    
+    # Test tools Release SDK url, default is empty
+    # Test tools SDK include programs like slsemitter/slsreceiver
+    toolsRelUrl=""
+    toolsRelSdk="alljoyn-0.0.0-linux_x64-tools-rel"
+    
+    # Test tools debug SDK url, default url is for master
+    toolsDbgUrl=""
+    toolsDbgSdk="alljoyn-0.0.0-linux_x64-tools-dbg"
+    
+    # Thin client Release SDK url, default url is for master
+    tcRelUrl=""
+    tcRelSdk="ajtcl-0.0.0-u1404-rel"
+    
+    # Thin client debug SDK url, default url is for master
+    tcDbgUrl=""
+    tcDbgSdk="ajtcl-0.0.0-u1404-dbg"
+    
+    # Local workspace path
+    workspacePath="[workspace-path]"
+    
+    # Expect test script path
+    expectScriptPath=""
+    
+    # Policydb routing node config file path
+    policyConfigPath=""
+    
+    # Policydb routing node config file path
+    eventsLogPath=""
+    
+    for i
+    do
+        case "$i" in
+             -h) shift;usage;exit 0;;
+             -r) shift;onOffRelUrl=$1;echo "linux onoff release sdk url $onOffRelUrl";shift;;
+             -d) shift;onOffDbgUrl=$1;echo "linux onoff debug sdk url $onOffDbgUrl";shift;;
+             -a) shift;offOnRelUrl=$1;echo "linux offon release sdk url $offOnRelUrl";shift;;
+             -b) shift;offOnDbgUrl=$1;echo "linux offon debug sdk url $offOnDbgUrl";shift;;
+             -s) shift;tcRelUrl=$1;echo "Linux thin client release url $tcRelUrl";shift;;
+             -y) shift;tcDbgUrl=$1;echo "Linux thin client debug url $tcDbgUrl";shift;;
+             -p) shift;policyRelUrl=$1;echo "Linux policydb release sdk url $policyRelUrl";shift;;
+             -q) shift;policyDbgUrl=$1;echo "Linux policydb debug sdk url $policyDbgUrl";shift;;
+             -t) shift;toolsRelUrl=$1;echo "Linux test tools release sdk url $toolsRelUrl";shift;;
+             -g) shift;toolsDbgUrl=$1;echo "Linux test tools debug sdk url $toolsDbgUrl";shift;;
+             -w) shift;workspacePath=$1;echo "workspace path $workspacePath";shift;;
+             -e) shift;expectScriptPath=$1;echo "Expect script path $expectScriptPath";shift;;
+             -c) shift;policyConfigPath=$1;echo "Policydb RN config file path $policyConfigPath";shift;;
+			 -x) shift;eventsLogPath=$1;echo "Events Actions logs path $eventsLogPath";shift;;
+        esac
+    done
+
+    # Both release and debug url should be valid because both release and debug binaries are tested
+	if [ -n "$onOffRelUrl" -a -n "$onOffDbgUrl" ]; then
+		echo "Linux release url $onOffRelUrl debug url $onOffDbgUrl"
+	elif [ -n "$onOffRelUrl" ]; then
+		echo "Empty linux debug url $onOffDbgUrl !"
+		exit 3
+	else
+	    echo "Empty linux release url $onOffRelUrl !"
+		exit 3
+	fi
+	
+	# thin client debug sdk url is required
+	if [ -n "$tcDbgUrl" ]; then
+		echo "Thin client debug url $tcDbgUrl"
+	else
+	    echo "Empty thin client debug url $tcDbgUrl !"
+		exit 3
+	fi
+	
+	# policydb test is optional
+	if [ -n "$policyConfigPath" ]; then
+		echo "Policydb routing node config file path $policyConfigPath"
+	else
+	    echo "Empty policydb routing node config file path !"
+	fi
+	
+	# Events and actions test is optional
+	if [ -n "$eventsLogPath" ]; then
+		echo "Events and actions log path $eventsLogPath"
+	else
+	    echo "Empty Events and actions log path !"
+	fi
+	
+	# test tools test is optional
+	
+    # workspace path should exist
+    if [ -n "$workspacePath" -a -d "$workspacePath" ]; then
+		wsPath="$workspacePath"
+		lastChr=${workspacePath#${workspacePath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			wsPath=`echo "${workspacePath%?}"`
+		fi
+	else
+		echo "Invalid workspace local path $workspacePath"
+		exit 6
+	fi
+	
+	# Local root path to store all downloaded SDKs
+    localPath="${wsPath}"
+    
+ 	linuxLegacyPath="${localPath}/buildbot"
+ 	
+ 	tcLegacyPath="${localPath}/buildbot_ajtcl"
+ 	
+ 	# policydb sdk root
+ 	pdLegacyPath="${localPath}/buildbot_pdb"
+	  
+	# linuxAndroidTest path
+	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptName="${testScriptPath}/multiDaemonTest"
+	
+	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
+        echo "Good test script $testScriptName"
+	else
+		echo "Invalid test script $testScriptName"
+		exit 8
+	fi
+	
+	# Expect test script path is optional
+	if [ -n "$expectScriptPath" ]; then
+		echo "Expect test script path $expectScriptPath"
+	else
+	    echo "Empty expect test script path !"
+	fi
+	
+	# Default wget path
+	WGET="/usr/bin/wget"
+	
+	# Require br=on pd=off SC sdks
+	#   debug only thin client sdk
+	requiredSdks=(${onOffRelUrl} ${onOffDbgUrl} ${tcDbgUrl})
+	
+	# Optional br=off pd=on SDKs and test tools sdks
+	optionalSdks=(${offOnRelUrl} ${offOnDbgUrl} ${policyRelUrl} ${policyDbgUrl} ${tcRelUrl} ${toolsRelUrl} ${toolsDbgUrl})
+}
+
+# Function name: getWgetPath
+# Description: 
+#   Get wget path
+# Parameter: none
+# Return: 
+#   wgetReady is 0 if wget exists; 1 otherwise
+function getWgetPath() {
+    echo "Get wget path ..."
+    
+    WGET=`which wget`
+    wgetReady=$?
+    
+    if [ "$wgetReady" -eq 0 ]; then
+        echo "${WGET} exists"
+    else
+        echo "${WGET} NOT exists !"
+    fi
+}
+
+# Function name: getSdk
+# Description: 
+#   Get sdk using wget
+# Parameter: 
+#   sdkUrl          - sdk download url
+#   sdkName         - sdk name
+#   checkManifest   - should this SDK contain manifest.txt?
+#                 Linux BR=on and thin client SDKs contain manifest
+#                 Test tools sdk that include ajr2rtest/slsemitter/policyDB does NOT contain manifest
+#   localDir        - local host directory where sdk should be unzipped
+# Return: 
+#   sdkReady is set to 0 if SDK downloaded successfully and manifest.txt exist(optional)
+#   sdkReady is set to 1 if fail
+function getSdk() {
+	local sdkUrl=$1
+	local sdkName=$2
+	local checkManifest=$3
+	local localDir=$4
+	
+	echo "Get $sdkName from $sdkUrl into $localDir ..."
+	
+	sdkReady=0
+	
+(cd ${localDir}
+${WGET} ${sdkUrl} --no-check-certificate
+unzip ${sdkName}.zip
+)
+    local downloadStatus=$?
+    
+    # If download successful
+    if [ "${downloadStatus}" -eq 0 ]; then 
+        # Only required SDKs need manifest
+        if [ "$checkManifest" -eq 1 ]; then  
+            local manifest="${localDir}/${sdkName}/manifest.txt"
+    
+            # Check if downloaded is successfully unzipped and manifest file exist
+            if [ -e "${manifest}" ]; then
+                echo "SDK download succeed and manifest available"
+            else
+                echo "SDK invalid because manifest.txt missing!"
+                sdkReady=1
+            fi
+        else
+            echo "SDK download succeed"
+        fi
+    else
+        echo "SDK download fail!"
+        sdkReady=1
+    fi  
+}
+
+# Function name: legacyRename
+# Description: 
+#   Rename folder to be legacy testbot compatible
+# Parameter: 
+#   currentDir  - current sdk path   
+#   legacyDir   - legacy sdk path  
+# Return: 
+#   renameStatus is 0 if success
+function legacyRename() {
+    local currentDir=$1
+    local legacyDir=$2
+    
+	echo "Rename  ${currentDir} to ${legacyDir} ..."
+ 
+    renameStatus=0
+	
+	mv ${currentDir} ${legacyDir}
+	renameStatus=$?
+	
+	if [ "$renameStatus" -eq 0 -a -d "${legacyDir}" ]; then
+        echo "Rename  successful"
+        renameStatus=0
+    else
+        echo "Rename  fail!"
+        renameStatus=1
+	fi
+}
+
+# Function name: getRequiredSdks
+# Description: 
+#   Download required sdks and rename to be legacy compatible:
+#       Linux BR=on/PD=off release sdk
+#       Linux BR=on/PD=off debug sdk
+#       TC BR=on/PD=off debug sdk
+# Parameter: none
+# Return: 
+#   exit 3 if download failed; exit 4 if rename failed
+function getRequiredSdks() {
+    local relReady=1
+    local dbgReady=1
+    local tcDbgReady=1
+    
+    # Download BR=on PD=off sdk
+    getSdk "${onOffRelUrl}" "${onOffRelSdk}" 1 "${linuxLegacyPath}"
+    relReady=${sdkReady}
+
+    if [ "$relReady" -eq 0 ]; then
+        echo "Linux br=on pd=off release 64 sdk ready"
+    
+        getSdk "${onOffDbgUrl}" "${onOffDbgSdk}" 1 "${linuxLegacyPath}"
+        dbgReady=${sdkReady}
+    
+        if [ "$dbgReady" -eq 0 ]; then
+            echo "Linux br=on pd=off debug 64 sdk ready"
+        
+            getSdk "${tcDbgUrl}" "${tcDbgSdk}" 1 "${tcLegacyPath}"
+            tcDbgReady=${sdkReady}
+            
+            if [ "$tcDbgReady" -eq 0 ]; then
+                echo "Linux thin client debug sdk ready"
+            else
+                echo "Linux thin client debug sdk download failed!"
+                exit 3
+            fi
+        else
+            echo "Linux br=on pd=off debug 64 sdk download failed!"
+            exit 3
+        fi
+    else
+        echo "Linux br=on pd=off release 64 sdk download failed!"
+        exit 3
+    fi
+
+    local relRename=1
+    local dbgRename=1
+    local tcDbgRename=1
+    
+    # Rename sdk path to match legacy testbot
+    legacyRename "${linuxLegacyPath}/${onOffRelSdk}" "${linuxLegacyPath}/sdk-rel"
+    relRename=$renameStatus
+
+    legacyRename "${linuxLegacyPath}/${onOffDbgSdk}" "${linuxLegacyPath}/sdk-dbg"
+    dbgRename=$renameStatus
+
+    legacyRename "${tcLegacyPath}/${tcDbgSdk}" "${tcLegacyPath}/scons"
+    tcDbgRename=$renameStatus
+
+    if [ "${relRename}" -ne 0 -o "${tcDbgRename}" -ne 0 ]; then
+        echo "Rename ${relRename} failed!"
+        exit 4
+    fi
+    
+    if [ "${dbgRename}" -ne 0 ]; then
+        echo "Rename ${dbgRename} failed!"
+        exit 4
+    fi
+
+    if [ "${tcDbgRename}" -ne 0 ]; then
+        echo "Rename ${tcDbgRename} failed!"
+        exit 4
+    fi
+}
+
+# Function name: getOptionalSdks
+# Description: 
+#   Download optional sdks and rename to be legacy compatible:
+#       Linux BR=on/PD=off tools release sdk
+#       Linux BR=off/PD=on release sdk
+#       Linux BR=off/PD=on debug sdk
+#       Linux BR=off/PD=on test tools release sdk
+#       Linux BR=off/PD=on test tools debug sdk
+# Parameter: none
+# Return: none
+function getOptionalSdks() {
+    local toolsRelReady=1
+    local offOnRelReady=1
+    local offOnDbgReady=1
+    local policyRelReady=1
+    local policyDbgReady=1
+    
+    # Download tools-rel sdk
+    if [ -n "$toolsRelUrl" ]; then
+        getSdk "${toolsRelUrl}" "${toolsRelSdk}" 1 "${linuxLegacyPath}"
+        toolsRelReady=${sdkReady}
+
+        if [ "$toolsRelReady" -eq 0 ]; then
+            echo "Linux test tools release sdk ready"
+        
+            legacyRename "${linuxLegacyPath}/${toolsRelSdk}" "${linuxLegacyPath}/test_tools-rel"
+        fi
+    else
+        echo "Linux test tools release url empty"
+    fi
+    
+    # Download linux BR=off PD=on release sdk under buildbot_pdb
+    if [ -n "$offOnRelUrl" ]; then
+        getSdk "${offOnRelUrl}" "${offOnRelSdk}" 1 "${pdLegacyPath}"
+        offOnRelReady=${sdkReady}
+
+        if [ "$offOnRelReady" -eq 0 ]; then
+            echo "Linux br=off pd=on release sdk ready"
+        
+            legacyRename "${pdLegacyPath}/${offOnRelSdk}" "${pdLegacyPath}/sdk-rel"
+        fi
+    else
+        echo "Linux br=off pd=on release url empty"
+    fi
+
+    # Download linux BR=off PD=on debug sdk under buildbot_pdb
+    if [ -n "$offOnDbgUrl" ]; then
+        getSdk "${offOnDbgUrl}" "${offOnDbgSdk}" 1 "${pdLegacyPath}"
+        offOnDbgReady=${sdkReady}
+
+        if [ "$offOnDbgReady" -eq 0 ]; then
+            echo "Linux br=off pd=on debug sdk ready"
+        
+            legacyRename "${pdLegacyPath}/${offOnDbgSdk}" "${pdLegacyPath}/sdk-dbg"
+        fi
+    else
+        echo "Linux br=off pd=on debug url empty"
+    fi
+    
+    # Download linux BR=off PD=on release test tools sdk under buildbot_pdb
+    if [ -n "$policyRelUrl" ]; then
+        getSdk "${policyRelUrl}" "${policyRelSdk}" 1 "${pdLegacyPath}"
+        policyRelReady=${sdkReady}
+
+        if [ "$policyRelReady" -eq 0 ]; then
+            echo "Linux br=off pd=on release test tools sdk ready"
+        
+            legacyRename "${pdLegacyPath}/${policyRelSdk}" "${pdLegacyPath}/test_tools-rel"
+        fi
+    else
+        echo "Linux br=off pd=on release test tools url empty"
+    fi
+
+    # Download linux BR=off PD=on debug test tools sdk under buildbot_pdb
+    if [ -n "$policyDbgUrl" ]; then
+        getSdk "${policyDbgUrl}" "${policyDbgSdk}" 1 "${pdLegacyPath}"
+        policyDbgReady=${sdkReady}
+
+        if [ "$policyDbgReady" -eq 0 ]; then
+            echo "Linux br=off pd=on debug test tools sdk ready"
+        
+            legacyRename "${pdLegacyPath}/${policyDbgSdk}" "${pdLegacyPath}/test_tools-dbg"
+        fi
+    else
+        echo "Linux br=off pd=on debug test tools url empty"
+    fi
+}
+
+# Function name: runTest
+# Description: 
+#   run LINUX android interaction test
+# Parameter: none
+# Return: 
+#   testStatus is 0 if test pass; 1 otherwise
+function runTest() {
+	echo "Run test ..."
+
+    testStatus=1
+
+(cd ${wsPath}
+${testScriptName} -v -p ${linuxLegacyPath} -l ${tcLegacyPath} -e ${expectScriptPath} -c ${policyConfigPath} -x ${eventsLogPath}
+)
+
+    testStatus=$?
+    
+    if [ "${testStatus}" -eq 0 ]; then
+        echo "All test passed"
+    else
+        echo "Some test failed!"
+    fi
+}
+
+#parse input argument
+parseArgs $*
+
+# cleanup old files
+rm -rf ${wsPath}/*.html ${wsPath}/*.log ${wsPath}/*.txt ${wsPath}/*.nvram ${wsPath}/*.zip ${wsPath}/alljoyn* 2>/dev/null 1>&2
+
+# wget must be available to continue
+getWgetPath
+
+if ["$wgetReady" -ne 0 ]; then
+    echo "wget is NOT available!"
+    exit 2
+fi
+
+
+# Cleanup SC legacy download directory
+rm -rf $linuxLegacyPath
+	
+# Recreate SC legacy download directory
+mkdir $linuxLegacyPath
+
+# Cleanup TC legacy download directory
+rm -rf $tcLegacyPath
+	
+# Recreate TC legacy download directory
+mkdir $tcLegacyPath
+
+# Cleanup policydb legacy download directory
+rm -rf $pdLegacyPath
+	
+# Recreate policydb legacy download directory
+mkdir $pdLegacyPath
+
+# Download and rename required sdks
+getRequiredSdks
+
+#Download optional SDKs
+getOptionalSdks
+
+# run test
+runTest
+
+if [ "$testStatus" -ne 0 ]; then 
+    # At least one test case fail 
+    exit 1
+else
+    exit 0
+fi

@@ -1,0 +1,1059 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+# ios and android device test script over tcp 
+
+# Setup:
+# 1. mac mini with xcode and android sdk installed
+# 2. one ipod mini connected to mac
+# 3. one android connected to mac
+
+# Return:
+# 0 - Success
+# 1 - at least one test fail
+# 2 - Wrong paratermeter provided
+# 3 - build ios source fail
+# 4 - deploy ios fail
+# 5 - No android device or more than one android devices connected
+# 6 - Android device destination directory can NOT be created
+# 7 - No ios device or more than one ios device connected
+
+# Function name: usage
+# Description: display command parameter
+# Parameter: none
+# Return: none
+function usage() {
+   echo 'Usage: iosAndroidTest -h -v -i [ios_app_path] -a [android_app_path] -r'
+   echo ' -h help (optional)
+          -v verbose (optional)
+          -i ios app path
+          -a android app path
+          -t tcp only
+          -l latest ios 8.1 device'
+
+}
+
+# Function name: parseCmdArgs
+# Description: Parse command arguments
+# Parameter: none
+# Return:
+#   2 - invalid command
+function parseCmdArgs() {
+
+    echo "Parsing arguments..."
+
+    args=`getopt hvi:a:tl $*`
+
+    if [ $? != 0 ]; then
+        usage
+        exit 2
+    fi
+
+    set -- $args
+
+    #default is concise
+    verbose=false
+
+    # script name without path
+    scriptName=`basename $0`
+
+    # ios app path
+    iosSrcPath=""
+    iosTestPath=""
+
+    # android app path
+    androidAppPath=""
+    androidiBinPath=""
+
+	# ios device version
+	iosVersion=7
+
+	# turn off ice test by default
+	tryIce=0
+
+    # IOS 7.1 devices by default
+    ios8Device=0
+    
+    for i
+    do
+        case "$i" in
+             -h) shift;usage;exit 0;;
+             -v) shift;verbose=true; echo "verbose $verbose";;
+             -i) shift;iosSrcPath=$1;echo "ios app path $iosSrcPath";shift;;
+             -a) shift;androidAppPath=$1;echo "android app path $androidAppPath";shift;;
+             -t) shift;tryIce=1; echo "try ice and tcp";;
+             -l) shift;ios8Device=1; echo "IOS 8.1 device";;
+        esac
+    done
+
+    if [ -n "$iosSrcPath" -a -d "$iosSrcPath" ]; then
+       iosTestPath="$iosSrcPath"
+       lastChr=${iosSrcPath#${iosSrcPath%?}}
+       # Remove trailing /
+       if [ "$lastChr" == "/" ]; then
+          iosTestPath=`echo "${iosSrcPath%?}"`
+       fi
+    else
+       echo "Invalid path $iosSrcPath"
+       exit 2
+    fi
+
+    if [ -n "$androidAppPath" -a -d "$androidAppPath" ]; then
+       androidBinPath="$androidAppPath"
+       lastChr=${iosSrcPath#${androidAppPath%?}}
+       # Remove trailing /
+       if [ "$lastChr" == "/" ]; then
+          androidBinPath=`echo "${androidAppPath%?}"`
+       fi
+    else
+       echo "Invalid path $androidAppPath"
+       exit 2
+    fi
+    
+    armFlag="armv7"
+    
+    if [ "$ios8Device" -eq 1 ]; then
+        echo "Build IOS8.1 64bit device"
+        armFlag="arm64"
+    fi
+}
+
+# Function name: SetUpGlobalVariables
+# Description: setup global variables
+# Parameter: none
+# Return: none
+function SetUpGlobalVariables() {
+   
+   totalTests=0
+
+   # test script path on cmac01
+   #testScriptDir="/Users/haitaoz/test-bin/test/alljoyn/autotest/buildbot/sbin"
+   testScriptDir="/Users/seabuild/test/test/alljoyn/autotest/buildbot/sbin"
+
+	# which ios device to test
+	iosDeviceId=""
+
+   # OPENSSL_ROOT folder to create ios device binaries
+   #sslRoot="/Users/haitaoz/openssl-1.01"
+   sslRoot="/Users/seabuild/openssl-1.0.1e"
+
+   # Android adb
+   ADB="/Users/seabuild/Downloads/android-sdk-macosx/platform-tools/adb"
+
+   # android device directory to store app
+   androidDir="/data/local/tmp"
+
+   # ios-deploy is a deployment tool to IOS device
+   IOSDEPLOY="/usr/local/bin/ios-deploy"
+
+   # IOS BasicBusClient app location
+   #iosClientAppDir="/Users/haitaoz/Library/Developer/Xcode/DerivedData/BasicBusClient-fifkltzcylbxopdbwhcmqzvmkozm/Build/Products/Release-iphoneos/BasicBusClient.app"
+   iosClientAppDir="/Users/seabuild/Library/Developer/Xcode/DerivedData/BasicBusClient-esehbzmicioxnkgstxeulmfpzvux/Build/Products/Release-iphoneos/BasicBusClient.app"
+
+   # IOS BasicBusService app location
+   #iosServiceAppDir="/Users/haitaoz/Library/Developer/Xcode/DerivedData/BasicBusService-aurapvzcaukwqyfsfolaomhgdiwn/Build/Products/Release-iphoneos/BasicBusService.app"
+   iosServiceAppDir="/Users/seabuild/Library/Developer/Xcode/DerivedData/BasicBusService-cmomcqvbeiftayguakheyqzzseqr/Build/Products/Release-iphoneos/BasicBusService.app"
+
+   iosTemplate="/Applications/Xcode.app/Contents/Applications/Instruments.app/Contents/PlugIns/AutomationInstrument.xrplugin/Contents/Resources/Automation.tracetemplate"
+
+   # Test result files
+   testResultLog="${scriptName}_result.txt"
+   testResultHtml="${scriptName}_result.html"
+   
+   #detail analysis and intermediate files
+   testProgressLog="${scriptName}_progress.txt"
+   testDetailLog="${scriptName}_detail.txt"
+   testErrorLog="${scriptName}_error.txt"
+
+   # Ice related
+   icePackage="org.alljoyn.jni"
+   iceTransport=0x20
+
+   # Tcp related
+   tcpTransport=0x4
+   
+    # Commit id related
+    IOS_COMMIT_TYPE=1
+    ANDROID_COMMIT_TYPE=2
+	IOS_URL_PREFIX="https://git.allseenalliance.org/cgit/core/alljoyn.git/commit/?id="
+	ANDROID_URL_PREFIX="https://git.allseenalliance.org/cgit/core/alljoyn.git/commit/?id="
+	UNKNOWN_ID="unknown"
+}
+
+# Function name: getCommitIds
+# Description: 
+#   Get commit ids from manifest.txt of IOS and Android sdk
+# Parameter: none
+# Return: 
+#   iosCommitId - commit ref id of IOS SDK
+#   androidCommitId   - commit ref id of Android SDK
+function getCommitIds() {
+	echo "Get commit ref ids from IOS SDK or ..." >> $testDetailLog
+    
+    iosCommitId="${UNKNOWN_ID}"
+    androidCommitId="${UNKNOWN_ID}"
+    
+    local iosManifest="${iosTestPath}/manifest.txt"
+    local androidManifest="${androidBinPath}/manifest.txt"
+    
+    local iosCommit="${UNKNOWN_ID}"
+    local androidCommit="${UNKNOWN_ID}"
+    
+	if [ -e "$iosManifest" ]; then
+	    iosCommit=`grep -i "commit ref:" $iosManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$iosCommit" ]; then
+	        iosCommitId=$iosCommit
+		    echo "IOS SDK commit id is $iosCommitId"
+		else
+		    echo "IOS SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+	
+	if [ -e "$androidManifest" ]; then
+	    androidCommit=`grep -i "commit ref:" $androidManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$androidCommit" ]; then
+	        androidCommitId=$androidCommit
+		    echo "Android SDK commit id is $androidCommitId"
+		else
+		    echo "Android SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+}
+
+# Function name: createCommitIdUrl
+# Description: 
+#   Create link url for commid id
+# Parameter: 
+#   commitType - IOS or Android commit
+#   commitId   - commit id
+# Return: 
+#   commitUrl is set to valid url or unknown
+function createCommitIdUrl() {
+	echo "Create commit id url from $commitId ..." >> $testDetailLog
+	local commitType=$1
+	local commitId=$2
+	
+	commitUrl="${UNKNOWN_ID}"
+	
+	if [ "$commitType" -eq "${IOS_COMMIT_TYPE}" ]; then
+	    commitUrl="${IOS_URL_PREFIX}${commitId}"
+	else
+	    commitUrl="${ANDROID_URL_PREFIX}${commitId}"
+	fi 
+	
+	echo "commit id url is $commitUrl"
+	
+}
+# Function name: checkIosDevice
+# Description: Make sure exactly one ios device is connected through USB
+# Parameter: none
+# Return:
+#   exit 7 - No ios or more than one ios devices connected
+#   iosDeviceId is set
+function checkIosDevice() {
+    echo "Check connected ios device(s)..." >> $testDetailLog
+	
+	local iosDeviceCnt=0
+
+	# Loop through each ios device and get serial number
+    for line in $(system_profiler SPUSBDataType | sed -n -e '/iPod/,/Serial/p' -e '/iPhone/,/Serial/p' -e '/iPad/,/Serial/p' |grep "Serial Number:"| awk -F ": " '{print $2}'); do
+		echo "Ios device serial number: ${line} " >> $testDetailLog
+ 		iosDeviceId=${line}
+		iosDeviceCnt=$(($iosDeviceCnt + 1))
+	done
+
+	if [ "$iosDeviceCnt" -eq 1 ]; then
+        echo "One ios device connected" >> $testDetailLog
+    elif [ "$iosDeviceCnt" -eq 0 ]; then
+		echo "No ios device connected!" >> $testErrorLog
+		echo "<p>No ios device connected!</p>" >> $testResultHtml
+        exit 7
+	else
+		echo "More than one ios devices connected!" >> $testErrorLog
+		echo "<p>More than one ios devices connected!</p>" >> $testResultHtml
+        exit 7
+    fi
+
+}
+
+# Function name: checkAndroidDevice
+# Description: Make sure exactly one android device is connected through USB
+# Parameter: none
+# Return:
+#   5 - less than 2 devices connected
+function checkAndroidDevice() {
+    echo "Check connected android devices..." >> $testDetailLog
+
+    # adb command is not stable, so always run as background to prevent block
+    devices=`$ADB devices | grep 'device$' | cut -f 1 &`
+    # adb daemon restart may take longer
+    sleep 12
+    deviceCount=`echo $devices | wc -w`
+
+    if [ -z "$devices" ]; then
+        echo "No android device detected!" >> $testDetailLog
+        echo "No android device detected!" >> $testErrorLog
+        echo "<p>No android device detected!</p>" >> $testResultHtml
+        exit 5
+    elif [ "$deviceCount" -ne 1 ]; then
+        echo "More than one android device connected!" >> $testDetailLog
+        echo "More than one android device connected!" >> $testErrorLog
+        echo "<p>More than one android device connected!</p>" >> $testResultHtml
+        exit 5
+    fi
+
+}
+
+# Function name: CleanIOSBinaries
+# Description: Clean up ios binaries: BasicBusClient.app and BasicBusService.app
+# Parameter: none
+# Return: none
+function CleanIOSBinaries() {
+   echo "Cleaning old ios app binaries..." >> $testDetailLog
+
+   # Remove BasicBusClient.app
+   find $HOME -name BasicBusClient.app -exec rm -rf {} \; >>$testDetailLog 2>&1
+
+   # Remove BasicBusService.app
+   find $HOME -name BasicBusService.app -exec rm -rf {} \; >>$testDetailLog 2>&1
+
+}
+
+# Function name: SearchIOSBinaries
+# Description: Search new ios binaries: BasicBusClient.app and BasicBusService.app
+# Parameter: none
+# Return: 
+#  iosClientAppDir and iosServiceAppDir are set 
+function SearchIOSBinaries() {
+   echo "Searching new ios app binaries..." >> $testDetailLog
+
+   # Find BasicBusClient.app
+   iosClientAppDir=`find $HOME -name BasicBusClient.app`
+
+   # Find BasicBusService.app
+   iosServiceAppDir=`find $HOME -name BasicBusService.app`
+
+   echo "New client app $iosClientAppDir" >> $testDetailLog
+
+   echo "New service app $iosServiceAppDir" >> $testDetailLog
+
+}
+
+# Function name: BuildIOSBinaries
+# Description: Build ios binaries from source
+# Parameter: none
+# Return: buildStatus is 0 if both client and service are built correctly; 1 otherwise
+function BuildIOSBinaries() {
+   echo "Building ios binaries..." >> $testDetailLog
+
+   # Allow user interaction for buildbot
+   security unlock-keychain -p Blu3T00th $HOME/Library/Keychains/login.keychain >> $testDetailLog 2>&1
+
+   # Init to fail
+   buildStatus=1
+
+   # Build BasicBusClient
+   xcodebuild -project "${iosTestPath}/alljoyn_objc/Test/iOS/BasicBusClient/BasicBusClient.xcodeproj" -scheme BasicBusClient -configuration Release -arch $armFlag ARCHS=$armFlag ONLY_ACTIVE_ARCH=NO OPENSSL_ROOT="$sslRoot" >> $testDetailLog 2>&1
+
+   local clientBuildStatus=$?
+
+   # Build BasicBusService
+   xcodebuild -project "${iosTestPath}/alljoyn_objc/Test/iOS/BasicBusService/BasicBusService.xcodeproj" -scheme BasicBusService -configuration Release -arch $armFlag ARCHS=$armFlag ONLY_ACTIVE_ARCH=NO OPENSSL_ROOT="$sslRoot" >> $testDetailLog 2>&1
+
+   local serviceBuildStatus=$?
+
+   if [ "$clientBuildStatus" -eq 0 -a "$serviceBuildStatus" -eq 0 ]; then
+      echo "IOS client and service built correctly" >> $testDetailLog
+      buildStatus=0
+   elif [ "$clientBuildStatus" -ne 0 ]; then
+      echo "IOS client has build error!" >> $testErrorLog
+      echo "<p>IOS client has <a class="error" href="\"$testDetailLog\"">build error!</a></p>" >> $testResultHtml
+   else
+      echo "IOS service has build error!" >> $testErrorLog
+      echo "<p>IOS service has <a class="error" href="\"$testDetailLog\"">build error!</a></p>" >> $testResultHtml
+   fi
+   
+}
+
+# Function name: DeployAndroidNative
+# Description: Deploy android native binary to device
+# Parameter: 
+#    appPath - application path
+# Return: none
+function DeployAndroidNative() {
+   local appPath=$1
+   
+   echo "Deploying android $appPath to device..." >> $testDetailLog
+
+   # The '{' and '}' allow supressing output from Bash's job control facility
+   { $ADB push $appPath $androidDir & } >& /dev/null
+
+   { wait; } >& /dev/null
+}
+
+# Function name: DeployAndroidApk
+# Description: Deploy android apk to device
+# Parameter: 
+#    appPath - app path
+# Return: none
+function DeployAndroidApk() {
+   local appPath=$1
+   
+   echo "Deploying android $appPath to device..." >> $testDetailLog
+   echo "Deploying android $appPath to device..." 
+
+   # The '{' and '}' allow supressing output from Bash's job control facility
+   $ADB install -r $appPath >> $testDetailLog 2>&1 & 
+
+   sleep 10
+}
+
+# Function name: DeployIOSApp
+# Description: Deploy ios app to device
+# Parameter: 
+#    devId - ios device identifier
+#    appPath - application path
+# Return: none
+function DeployIOSApp() {
+   local devId=$1
+   local appPath=$2
+
+   echo "Deploying ios $appPath to $devId ..." >> $testDetailLog
+
+   deployIosStatus=1
+   
+   # IOS_DEPLY is the latest tool to deploy ios app
+   $IOSDEPLOY -i "$devId" -b "$appPath" >> $testDetailLog 2>&1
+   
+   # Check deploy status
+   if [ "$?" -ne 0 ]; then
+     echo "Deploy $appPath to $devId fail!" >> $testErrorLog
+     echo "<p>Deploy $appPath to $devId <a class="error" href="\"$testDetailLog\"">fail!</a></p>" >> $testResultHtml
+   else
+     echo "Deploy $appPath to $devId ok." >> $testDetailLog
+     deployIosStatus=0
+   fi
+}
+
+# Function name: checkAndroidDir
+# Description: check if android destination directory /data/alljoyn exists
+# Parameter:
+# Return:
+#    6 - No write permission to create directory on android
+function checkAndroidDir() {
+   echo "Check if $androidDir can be created on android ..." >> $testDetailLog
+
+   cd_dest=`$ADB shell cd $androidDir &`
+   sleep 1
+
+   # If target directory not exist, create with normal mode
+   if [ ! -z "$cd_dest" ]; then
+     echo "Creating $androidDir on android with regular mode..." >> $testDetailLog
+     $ADB shell "mkdir $androidDir" &
+
+     sleep 2
+
+     cd_dest=`$ADB shell cd $androidDir &`
+     sleep 1
+
+     # If target directory not exist, create with super mode
+     if [ ! -z "$cd_dest" ]; then
+       echo "Creating $androidDir on android with super mode..." >> $testDetailLog
+       $ADB shell "su -c mkdir $androidDir" &
+     
+       sleep 2
+
+       cd_dest=`$ADB shell cd $androidDir &`
+       sleep 1
+   
+       # If target directory not exist, create with super mode
+       if [ ! -z "$cd_dest" ]; then
+         echo "$androidDir can be NOT be created on android, exit!" >> $testErrorLog
+         echo "<p>$androidDir can be NOT be created on android, exit!</p>" >> $testResultHtml
+         exit 6
+       else
+         echo "Created $androidDir on android with super mode" >> $testDetailLog
+       fi  
+     else
+       echo "Created $androidDir on android with regular mode" >> $testDetailLog
+     fi
+   else
+     echo "$androidDir exist on android device" >> $testDetailLog
+   fi
+}
+
+# Function name: DeployAppsToAndroid
+# Description: Deploy test apps to android 
+# Parameter: none
+# Return: none
+function DeployAppsToAndroid() {
+   checkAndroidDir
+
+   # push bbservice and bbclient to android device
+   DeployAndroidNative "${androidBinPath}/cpp/bin/bbservice"
+
+   DeployAndroidNative "${androidBinPath}/cpp/bin/bbclient"
+
+   # for ice, need alljoyn-daemon and scan apk running on android
+   if [ "$tryIce" -eq 1 ]; then
+      DeployAndroidNative "${androidBinPath}/cpp/bin/alljoyn-daemon"
+
+      DeployAndroidApk "${androidBinPath}/cpp/alljoyn_android/alljoyn_android_ext/bin/alljoyn_android_ext.apk"
+   fi
+}
+
+# Function name: DeployAppToDevices
+# Description: Deploy android and ios app to devices
+# Parameter: none
+# Return: 
+#    deployStatus is set to 0 if both android and ios are deployed ok; 1 otherwise
+function DeployAppToDevices() {
+
+   echo "Deploying apps to android and ios device..." >> $testDetailLog
+
+   deployStatus=1
+
+   DeployAppsToAndroid
+
+   # Deploy ios BasicBusService and BasicBusClient
+   DeployIOSApp $iosDeviceId $iosServiceAppDir 
+
+   if [ "$deployIosStatus" -eq 0 ]; then
+      DeployIOSApp $iosDeviceId $iosClientAppDir
+     
+      if [ "$deployIosStatus" -eq 0 ]; then
+           deployStatus=0
+      fi 
+   fi
+}
+
+# Function name: setup
+# Description: build ios binaries and install android/ios binaries to devices
+# Parameter: none
+# Return: 
+#   5 - build error
+#   6 - deploy error
+function setup() {
+   echo "Build and installing binaries to devices..." >> $testDetailLog
+
+   # Clean up old ios binaries
+   CleanIOSBinaries
+
+   # Create ios binaries from source code
+   BuildIOSBinaries
+   
+   if [ "$buildStatus" -eq 0 ]; then
+      # Search new ios binaries
+      SearchIOSBinaries
+
+      # Install binaries to devices
+      DeployAppToDevices
+ 
+      if [ "$deployStatus" -ne 0 ]; then
+        echo "Deployment to IOS fail!" >> $testErrorLog
+        echo "<p>Deployment to IOS fail!</p>" >> $testResultHtml
+        exit 4
+      fi
+   else
+     echo "IOS build error, quit!" >> $testErrorLog
+     echo "<p>IOS build error, quit!</p>" >> $testResultHtml
+     exit 3
+   fi
+
+}
+
+
+# Function name: launchServiceOnIOS
+# Description: Launch basicBusService on ios device
+# Parameter: devId - ios device identifier
+#    logFile - client log file
+# Return: 
+#    launchIosStatus flag is set to 0 if launch ok; 1 otherwise
+function launchServiceOnIOS() {
+   local devId=$1
+   local logFile=$2
+
+   echo "Launching basicBusService on ipod ..." >> $testDetailLog
+
+   launchIosStatus=0
+
+   # Launch basicBusService on ios device, -w has to be 1st parameter
+   instruments -t "$iosTemplate" -w "$devId" "$iosServiceAppDir" -e UIASCRIPT "${testScriptDir}/basicBusService.js" > $logFile 2>&1 
+
+   if [ "$?" -ne 0 ]; then
+     echo "Launch BasicBusService failed on ios device!" >> $testErrorLog
+     echo "<p>Launch BasicBusService <a class="error" href="\"$logFile\"">failed</a> on ios device!</p>" >> $testResultHtml
+     launchIosStatus=1
+   fi
+}
+
+# Function name: launchClientOnIOS
+# Description: Launch basicBusClient on ios device
+# Parameter: 
+#    devId - ios device identifier
+#    logFile - client log file
+# Return: 
+#    launchIosStatus flag is set to 0 if launch ok; 1 otherwise
+function launchClientOnIOS() {
+   local devId=$1
+   local logFile=$2
+
+   echo "Launching basicBusClient on ipod ..." >> $testDetailLog
+
+   # Launch BasicBusClient on ios device, -w has to be 1st parameter
+   instruments -w $devId -t "$iosTemplate" "$iosClientAppDir" -e UIASCRIPT "${testScriptDir}/basicBusClient.js" > $logFile 2>&1
+
+   if [ "$?" -ne 0 ]; then
+     echo "Launch BasicBusClient failed on ios device!" >> $testErrorLog
+     echo "<p>Launch BasicBusClient <a class="error" href="\"$logFile\"">failed</a> on ios device!</p>" >> $testResultHtml
+     launchIosStatus=1
+   fi
+}
+
+# function name: launchServiceOnAndroid
+# Description: Launch bbservice on android
+# Parameter: logFile - service log file
+# Return: none
+function launchServiceOnAndroid() {
+   local logFile=$1
+
+   echo "Launch bbservice on android..." >> $testDetailLog
+
+   $ADB shell "${androidDir}/bbservice -t -n gov.t" > $logFile 2>&1 </dev/null &
+
+}
+
+# function name: launchClientOnAndroid
+# Description: Launch android bbclient
+# Parameter: logFile - client log file
+# Return: none
+function launchClientOnAndroid() {
+   local logFile=$1
+
+   echo "Launch bbclient on android..." >> $testDetailLog
+
+   $ADB shell "${androidDir}/bbclient -d -n gov.s" > $logFile 2>&1 </dev/null &
+
+}
+
+# Function name: getAndroidPids
+# Description: Get android device process ids with given name 
+# Parameter: 
+#    processName - process name 
+# Return: 
+#    pids has process ids
+function getDevicePids() {
+   local processName=$1
+
+   local pidFile="pids_${processName}.log"
+
+   echo "Checking $processName on android..." >> $testDetailLog
+
+   # adb command is not stable, run as background to prevent block
+   $ADB shell ps > $pidFile &
+   local bgPid=$!
+     
+   sleep 3
+
+   # Make sure previous adb command is complete
+   local bgComplete=`ps -p $bgPid | grep "$bgPid"`
+     
+   pids=`awk -F" +" -v pN="$processName" '$0 ~ pN {print $2}' $pidFile`
+
+   if [ -n "$bgComplete" ]; then 
+      echo "adb shell ps $processName  failed!" >> $testErrorLog
+   fi   
+
+   echo "$processName ids: $pids" >> $testDetailLog
+
+   rm -rf $pidFile
+     
+}
+
+# Function name: killAndroidProcess
+# Description: kill process on target device
+# Parameter:
+#   1. processName - bbClient, bbService or bbsig
+# Return: processKill flag is set to 0 or 1
+function killAndroidProcess() {
+    local processName=$1
+
+    $verbose && echo "Stopping all $processName on android..." >> $testDetailLog
+
+    # kill running alljoyn-daemon process on device
+    processKill=1
+
+    $verbose && echo "kill $processName..." >> $testDetailLog
+
+    getDevicePids $processName
+
+    processCount=`echo $pids | wc -w`
+
+    $verbose && echo " $processCount $processName find " >> $testDetailLog
+
+    if [ "$processCount" -ge 1 ]; then
+        for pid in $pids; do
+            $verbose && echo "Old $processName process id is $pid " >> $testDetailLog
+			# terminate daemon need root priviledge
+			if [ "$processName" == "alljoyn-daemon" ]; then
+				$ADB shell "su -c kill -9 $pid" &
+			else
+	            $ADB shell "kill -9 $pid" &
+			fi
+
+            sleep 10
+        done
+
+    fi
+}
+
+# Function name: checkAndroidClientResult
+# Description: Check android client test status
+# Parameter: logName - client log name
+# Return: 
+#    test1Pass is set to 0 if pass; 1 if discovery fail; 2 if joinSession fail; 3 if ping fail
+function checkAndroidClientResult() {
+   local logName=$1
+
+   local discoveryOk=0
+   local joinSessionOk=0
+   local methodCallOk=0
+
+   test1Pass=0
+
+   echo "Checking client log..." >> $testDetailLog
+
+   if [ -e "$logName" ]; then
+      discoveryOk=`grep "FoundAdvertisedName" $logName | wc -l`
+      # Both udp and tcp discovery
+      if [ "$discoveryOk" -ge 1 ]; then
+
+         joinSessionOk=`grep "JoinSession" $logName | wc -l`
+         
+         # Both udp and tcp joinSession
+         if [ "$joinSessionOk" -ge 1 ]; then
+
+            methodCallOk=`grep "bbclient exiting with status 0" $logName | wc -l`
+
+            if [ "$methodCallOk" -eq 1 ]; then
+               echo "Test1 pass" >> $testDetailLog
+            else
+               echo "Test1 fail as method call error!" >> $testErrorLog
+               test1Pass=3
+            fi
+         else
+            echo "Test1 fail as joinSession fail!" >> $testErrorLog
+            test1Pass=2
+         fi
+      else
+         echo "Test1 fail as discover fail!" >> $testErrorLog
+         test1Pass=1
+      fi
+   fi
+
+}
+
+# Function name: checkIosClientResult
+# Description: Check ios client test status
+# Parameter: logName - client log name
+# Return: 
+#    test2Pass is set to 0 if pass; 1 if discovery fail; 2 if joinSession fail; 3 if ping fail
+function checkIosClientResult() {
+   local logName=$1
+
+   local discoveryFail=0
+   local joinSessionFail=0
+   local methodCallFail=0
+
+   test2Pass=0
+
+   echo "Checking client log..." >> $testDetailLog
+
+   if [ -e "$logName" -a -s "$logName" ]; then
+      discoveryFail=`grep "Discovery fail" $logName | wc -l`
+   
+      if [ "$discoveryFail" -eq 0 ]; then
+         joinSessionFail=`grep "JoinSession fail" $logName | wc -l`
+     
+         if [ "$joinSessionFail" -eq 0 ]; then
+            methodCallFail=`grep "Received ping string fail" $logName | wc -l`
+
+            if [ "$methodCallFail" -eq 0 ]; then
+               echo "Test2 pass" >> $testDetailLog
+               test2Pass=0
+            else
+               echo "Test2 fail as method call error!" >> $testErrorLog
+               test2Pass=3
+            fi
+         else
+            echo "Test2 fail as joinSession fail!" >> $testErrorLog
+            test2Pass=2
+         fi
+      else
+         echo "Test2 fail as discover fail!" >> $testErrorLog
+         test2Pass=1
+      fi
+   else
+      echo "Test2 blocked as instruments not launched correctly!" >> $testErrorLog
+   fi
+
+}
+
+# Function name: test1
+# Description: run basicBusService on ios and bbclient on android
+# Parameter: 
+# Return: none
+function test1() {
+   echo "test1 started..." >> $testDetailLog
+   echo "test1=Android client talks to IOS service" >> $testResultLog
+   echo "<p>test1=Android client talks to IOS service</p>" >> $testResultHtml
+    
+   # Init test result to Fail
+   testResults[totalTests]=6
+
+   # android client log name
+   local clientLog="test1_androidClient.txt"
+   local serviceLog="test1_iosService.txt"
+
+   killAndroidProcess "bbclient"
+   killAndroidProcess "bbservice"
+
+   launchClientOnAndroid $clientLog
+
+   # wait 5 seconds to make sure bbclient started
+   sleep 5
+
+   launchServiceOnIOS $iosDeviceId $serviceLog
+
+   if [ "$launchIosStatus" -eq 0 ]; then
+
+      checkAndroidClientResult $clientLog
+
+      if [ "$test1Pass" -eq 0 ]; then
+        echo "Test result=Pass" >> $testResultLog
+        echo "<p>Test result=Pass</p>" >> $testResultHtml
+        testResults[totalTests]=0
+      elif [ "$test1Pass" -eq 1 ]; then
+        echo "Test result=Fail(Discovery)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">android discovery</a>)</p>" >> $testResultHtml
+      elif [ "$test1Pass" -eq 2 ]; then
+        echo "Test result=Fail(JoinSession)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">android JoinSession</a>)</p>" >> $testResultHtml
+      else
+        echo "Test result=Fail(Ping)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">android ping</a>)</p>" >> $testResultHtml
+      fi
+   else
+      echo "Test blocked because of ios service launch fail!" >> $testErrorLog
+      echo "Test result=Blocked(IOS launch)" >> $testResultLog
+      echo "<p>Test result=Blocked(<a class="error" href="\"$serviceLog\"">IOS launch</a>)</p>" >> $testResultHtml
+   fi
+   
+   echo "<br>" >> $testResultHtml
+   
+   killAndroidProcess "bbclient"
+
+   totalTests=$(($totalTests + 1))
+}
+
+# Function name: test2
+# Description: run bbservice on android and basicBusClient on ios
+# Parameter: 
+# Return: none
+function test2() {
+   echo "test2 started..." >> $testDetailLog
+   echo "test2=IOS client talks to android service" >> $testResultLog
+   echo "<p>test2=IOS client talks to android service</p>" >> $testResultHtml
+   
+   # Init test result to Fail
+   testResults[totalTests]=6
+
+   # android client log name
+   local serviceLog="test2_androidService.txt"
+   local clientLog="test2_iosClient.txt"
+
+   killAndroidProcess "bbclient"
+   killAndroidProcess "bbservice"
+
+   launchServiceOnAndroid $serviceLog
+
+   # Wait 10 seconds
+   sleep 10
+
+   launchClientOnIOS $iosDeviceId $clientLog
+
+   if [ "$launchIosStatus" -eq 0 ]; then
+      checkIosClientResult $clientLog
+
+      if [ "$test2Pass" -eq 0 ]; then
+        echo "Test result=Pass" >> $testResultLog
+        echo "<p>Test result=Pass</p>" >> $testResultHtml
+        testResults[totalTests]=0
+      elif [ "$test2Pass" -eq 1 ]; then
+        echo "Test result=Fail(IOS Discovery)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">IOS Discovery</a>)</p>" >> $testResultHtml
+      elif [ "$test2Pass" -eq 2 ]; then
+        echo "Test result=Fail(JoinSession)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">IOS JoinSession</a>)</p>" >> $testResultHtml
+      else
+        echo "Test result=Fail(Ping)" >> $testResultLog
+        echo "<p>Test result=Fail(<a class="error" href="\"$clientLog\"">IOS Ping</a>)</p>" >> $testResultHtml
+      fi
+   else
+      echo "Test2 blocked because of ios client launch fail!" >> $testErrorLog
+      echo "Test result=Blocked(IOS launch)" >> $testResultLog
+      echo "<p>Test result=Blocked(<a class="error" href="\"$clientLog\"">IOS launch</a>)</p>" >> $testResultHtml
+   fi
+
+   echo "<br>" >> $testResultHtml
+   
+   killAndroidProcess "bbservice"
+
+   totalTests=$(($totalTests + 1))
+}
+
+
+# Function name: androidNativeTests
+# Description: run native binaries on android like bbservice and bbclient
+# Parameter: 
+# Return: none
+function androidNativeTests() {
+
+	echo "Start native tests on android..." >> $testDetailLog
+
+	# for ice native tests on android, we need to launch pre-installed daemon and scan apk
+	if [ "$tryIce" -eq 1 ]; then
+		echo "Launch pre-installed daemon and scan service on android..." >> $testDetailLog
+
+		killAndroidProcess "alljoyn-daemon"
+
+		# Launch pre-installed daemon on android
+		$ADB shell "su -c /data/alljoyn/alljoyn-daemon --internal" >> $testDetailLog 2>&1 </dev/null &
+
+		# make sure pre-installed daemon started
+		sleep 2
+
+		# Launch proximity scan apk on android
+		$ADB shell am startservice -a org.alljoyn.jni.alljoynandroidext >> $testDetailLog &
+
+		# make sure scan service started
+		sleep 5
+
+		# TODO: check scan service is launched
+	fi
+
+    #run basicBusService on ios and native bbclient on android
+	test1
+
+    #run basicBusClient on ios and native bbservice on android
+	test2
+
+}
+
+# Main program
+
+#Clean up old log collection
+rm -rf *.html *.txt *.log instrumentscli*
+
+#parse input argument
+parseCmdArgs $*
+
+SetUpGlobalVariables
+
+#Print test report summary common to all tests
+testDate=`eval date +%Y%m%d`
+echo "Test date=$testDate" >> $testResultLog
+echo "......" >> $testResultLog
+
+# Html format
+echo "<html> <style> a.error {color:red} a.info {color:green} </style>" > $testResultHtml
+echo "<body>" >> $testResultHtml
+echo "<h3>Test date=$testDate </h3>" >> $testResultHtml
+echo "<p>......</p>" >> $testResultHtml
+
+# Get core and tc commit id ref from sdk manifest.txt
+getCommitIds
+
+if [ "$iosCommitId" != "${UNKNOWN_ID}" ]; then
+    createCommitIdUrl ${IOS_COMMIT_TYPE} "$iosCommitId"
+    echo "IOS SDK commit id=$iosCommitId" >> $testResultLog
+	echo "<p>IOS SDK commit id=<a class="info" href="\"$commitUrl\"">$iosCommitId</a></p>" >> $testResultHtml
+fi
+
+if [ "$androidCommitId" != "${UNKNOWN_ID}" ]; then
+    createCommitIdUrl ${ANDROID_COMMIT_TYPE} "$androidCommitId"
+    echo "Android SDK commit id=$androidCommitId" >> $testResultLog
+	echo "<p>Android SDK commit id=<a class="info" href="\"$commitUrl\"">$androidCommitId</a></p>" >> $testResultHtml
+fi
+
+# Check one ios device is connected
+checkIosDevice
+
+# Check one android device is connected
+checkAndroidDevice
+
+# Build and install binaries to devices
+setup
+
+androidNativeTests
+
+echo "......" >> $testResultLog
+echo "<p>......</p>" >> $testResultHtml
+
+passedTest=0
+failedTest=0
+blockedTest=0
+
+echo "Total tests=$totalTests" >> $testResultLog
+
+for (( testCase=0; testCase<$totalTests; testCase++))
+do
+        currentResult=${testResults[testCase]}
+
+        if [ "$currentResult" -eq 0 ]; then 
+                passedTest=`expr $passedTest + 1` 
+        elif [ "$currentResult" -eq 6 ]; then 
+                failedTest=`expr $failedTest + 1` 
+        else 
+                blockedTest=`expr $blockedTest + 1` 
+        fi   
+done
+
+passRate=$(($passedTest * 100 / $totalTests))
+
+echo "Test passed=$passedTest" >> $testResultLog
+echo "Test failed=$failedTest" >> $testResultLog
+echo "Pass rate=$passRate" >> $testResultLog
+
+echo "<p>Total tests=$totalTests</p>" >> $testResultHtml
+echo "<p>Test passed=$passedTest</p>" >> $testResultHtml
+echo "<p>Test failed=$failedTest</p>" >> $testResultHtml
+echo "<p>Pass rate=$passRate</p>" >> $testResultHtml
+echo "</body>" >> $testResultHtml
+echo "</html>" >> $testResultHtml
+
+echo "Total tests=$totalTests , passed=$passedTest , failed=$failedTest , blocked=$blockedTest"
+
+echo "Test complete, check $testResultLog"
+echo "Test complete, check $testResultLog" >> $testDetailLog
+
+if [ "$failedTest" -ge 1 ]; then 
+        # At least one test case fail 
+        exit 1
+else
+        exit 0
+fi

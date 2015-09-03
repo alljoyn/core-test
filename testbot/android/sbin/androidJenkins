@@ -1,0 +1,283 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+# wrapper for multiDeviceTest under jenkins
+
+# Return:
+# 0 - Success
+# 1 - Fail
+# 2 - Android SDK download fail
+# 3 - Rename fail
+# 5 - Test apk path not exist
+# 6 - Android adb path not exist
+# 7 - Workspace local path not exist
+# 8 - Test script path not exist
+
+# Function name: usage
+# Description: display command parameter
+# Parameter: none
+# Return: none
+function usage() {
+   echo 'Usage: androidJenkins -h -r [android_rel-sdk_url] -d [android_dbg-sdk_url] -w [workspace_path] -b [bundled] 
+                               -k [test_apk_path] -a [adb_path]'
+   echo ' -h help (optional)
+          -r android release sdk url
+          -d android debug sdk url
+          -w workspace path
+          -b bundled SDK with BR=on
+          -k test apk path
+          -a android adb path'
+}
+
+# Function name: parseArgs
+# Description: Parse command arguments
+# Parameter: none
+# Return:
+#   2 - invalid command
+function parseArgs() {
+
+    echo "Parsing arguments..."
+
+    args=`getopt hr:d:w:bk:a: $*`
+
+    if [ $? != 0 ]; then
+        usage
+        exit 2
+    fi
+
+    set -- $args
+
+    # Android release and debug SDK url, complate path and file name
+    androidRelSdkUrl="http://[path]/alljoyn-0.0.0-android-sdk-rel.zip"
+    androidDbgSdkUrl="http://[path]/alljoyn-0.0.0-android-sdk-dbg.zip"
+
+    # Local workspace path
+    workspacePath=""
+    
+    # Bundled or Pre-installed routing node (BR=on or BR=off)
+    bundledFlag=0
+    
+    # 
+    testApkPath=""
+    
+    # android adb binary path
+    adbPath=""
+    
+    for i
+    do
+        case "$i" in
+             -h) shift;usage;exit 0;;
+             -r) shift;androidRelSdkUrl=$1;echo "android release sdk url $androidRelSdkUrl";shift;;
+             -d) shift;androidDbgSdkUrl=$1;echo "android debug sdk url $androidDbgSdkUrl";shift;;
+             -w) shift;workspacePath=$1;echo "workspace path $workspacePath";shift;;
+             -b) shift;bundledFlag=1; echo "Bundled SDK with BR=on";;
+             -k) shift;testApkPath=$1;echo "Test apk path $testApkPath";shift;;
+             -a) shift;adbPath=$1;echo "android adb path $adbPath";shift;;
+        esac
+    done
+    
+    if [ -n "$testApkPath" -a -d "$testApkPath" ]; then
+		testApkDir="$testApkPath"
+		lastChr=${testApkPath#${testApkPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			testApkDir=`echo "${testApkPath%?}"`
+		fi
+	else
+		echo "Invalid test apk path $testApkPath"
+		exit 5
+	fi
+	
+	if [ -n "$adbPath" -a -d "$adbPath" ]; then
+		adbDir="$adbPath"
+		lastChr=${adbPath#${adbPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			adbDir=`echo "${adbPath%?}"`
+		fi
+	else
+		echo "Invalid adb path $adbPath"
+		exit 6
+	fi
+    if [ -n "$workspacePath" -a -d "$workspacePath" ]; then
+		wsPath="$workspacePath"
+		lastChr=${workspacePath#${workspacePath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			wsPath=`echo "${workspacePath%?}"`
+		fi
+	else
+		echo "Invalid workspace local path $workspacePath"
+		exit 7
+	fi
+    
+    androidRelSdkZip="alljoyn-0.0.0-android-sdk-rel.zip"
+    androidDbgSdkZip="alljoyn-0.0.0-android-sdk-dbg.zip"
+    
+    androidLocalRoot="${wsPath}/alljoyn-android"
+    androidCorePath="${androidLocalRoot}/core"
+    
+    androidRelPath="${androidLocalRoot}/core/alljoyn-0.0.1-rel"
+    androidDbgPath="${androidLocalRoot}/core/alljoyn-0.0.1-dbg"
+    
+	# multiDeviceTest path
+	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptName="${testScriptPath}/multiDeviceTest"
+	
+	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
+        echo "Good test script $testScriptName"
+	else
+		echo "Invalid test script $testScriptName"
+		exit 8
+	fi
+}
+
+# Function name: getWgetPath
+# Description: 
+#   Get wget path
+# Parameter: none
+# Return: 
+#   wgetPath is set to complete path
+function getWgetPath() {
+    echo "Get wget path ..."
+}
+
+
+# Function name: getAndroidSdk
+# Description: 
+#   Get Android sdk using wget
+# Parameter: 
+#   variant - release or debug
+# Return: 
+#   androidSdkReady is set to 0 if Android SDK downloaded successfully
+#   androidSdkReady is set to 1 if fail
+function getAndroidSdk() {
+	echo "Get Android SDK from $androidSdkUrl ..."
+	local variant=$1
+	
+	androidSdkReady=1
+	
+(cd ${wsPath}
+rm -rf ${androidLocalRoot}
+/usr/bin/wget ${androidRelSdkUrl} --no-check-certificate
+/usr/bin/wget ${androidDbgSdkUrl} --no-check-certificate
+unzip ${androidRelSdkZip}
+unzip ${androidDbgSdkZip}
+)
+    local downloadStatus=$?   
+    local manifestRel="${androidRelPath}/manifest.txt"
+    local manifestDbg="${androidDbgPath}/manifest.txt"
+    
+    # Check if downloaded is successfully unzipped and manifest file exist
+    if [ "${downloadStatus}" -eq 0 -a -e "${manifestRel}" -a -e "${manifestDbg}" ]; then
+        echo "Android SDK download succeed from $androidSdkUrl"
+        androidSdkReady=0
+    else
+        echo "Android SDK download failed from ${androidSdkUrl} !"
+    fi  
+}
+
+# Function name: testbotRename
+# Description: 
+#   Rename folder to be testbot compatible
+# Parameter: none
+# Return: renameStatus is 0 if success
+function testbotRename() {
+	echo "Rename  ${androidRelPath} and ${androidDbgPath} ..."
+    renameStatus=0
+    
+    local newRelPath="${androidLocalRoot}/core/sdk-rel"
+	local newDbgPath="${androidLocalRoot}/core/sdk-dbg"
+	
+	mv ${androidRelPath} ${newRelPath}
+	renameStatus=$?
+	
+	if [ "$renameStatus" -eq 0 -a -d "${newRelPath}" ]; then
+	    mv ${androidDbgPath} ${newDbgPath}
+	    renameStatus=$?
+	    
+	    if [ "$renameStatus" -eq 0 -a -d "${newDbgPath}" ]; then
+	        echo "Rename  successful"
+	    else
+	        echo "Rename  ${androidDbgPath} to ${newDbgPath} fail!"
+	    fi
+	else
+	    echo "Rename  ${androidRelPath} to ${newRelPath} fail!"
+	fi
+}
+	
+
+# Function name: runTest
+# Description: 
+#   run IOS android interaction test
+# Parameter: none
+# Return: 
+#   testStatus is 0 if test pass; 1 otherwise
+function runTest() {
+	echo "Run test ..."
+
+    testStatus=1
+    local bundledTest=""
+    
+    if [ "$bundledFlag" -eq 1 ]; then
+       bundledTest="-b"
+    fi
+     
+(cd ${wsPath}
+${testScriptName} -v -p ${androidCorePath} ${bundledTest} -k ${testApkDir} -a ${adbDir}
+)
+
+    testStatus=$?
+    
+    if [ "${testStatus}" -eq 0 ]; then
+        echo "All test passed"
+    else
+        echo "Some test failed!"
+    fi
+}
+
+#parse input argument
+parseArgs $*
+
+# cleanup old files
+rm -rf ${wsPath}/*.html ${wsPath}/*.log ${wsPath}/*.txt ${wsPath}/*.zip ${wsPath}/alljoyn* 2>/dev/null 1>&2
+
+#getAndroidSdk
+getAndroidSdk
+
+# If Android SDK download failed, exit
+if [ "${androidSdkReady}" -ne 0 ]; then
+    echo "Android release and debug SDKs download failed!"
+    exit 2
+fi
+
+testbotRename
+
+if [ "${renameStatus}" -ne 0 ]; then
+    echo "Rename failed!"
+    exit 3
+fi
+
+# run test
+runTest
+
+if [ "$testStatus" -ne 0 ]; then 
+    # At least one test case fail 
+    exit 1
+else
+    exit 0
+fi
