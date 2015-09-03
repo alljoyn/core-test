@@ -275,7 +275,7 @@ class TCThread : public Thread {
         //This resets the keystore
         AJ_ClearCredentials(0);
         AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        PrintXML(AppObjects);
+        AJ_PrintXML(AppObjects);
         running = TRUE;
         sessionPort = 0;
         prop1 = 42;
@@ -314,9 +314,6 @@ class TCThread : public Thread {
     }
     void SetPermissionManifest(AJ_Manifest* manifest) {
         AJ_ManifestTemplateSet(manifest);
-    }
-    void PrintXML(const AJ_Object* objs) {
-        AJ_PrintXML(objs);
     }
     void RegisterObjects(AJ_Object* objs, AJ_Object* prxs, uint8_t secure) {
         uint8_t n;
@@ -1109,7 +1106,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed SetProperty call";
-    EXPECT_EQ(513, TCBus.ReadProp1());
+    EXPECT_EQ(static_cast<uint32_t>(513), TCBus.ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed GetProperty call";;
@@ -1308,7 +1305,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
         EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(42, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
 
         MsgArg prop1ArgOut;
         EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -1503,7 +1500,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
         EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(42, TCBus.ReadProp1());
+        EXPECT_EQ(static_cast<uint32_t>(42), TCBus.ReadProp1());
 
         MsgArg prop1ArgOut;
         EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
