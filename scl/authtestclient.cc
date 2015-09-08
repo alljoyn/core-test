@@ -722,7 +722,7 @@ int main(int argc, char*argv[]) {
     status = pc1.SetApplicationState(PermissionConfigurator::ApplicationState::CLAIMABLE);
     printf("Before calling EPS, calling SetApplicationState  %s \n", QCC_StatusText(status));
 
-    PermissionConfigurator::ApplicationState state;
+    PermissionConfigurator::ApplicationState state = NOT_CLAIMABLE;
     printf("Application state is %s \n", PermissionConfigurator::ToString(state));
     status = pc1.GetApplicationState(state);
     printf("Before calling EPS, calling GetApplicationState  %s \n", QCC_StatusText(status));

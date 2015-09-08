@@ -396,7 +396,7 @@ int main(int argc, char*argv[]) {
     }
 
     PermissionConfigurator& PC = g_msgBus->GetPermissionConfigurator();
-    PermissionConfigurator::ApplicationState appState;
+    PermissionConfigurator::ApplicationState appState = NOT_CLAIMABLE;
     //Set the manifest template
     {
         PermissionPolicy::Rule::Member member[1];
