@@ -1467,7 +1467,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
     MsgArg prop1Arg;
     EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
     EXPECT_EQ(ER_OK, proxy.SetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed SetProperty call";
-    EXPECT_EQ(static_cast<uint32_t>(513), TCBus->ReadProp1());
+    EXPECT_EQ(static_cast<int32_t>(513), TCBus->ReadProp1());
 
     MsgArg prop1ArgOut;
     EXPECT_EQ(ER_OK, proxy.GetProperty(interfaceName, "Prop1", prop1Arg)) << "SC failed GetProperty call";;
@@ -1668,7 +1668,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(static_cast<uint32_t>(42), TCBus->ReadProp1());
+        EXPECT_EQ(42, TCBus->ReadProp1());
 
         MsgArg prop1ArgOut;
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
@@ -1860,7 +1860,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         MsgArg prop1Arg;
         EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
-        EXPECT_EQ(static_cast<uint32_t>(42), TCBus->ReadProp1());
+        EXPECT_EQ(42, TCBus->ReadProp1());
 
         MsgArg prop1ArgOut;
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
