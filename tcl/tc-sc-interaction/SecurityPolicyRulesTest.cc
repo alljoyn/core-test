@@ -4245,14 +4245,14 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test1_properties_succesfully_se
     {
         int32_t prop1;
         MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop1", &propArg)) << props.ToString().c_str();
+        ASSERT_EQ(ER_OK, props.GetElement("{sv}", "Prop1", &propArg)) << props.ToString().c_str();
         EXPECT_EQ(ER_OK, propArg->Get("i", &prop1)) << propArg->ToString().c_str();
         EXPECT_EQ(42, prop1);
     }
     {
         int32_t prop2;
         MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop2", &propArg)) << props.ToString().c_str();
+        ASSERT_EQ(ER_OK, props.GetElement("{sv}", "Prop2", &propArg)) << props.ToString().c_str();
         EXPECT_EQ(ER_OK, propArg->Get("i", &prop2)) << propArg->ToString().c_str();
         EXPECT_EQ(17, prop2);
     }
@@ -4472,7 +4472,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test2_only_prop1_successfully_f
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
     EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
     MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    ASSERT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
 
     {
         int32_t prop1;
@@ -4697,7 +4697,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test3_only_prop1_successfully_f
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
     EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
     MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    ASSERT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
 
     {
         int32_t prop1;
