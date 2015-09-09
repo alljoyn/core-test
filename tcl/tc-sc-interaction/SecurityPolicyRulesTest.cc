@@ -5330,7 +5330,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test6_properties_successfully_f
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
     EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
     MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    ASSERT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
 
     {
         int32_t prop1;
@@ -5559,7 +5559,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_f
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
     EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
     MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    ASSERT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
 
     {
         int32_t prop1;
