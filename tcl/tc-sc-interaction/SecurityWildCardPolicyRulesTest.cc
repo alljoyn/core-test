@@ -244,6 +244,7 @@ class TCThread_wildcard : public Thread {
     qcc::ThreadReturn Run(void* arg){
         QCC_UNUSED(arg);
         AJ_Status status;
+        (void) status; //suppress warnings
         AJ_Message msg;
         AJ_Message reply;
 
