@@ -670,10 +670,10 @@ class TCSecurityPolicyRulesThread : public Thread {
             AJ_ASSERT(AJ_OK == status);
             status = AJ_MarshalArgs(&msg, "s", ifn);
             AJ_ASSERT(AJ_OK == status);
+            status = AJ_DeliverMsg(&msg);
             SCStatus = ER_FAIL;
             response[0] = '\0';
 
-            #ifdef DISABLED_CLOSE_MESSAGE
             RetVal rv;
             rv.status = ER_FAIL;
             if (AJ_ERR_ACCESS == status) {
@@ -687,8 +687,6 @@ class TCSecurityPolicyRulesThread : public Thread {
                 AJ_CloseMsg(&msg);
                 return;
             }
-            #endif
-            AJ_DeliverMsg(&msg);
 
             message_handlers[AJ_REPLY_ID(PRX_ALL_PROP)] = [this, &p] () {
                 RetVal rv = { allprops, SCStatus };
@@ -5013,7 +5011,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test4_no_properties_fetched_TC)
     SCBus.UnregisterBusObject(SCBusObject);
 }
 
-#ifdef EXCLUDED_PROPERTY_TEST
 /*
  * Setup following policies and manifests
  *
@@ -5050,8 +5047,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test4_no_properties_fetched_TC)
  */
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test5_no_properties_fetched_SC)
 {
-    PolicyRulesTestBusObject TCBusObject(TCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, TCBus.RegisterBusObject(TCBusObject));
     const size_t manifestSize = 1;
 
     /* install permissions make method calls */
@@ -5213,14 +5208,10 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test5_no_properties_fetched_TC)
     //------------------------------------------------------------------------//
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    /* Create the ProxyBusObject and call the Echo method on the interface */
-    ProxyBusObject proxy(TCBus, SCBus.GetUniqueName().c_str(), "/test", TCToSCSessionId, true);
-    EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
-    EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
-    MsgArg props;
-    EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props));
+    TCProps props;
+    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
     SCBus.UnregisterBusObject(SCBusObject);
@@ -5262,8 +5253,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test5_no_properties_fetched_TC)
  */
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test6_properties_successfully_fetched_SC)
 {
-    PolicyRulesTestBusObject TCBusObject(TCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, TCBus.RegisterBusObject(TCBusObject));
     const size_t manifestSize = 1;
 
     /* install permissions make method calls */
@@ -5434,27 +5423,20 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test6_properties_successfully_f
     //------------------------------------------------------------------------//
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    /* Create the ProxyBusObject and call the Echo method on the interface */
-    ProxyBusObject proxy(TCBus, SCBus.GetUniqueName().c_str(), "/test", TCToSCSessionId, true);
-    EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
-    EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
-    MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    TCProps props;
+    QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
+    EXPECT_EQ(ER_OK, status);
 
     {
         int32_t prop1;
-        MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop1", &propArg)) << props.ToString().c_str();
-        EXPECT_EQ(ER_OK, propArg->Get("i", &prop1)) << propArg->ToString().c_str();
+        EXPECT_EQ(ER_OK, props.GetElement("Prop1", prop1));
         EXPECT_EQ(42, prop1);
     }
     {
         int32_t prop2;
-        MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop2", &propArg)) << props.ToString().c_str();
-        EXPECT_EQ(ER_OK, propArg->Get("i", &prop2)) << propArg->ToString().c_str();
+        EXPECT_EQ(ER_OK, props.GetElement("Prop2", prop2));
         EXPECT_EQ(17, prop2);
     }
 
@@ -5498,8 +5480,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test6_properties_successfully_f
  */
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_fetched_SC)
 {
-    PolicyRulesTestBusObject TCBusObject(TCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, TCBus.RegisterBusObject(TCBusObject));
     const size_t manifestSize = 1;
 
     /* install permissions make method calls */
@@ -5596,7 +5576,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_f
     }
 
     /* clean up */
-    TCBus.UnregisterBusObject(TCBusObject);
+    //TCBus.UnregisterBusObject(TCBusObject);
 }
 
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_fetched_TC)
@@ -5674,27 +5654,20 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_f
     //------------------------------------------------------------------------//
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    /* Create the ProxyBusObject and call the Echo method on the interface */
-    ProxyBusObject proxy(TCBus, SCBus.GetUniqueName().c_str(), "/test", TCToSCSessionId, true);
-    EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
-    EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
-    MsgArg props;
-    EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props));
+    TCProps props;
+    QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
+    EXPECT_EQ(ER_OK, status);
 
     {
         int32_t prop1;
-        MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop1", &propArg)) << props.ToString().c_str();
-        EXPECT_EQ(ER_OK, propArg->Get("i", &prop1)) << propArg->ToString().c_str();
+        EXPECT_EQ(ER_OK, props.GetElement("Prop1", prop1));
         EXPECT_EQ(42, prop1);
     }
     {
         int32_t prop2;
-        MsgArg* propArg;
-        EXPECT_EQ(ER_OK, props.GetElement("{sv}", "Prop2", &propArg)) << props.ToString().c_str();
-        EXPECT_EQ(ER_OK, propArg->Get("i", &prop2)) << propArg->ToString().c_str();
+        EXPECT_EQ(ER_OK, props.GetElement("Prop2", prop2));
         EXPECT_EQ(17, prop2);
     }
 
@@ -5738,8 +5711,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_f
  */
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_SC)
 {
-    PolicyRulesTestBusObject TCBusObject(TCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, TCBus.RegisterBusObject(TCBusObject));
     const size_t manifestSize = 1;
 
     /* install permissions make method calls */
@@ -5822,7 +5793,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_SC)
     EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props));
 
     /* clean up */
-    TCBus.UnregisterBusObject(TCBusObject);
+    //TCBus.UnregisterBusObject(TCBusObject);
 }
 
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_TC)
@@ -5901,14 +5872,10 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_TC)
     //------------------------------------------------------------------------//
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    /* Create the ProxyBusObject and call the Echo method on the interface */
-    ProxyBusObject proxy(TCBus, SCBus.GetUniqueName().c_str(), "/test", TCToSCSessionId, true);
-    EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
-    EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
-    MsgArg props;
-    EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props));
+    TCProps props;
+    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
     SCBus.UnregisterBusObject(SCBusObject);
@@ -5950,8 +5917,6 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_TC)
  */
 TEST_F(SecurityPolicyRulesTest, GetAllProperties_test9_no_properties_fetched_SC)
 {
-    PolicyRulesTestBusObject TCBusObject(TCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, TCBus.RegisterBusObject(TCBusObject));
     const size_t manifestSize = 1;
 
     //Permission policy that will be installed on SC
@@ -6111,19 +6076,14 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test9_no_properties_fetched_TC)
     //------------------------------------------------------------------------//
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, NULL, TCToSCSessionId, opts));
+    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    /* Create the ProxyBusObject and call the Echo method on the interface */
-    ProxyBusObject proxy(TCBus, SCBus.GetUniqueName().c_str(), "/test", TCToSCSessionId, true);
-    EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
-    EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
-    MsgArg props;
-    EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props));
+    TCProps props;
+    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
     SCBus.UnregisterBusObject(SCBusObject);
 }
-#endif
 
 /*
  * Purpose
@@ -8456,7 +8416,9 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_7_SC)
     }
 
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
     EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
