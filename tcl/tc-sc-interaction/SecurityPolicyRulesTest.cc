@@ -664,6 +664,7 @@ class TCSecurityPolicyRulesThread : public Thread {
 
         auto func = [this, peer, ifn, &p] () {
             AJ_Status status;
+            (void) status; //suppress warnings
             AJ_Message msg;
             allprops.Clear();
             status = AJ_MarshalMethodCall(&bus, &msg, PRX_ALL_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
