@@ -95,10 +95,8 @@ class TCSecurityClaimThread : public Thread {
 
 
     void HandleQueuedMessages() {
-        //std::lock_guard<std::mutex> guard(funcs_lock);
         funcs_lock.Lock();
         while (!funcs.empty()) {
-            //printf("Got func\n");
             Function f = funcs.front();
             f();
             funcs.pop();
@@ -108,8 +106,6 @@ class TCSecurityClaimThread : public Thread {
     }
 
     void Enqueue(Function f) {
-        //printf("Queueing\n");
-        //std::lock_guard<std::mutex> guard(funcs_lock);
         funcs_lock.Lock();
         funcs.push(f);
         AJ_Net_Interrupt();
@@ -131,7 +127,7 @@ class TCSecurityClaimThread : public Thread {
 
   public:
 
-    TCSecurityClaimThread() : qcc::Thread("TCSecurityClaimThread"), router() {
+    TCSecurityClaimThread() : qcc::Thread("TCSecurityClaimThread"), router(), running(true) {
     }
 
     qcc::ThreadReturn Run(void* arg){
@@ -152,8 +148,6 @@ class TCSecurityClaimThread : public Thread {
         //This resets the keystore
         AJ_ClearCredentials(0);
         AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-
-        running = TRUE;
 
         while (running) {
             HandleQueuedMessages();
