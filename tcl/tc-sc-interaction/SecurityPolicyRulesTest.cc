@@ -363,6 +363,7 @@ class TCSecurityPolicyRulesThread : public Thread {
                     if (AJ_MSG_ERROR == msg.hdr->msgType) {
                         SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
                         strncpy(response, msg.error, sizeof (response));
+                        printf("ERROR: [%s]\n", msg.error);
                     } else {
                         const char* resp;
                         status = AJ_UnmarshalArgs(&msg, "s", &resp);
@@ -655,6 +656,8 @@ class TCSecurityPolicyRulesThread : public Thread {
 
     QStatus GetAllProperties(const char* peer, const char* ifn, TCProps& props) {
 
+        printf("GetAllProperties!\n");
+
         struct RetVal {
             TCProps props;
             QStatus status;
@@ -731,9 +734,21 @@ class TCSecurityPolicyRulesThread : public Thread {
             }
 
             AJ_MarshalArgs(&msg, "s", str);
-            AJ_DeliverMsg(&msg);
+            status = AJ_DeliverMsg(&msg);
+
+            if (AJ_OK != status) {
+                if (AJ_ERR_ACCESS == status) {
+                    SCStatus = ER_PERMISSION_DENIED;
+                } else {
+                    SCStatus = ER_FAIL;
+                }
+                AJ_CloseMsg(&msg);
+                p.set_value(SCStatus);
+                return;
+            }
 
             message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
+                printf("Reply: %s\n", QCC_StatusText(SCStatus));
                 p.set_value(SCStatus);
             };
         };
@@ -745,8 +760,10 @@ class TCSecurityPolicyRulesThread : public Thread {
         std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
         if (st == std::future_status::ready) {
             status = f.get();
+            printf("FUTURE: %s\n", QCC_StatusText(status));
         }
 
+        printf("RETURN: %s\n", QCC_StatusText(status));
         return status;
     }
 
