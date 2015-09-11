@@ -35,7 +35,7 @@ using namespace std;
  * Also busy wait loops do not require any platform specific threading code.
  */
 #define WAIT_MSECS  5
-#define WAIT_SIGNAL 1000
+#define WAIT_SIGNAL 2000
 #define TEN_MINS    600
 
 static const char* const testInterface[] = {
@@ -546,7 +546,7 @@ class TCSecurityPolicyRulesThread : public Thread {
             authStatus = f2.get();
         }
 
-        return (AJ_OK == authStatus) ? ER_OK : ER_FAIL;
+        return (AJ_OK == authStatus) ? ER_OK : ER_AUTH_FAIL;
     }
 
 
@@ -669,14 +669,12 @@ class TCSecurityPolicyRulesThread : public Thread {
             AJ_Status status;
             (void) status; //suppress warnings
             AJ_Message msg;
-            allprops.Clear();
-            status = AJ_MarshalMethodCall(&bus, &msg, PRX_ALL_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            AJ_ASSERT(AJ_OK == status);
-            status = AJ_MarshalArgs(&msg, "s", ifn);
-            AJ_ASSERT(AJ_OK == status);
-            status = AJ_DeliverMsg(&msg);
             SCStatus = ER_FAIL;
             response[0] = '\0';
+            allprops.Clear();
+            AJ_MarshalMethodCall(&bus, &msg, PRX_ALL_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
+            AJ_MarshalArgs(&msg, "s", ifn);
+            status = AJ_DeliverMsg(&msg);
 
             RetVal rv;
             rv.status = ER_FAIL;
@@ -721,18 +719,7 @@ class TCSecurityPolicyRulesThread : public Thread {
             AJ_Message msg;
             SCStatus = ER_FAIL;
             response[0] = '\0';
-            status = AJ_MarshalMethodCall(&bus, &msg, id, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            if (AJ_OK != status) {
-                if (AJ_ERR_ACCESS == status) {
-                    SCStatus = ER_PERMISSION_DENIED;
-                } else {
-                    SCStatus = ER_FAIL;
-                }
-                AJ_CloseMsg(&msg);
-                p.set_value(SCStatus);
-                return;
-            }
-
+            AJ_MarshalMethodCall(&bus, &msg, id, peer, session, AJ_FLAG_ENCRYPTED, 25000);
             AJ_MarshalArgs(&msg, "s", str);
             status = AJ_DeliverMsg(&msg);
 
@@ -774,7 +761,9 @@ class TCSecurityPolicyRulesThread : public Thread {
             AJ_Status status;
             AJ_Message msg;
             SCStatus = ER_FAIL;
-            status = AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
+            AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
+            AJ_MarshalArgs(&msg, "s", str);
+            status = AJ_DeliverMsg(&msg);
             if (AJ_OK != status) {
                 if (AJ_ERR_ACCESS == status) {
                     SCStatus = ER_PERMISSION_DENIED;
@@ -785,8 +774,6 @@ class TCSecurityPolicyRulesThread : public Thread {
                 p.set_value(SCStatus);
                 return;
             }
-            AJ_MarshalArgs(&msg, "s", str);
-            AJ_DeliverMsg(&msg);
             SCStatus = ER_OK;
 
             p.set_value(SCStatus);
@@ -12173,7 +12160,7 @@ TEST_F(SecurityPolicyRulesTest, acl_with_public_key_recieving_peer_has_incorrect
 
     SessionOpts opts;
     SessionId TCToSCSessionId;
-    EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
+    ASSERT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
     qcc::String p1policyStr = "\n----TC Policy-----\n" + TCPolicy.ToString();
     SCOPED_TRACE(p1policyStr.c_str());
     qcc::String p2policyStr = "\n----SC Policy-----\n" + SCPolicy.ToString();
@@ -12181,7 +12168,8 @@ TEST_F(SecurityPolicyRulesTest, acl_with_public_key_recieving_peer_has_incorrect
 
     // Verify Method call
     const char* s = "String that should be Echoed back.";
-    EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+    EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+    EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", TCBus.GetErrorName());
 
     /* clean up */
     SCBus.UnregisterBusObject(SCBusObject);
