@@ -16,6 +16,11 @@
 
 #include <gtest/gtest.h>
 
+#include <queue>
+#include <functional>
+#include <mutex>
+#include <future>
+
 extern "C" {
 #include <ajtcl/alljoyn.h>
 #include <ajtcl/aj_crypto.h>
@@ -25,6 +30,7 @@ extern "C" {
 #include <ajtcl/aj_creds.h>
 #include <ajtcl/aj_security.h>
 #include <ajtcl/aj_link_timeout.h>
+#include <ajtcl/aj_peer.h>
 
 /* Undefine a TC deprecated flag that causes conflicts with SC headers */
 #ifdef ALLJOYN_FLAG_SESSIONLESS
@@ -92,5 +98,96 @@ const uint16_t TC_LEAFNODE_CONNECT_TIMEOUT = 1500;
 // The parameter passed to AJ_UnmarshalMsg API (value in milliseconds)
 const uint16_t TC_UNMARSHAL_TIMEOUT = 100;
 
-// The duration for which the test waits for an event before delcaring a failure
-const uint16_t WAIT_TIME = 3000;
+// The duration for which the test waits for an event before declaring a failure
+const uint16_t WAIT_TIME  = 3000;
+const uint16_t WAIT_MSECS = 5;
+
+static AJ_Status DefaultAuthListener(uint32_t mechanism, uint32_t command, AJ_Credential* cred)
+{
+    AJ_Status status = AJ_ERR_INVALID;
+
+    AJ_AlwaysPrintf(("DefaultAuthListener mechanism %x command %x\n", mechanism, command));
+
+    switch (mechanism) {
+    case AUTH_SUITE_ECDHE_NULL:
+        cred->expiration = 1;
+        status = AJ_OK;
+        break;
+
+    default:
+        break;
+    }
+    return status;
+}
+
+static void DefaultAuthCallback(const void* context, AJ_Status status)
+{
+    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
+    p->set_value(status);
+}
+
+class TCProperties {
+  public:
+    TCProperties() { }
+    void SetElement(qcc::String name, int32_t value);
+    QStatus GetElement(qcc::String name, int32_t& value);
+    void Clear();
+    size_t GetNumElements();
+    void HandleReply(AJ_Message* msg);
+
+  private:
+    std::map<qcc::String, int32_t> props;
+};
+
+class TCBusAttachment : public qcc::Thread {
+    typedef std::function<void (void)> Function;
+    typedef std::map<int, Function> MsgHandlerMap;
+
+  public:
+
+    TCBusAttachment(const char* name, AJ_AuthListenerFunc listener = DefaultAuthListener, AJ_PeerAuthenticateCallback callback = DefaultAuthCallback) : qcc::Thread(name), running(true), authlistener(listener), authcallback(callback) { }
+    void Connect(const char* router);
+    qcc::ThreadReturn Run(void* arg);
+    QStatus Stop();
+    void Enqueue(Function f);
+    void SendMessage();
+    virtual void RecvMessage(AJ_Message* msg);
+    void HandleMessage(AJ_Message* msg);
+    qcc::String GetUniqueName();
+    QStatus EnablePeerSecurity(const char* mechanisms);
+    void SetApplicationState(uint16_t state);
+    void SetPermissionManifest(AJ_Manifest* manifest);
+    QStatus BindSessionPort(uint16_t port);
+    QStatus JoinSession(const char* host, uint16_t port, uint32_t& id);
+    QStatus AuthenticatePeer(const char* host);
+    QStatus MethodCall(const char* peer, uint32_t id, const char* str = NULL);
+    QStatus Signal(const char* peer, uint32_t id, const char* str = NULL);
+    QStatus GetProperty(const char* peer, uint32_t mid, uint32_t pid, int32_t& val);
+    QStatus SetProperty(const char* peer, uint32_t mid, uint32_t pid, int32_t val);
+    QStatus GetAllProperties(const char* peer, uint32_t mid, const char* ifn, TCProperties& val, bool secure = true);
+
+    const char* GetErrorName() {
+        return response.c_str();
+    }
+    const char* GetResponse() {
+        return response.c_str();
+    }
+
+    std::queue<Function> funcs;
+    qcc::Mutex funcs_lock;
+
+    MsgHandlerMap message_handlers;
+
+    bool running;
+    AJ_AuthListenerFunc authlistener;
+    AJ_PeerAuthenticateCallback authcallback;
+    AJ_BusAttachment bus;
+    bool bound;
+    uint32_t session;
+    uint16_t sessionPort;
+    QStatus SCStatus;
+    qcc::String response;
+    uint32_t propid;
+    int32_t propval;
+    TCProperties properties;
+};

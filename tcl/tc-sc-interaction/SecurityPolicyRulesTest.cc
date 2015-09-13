@@ -17,11 +17,6 @@
 #include <alljoyn/ApplicationStateListener.h>
 #include <alljoyn/SecurityApplicationProxy.h>
 
-#include <queue>
-#include <functional>
-#include <mutex>
-#include <future>
-
 #include "InMemoryKeyStore.h"
 #include "PermissionMgmtObj.h"
 #include "PermissionMgmtTest.h"
@@ -35,7 +30,7 @@ using namespace std;
  * Also busy wait loops do not require any platform specific threading code.
  */
 #define WAIT_MSECS  5
-#define WAIT_SIGNAL 2000
+#define WAIT_SIGNAL WAIT_TIME
 #define TEN_MINS    600
 
 static const char* const testInterface[] = {
@@ -72,32 +67,6 @@ static const AJ_InterfaceDescription testInterfaces[] = {
 static AJ_Object AppObjects[] = {
     { "/test", testInterfaces, AJ_OBJ_FLAG_ANNOUNCED | AJ_OBJ_FLAG_SECURE },
     { NULL }
-};
-
-class TCProps {
-  public:
-    TCProps() { }
-    void SetElement(String name, int32_t value)
-    {
-        props[name] = value;
-    }
-    QStatus GetElement(String name, int32_t& value)
-    {
-        map<String, int32_t>::iterator it;
-        it = props.find(name);
-        if (it == props.end()) {
-            return ER_BUS_ELEMENT_NOT_FOUND;
-        }
-        value = it->second;
-        return ER_OK;
-    }
-    void Clear()
-    {
-        props.clear();
-    }
-
-  private:
-    map<String, int32_t> props;
 };
 
 static int32_t prop1;
@@ -141,414 +110,137 @@ static AJ_Status PropSetHandler(AJ_Message* msg, uint32_t id, void* context)
     }
 }
 
-static AJ_Status PropAllHandlerReply(AJ_Message* msg, TCProps& props)
-{
-    AJ_Status status;
-    AJ_Arg array;
-    const char* str;
-    int32_t val;
-    status = AJ_UnmarshalContainer(msg, &array, AJ_ARG_ARRAY);
-    while (AJ_OK == status) {
-        status = AJ_UnmarshalArgs(msg, "{sv}", &str, "i", &val);
-        if (AJ_OK != status) {
-            break;
-        }
-        props.SetElement(str, val);
-    }
-    AJ_ASSERT(AJ_ERR_NO_MORE == status);
-    status = AJ_UnmarshalCloseContainer(msg, &array);
-    AJ_ASSERT(AJ_OK == status);
-    return status;
-}
-
-static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, AJ_Credential* cred)
-{
-    AJ_Status status = AJ_ERR_INVALID;
-
-    AJ_AlwaysPrintf(("AuthListenerCallback authmechanism %d command %d\n", authmechanism, command));
-
-    switch (authmechanism) {
-    case AUTH_SUITE_ECDHE_NULL:
-        cred->expiration = 1;
-        status = AJ_OK;
-        break;
-
-    default:
-        break;
-    }
-    return status;
-}
-
-static void AuthCallback(const void* context, AJ_Status status)
-{
-    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
-    p->set_value(status);
-    //*((AJ_Status*)context) = status;
-}
-
-class TCSecurityPolicyRulesThread : public Thread {
-
-    typedef std::function<void (void)> Function;
-    std::queue<Function> funcs;
-    qcc::Mutex funcs_lock;
-
-
-    void HandleQueuedMessages() {
-        //std::lock_guard<std::mutex> guard(funcs_lock);
-        funcs_lock.Lock();
-        while (!funcs.empty()) {
-            Function f = funcs.front();
-            f();
-            funcs.pop();
-        }
-        funcs_lock.Unlock();
-    }
-
-    void Enqueue(Function f) {
-        //std::lock_guard<std::mutex> guard(funcs_lock);
-        funcs_lock.Lock();
-        funcs.push(f);
-        AJ_Net_Interrupt();
-        funcs_lock.Unlock();
-    }
-
-    typedef std::map<uint32_t, Function> MsgHandlerMap;
-    MsgHandlerMap message_handlers;
-
-    void HandleMessage(AJ_Message* msg) {
-        auto it = message_handlers.find(msg->msgId);
-
-        if (it != message_handlers.end()) {
-            printf("HandleMessage %08X\n", msg->msgId);
-            Function handler = it->second;
-            handler();
-            message_handlers.erase(it);
-        }
-    }
+class TCPolicyRulesAttachment : public TCBusAttachment {
 
   public:
 
-    TCSecurityPolicyRulesThread(const char* name) : qcc::Thread(name), router() {
-    }
-
-    qcc::ThreadReturn Run(void* arg){
-        QCC_UNUSED(arg);
-        AJ_Status status;
-        AJ_Message msg;
-        AJ_Message reply;
-
-        printf("RUNNING!\n");
-
-        AJ_AlwaysPrintf(("TC SetUp %s\n", router.c_str()));
-        AJ_Initialize();
-        // Ensure that a routing node is found as quickly as possible
-        //AJ_SetSelectionTimeout(10);
-
-        AJ_FindBusAndConnect(&bus, router.c_str(), TC_LEAFNODE_CONNECT_TIMEOUT);
-
-        //This resets the keystore
-        AJ_ClearCredentials(0);
-        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        RegisterObjects(AppObjects, AppObjects);
-        //PrintXML(AppObjects);
-
-        running = TRUE;
+    TCPolicyRulesAttachment(const char* name) : TCBusAttachment(name) {
         sessionPort = 0;
         prop1 = 42;
         prop2 = 17;
         signalReceivedFlag = FALSE;
+        AJ_RegisterObjects(AppObjects, AppObjects);
+    }
 
+    void RecvMessage(AJ_Message* msg) {
+        AJ_Status status;
+        AJ_Message reply;
+        bool handled = TRUE;
 
-        while (running) {
-            HandleQueuedMessages();
+        switch (msg->msgId) {
+        case APP_ECHO:
+            const char* str;
+            status = AJ_UnmarshalArgs(msg, "s", &str);
+            AJ_ASSERT(AJ_OK == status);
+            printf("Echo: %s\n", str);
+            status = AJ_MarshalReplyMsg(msg, &reply);
+            AJ_ASSERT(AJ_OK == status);
+            status = AJ_MarshalArgs(&reply, "s", str);
+            AJ_ASSERT(AJ_OK == status);
+            status = AJ_DeliverMsg(&reply);
+            AJ_ASSERT(AJ_OK == status);
+            break;
 
-            status = AJ_UnmarshalMsg(&bus, &msg, TC_UNMARSHAL_TIMEOUT);
+        case APP_CHIRP:
+            status = AJ_UnmarshalArgs(msg, "s", &str);
+            AJ_ASSERT(AJ_OK == status);
+            printf("Chirp: %s\n", str);
+            signalReceivedFlag = TRUE;
+            break;
 
-            if (AJ_ERR_TIMEOUT == status && AJ_ERR_LINK_TIMEOUT == AJ_BusLinkStateProc(&bus)) {
-                status = AJ_ERR_READ;
+        case APP_GET_PROP:
+            status = AJ_BusPropGet(msg, PropGetHandler, NULL);
+            AJ_ASSERT(AJ_OK == status);
+            break;
+
+        case APP_SET_PROP:
+            status = AJ_BusPropSet(msg, PropSetHandler, NULL);
+            AJ_ASSERT(AJ_OK == status);
+            break;
+
+        case APP_ALL_PROP:
+            status = AJ_BusPropGetAll(msg, PropGetHandler, NULL);
+            AJ_ASSERT(AJ_OK == status);
+            break;
+
+        case AJ_REPLY_ID(PRX_ECHO):
+            if (AJ_MSG_ERROR == msg->hdr->msgType) {
+                SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                response = msg->error;
+            } else {
+                const char* resp;
+                status = AJ_UnmarshalArgs(msg, "s", &resp);
+                AJ_ASSERT(AJ_OK == status);
+                response = resp;
+                SCStatus = ER_OK;
+                printf("Echo Reply: %s\n", response.c_str());
             }
-            if (AJ_ERR_READ == status) {
-                running = FALSE;
-                break;
-            } else if (AJ_OK == status) {
-                bool busMessage = FALSE;
-                uint16_t port;
-                uint32_t sessionId;
-                const char* str;
-                switch (msg.msgId) {
-                case AJ_METHOD_ACCEPT_SESSION:
-                    status = AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
-                    AJ_ASSERT(AJ_OK == status);
-                    if (port == sessionPort) {
-                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s OK\n", &bus, port, sessionId, str);
-                        AJ_BusReplyAcceptSession(&msg, TRUE);
-                    } else {
-                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s BUS\n", &bus, port, sessionId, str);
-                        AJ_ResetArgs(&msg);
-                        busMessage = TRUE;
-                    }
-                    break;
+            break;
 
-                case APP_ECHO:
-                    status = AJ_UnmarshalArgs(&msg, "s", &str);
-                    AJ_ASSERT(AJ_OK == status);
-                    printf("Echo: %s\n", str);
-                    status = AJ_MarshalReplyMsg(&msg, &reply);
-                    AJ_ASSERT(AJ_OK == status);
-                    status = AJ_MarshalArgs(&reply, "s", str);
-                    AJ_ASSERT(AJ_OK == status);
-                    status = AJ_DeliverMsg(&reply);
-                    AJ_ASSERT(AJ_OK == status);
-                    break;
-
-                case APP_CHIRP:
-                    status = AJ_UnmarshalArgs(&msg, "s", &str);
-                    AJ_ASSERT(AJ_OK == status);
-                    printf("Chirp: %s\n", str);
-                    signalReceivedFlag = TRUE;
-                    break;
-
-                case APP_GET_PROP:
-                    status = AJ_BusPropGet(&msg, PropGetHandler, NULL);
-                    AJ_ASSERT(AJ_OK == status);
-                    break;
-
-                case APP_SET_PROP:
-                    status = AJ_BusPropSet(&msg, PropSetHandler, NULL);
-                    AJ_ASSERT(AJ_OK == status);
-                    break;
-
-                case APP_ALL_PROP:
-                    status = AJ_BusPropGetAll(&msg, PropGetHandler, NULL);
-                    AJ_ASSERT(AJ_OK == status);
-                    break;
-
-                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        /* Can't tell if this was destined for app or bus */
-                        AJ_ASSERT(0);
-                    } else {
-                        uint32_t disposition;
-                        status = AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
-                        AJ_ASSERT(AJ_OK == status);
-                        if (port == sessionPort) {
-                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
-                            bound = TRUE;
-                        } else {
-                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
-                            AJ_ResetArgs(&msg);
-                            busMessage = TRUE;
-                        }
-                    }
-                    break;
-
-                case AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
-                        strncpy(response, msg.error, sizeof (response));
-                    } else {
-                        uint32_t code;
-                        status = AJ_UnmarshalArgs(&msg, "uu", &code, &sessionId);
-                        AJ_ASSERT(AJ_OK == status);
-                        if (code == AJ_JOINSESSION_REPLY_SUCCESS) {
-                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d OK\n", &bus, sessionId);
-                            session = sessionId;
-                        } else {
-                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d FAIL\n", &bus, sessionId);
-                        }
-                    }
-                    break;
-
-                case AJ_REPLY_ID(PRX_ECHO):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
-                        strncpy(response, msg.error, sizeof (response));
-                        printf("ERROR: [%s]\n", msg.error);
-                    } else {
-                        const char* resp;
-                        status = AJ_UnmarshalArgs(&msg, "s", &resp);
-                        AJ_ASSERT(AJ_OK == status);
-                        strncpy(response, resp, sizeof (response));
-                        SCStatus = ER_OK;
-                        printf("Echo Reply: %s\n", response);
-                    }
-                    break;
-
-                case AJ_REPLY_ID(PRX_GET_PROP):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
-                        strncpy(response, msg.error, sizeof (response));
-                    } else {
-                        const char* sig;
-                        status = AJ_UnmarshalVariant(&msg, &sig);
-                        AJ_ASSERT(AJ_OK == status);
-                        status = AJ_UnmarshalArgs(&msg, sig, &propval);
-                        AJ_ASSERT(AJ_OK == status);
-                        SCStatus = ER_OK;
-                    }
-                    break;
-
-                case AJ_REPLY_ID(PRX_SET_PROP):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
-                        strncpy(response, msg.error, sizeof (response));
-                    } else {
-                        SCStatus = ER_OK;
-                    }
-                    break;
-
-                case AJ_REPLY_ID(PRX_ALL_PROP):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
-                        strncpy(response, msg.error, sizeof (response));
-                    } else {
-                        PropAllHandlerReply(&msg, allprops);
-                        SCStatus = ER_OK;
-                    }
-                    break;
-
-                default:
-                    busMessage = TRUE;
-                    break;
-                }
-                if (busMessage) {
-                    AJ_BusHandleBusMessage(&msg);
-                } else {
-                    HandleMessage(&msg);
-                }
+        case AJ_REPLY_ID(PRX_GET_PROP):
+            if (AJ_MSG_ERROR == msg->hdr->msgType) {
+                SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                response = msg->error;
+            } else {
+                const char* sig;
+                status = AJ_UnmarshalVariant(msg, &sig);
+                AJ_ASSERT(AJ_OK == status);
+                status = AJ_UnmarshalArgs(msg, sig, &propval);
+                AJ_ASSERT(AJ_OK == status);
+                SCStatus = ER_OK;
             }
-            AJ_CloseMsg(&msg);
+            break;
+
+        case AJ_REPLY_ID(PRX_SET_PROP):
+            if (AJ_MSG_ERROR == msg->hdr->msgType) {
+                SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                response = msg->error;
+            } else {
+                SCStatus = ER_OK;
+            }
+            break;
+
+        case AJ_REPLY_ID(PRX_ALL_PROP):
+            if (AJ_MSG_ERROR == msg->hdr->msgType) {
+                SCStatus = ER_BUS_REPLY_IS_ERROR_MESSAGE;
+                response = msg->error;
+            } else {
+                properties.HandleReply(msg);
+                SCStatus = ER_OK;
+            }
+            break;
+
+        default:
+            handled = FALSE;
+            break;
         }
-
-        AJ_Disconnect(&bus);
-        return this;
-    }
-
-
-
-    QStatus Stop() {
-        running = FALSE;
-        AJ_Net_Interrupt();
-        return Thread::Stop();
-    }
-    qcc::String GetUniqueName() {
-        return qcc::String(bus.uniqueName);
-    }
-
-
-    QStatus EnablePeerSecurity(const char* mechanisms, AuthListener* listener, const char* keystore = NULL, bool shared = FALSE) {
-        QCC_UNUSED(listener);
-        QCC_UNUSED(keystore);
-        QCC_UNUSED(shared);
-        qcc::String str(mechanisms);
-
-        std::promise<void> p;
-
-        auto func = [this, &p, str] () {
-            uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
-            size_t numsuites = 0;
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
-            }
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
-            }
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
-            }
-            AJ_BusEnableSecurity(&bus, suites, numsuites);
-            p.set_value();
-        };
-
-        Enqueue(func);
-        p.get_future().wait();
-        return ER_OK;
-    }
-
-
-    void SetApplicationState(uint16_t state) {
-        AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
-    }
-    void SetPermissionManifest(AJ_Manifest* manifest) {
-        AJ_ManifestTemplateSet(manifest);
-    }
-    void RegisterObjects(const AJ_Object* objs, const AJ_Object* prxs) {
-        AJ_RegisterObjects(objs, prxs);
-    }
-
-    // called from main thread!
-    QStatus BindSessionPort(uint16_t port) {
-        std::promise<bool> p;
-
-        auto func = [this, port, &p] () {
-            bound = FALSE;
-            sessionPort = port;
-            AJ_BusBindSessionPort(&bus, port, NULL, 0);
-
-            message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
-                p.set_value(bound);
-            };
-        };
-
-        Enqueue(func);
-
-        bool bound = false;
-        std::future<bool> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            bound = f.get();
+        if (handled) {
+            HandleMessage(msg);
+        } else {
+            TCBusAttachment::RecvMessage(msg);
         }
-
-        return bound ? ER_OK : ER_FAIL;
     }
 
     QStatus JoinSession(const char* host, uint16_t port, uint32_t& id) {
-
-        std::promise<uint32_t> p;
-
-        auto func = [this, host, port, &p] () {
-            session = 0;
-            sessionPort = port;
-            AJ_BusJoinSession(&bus, host, port, NULL);
-
-            message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &p] () {
-                p.set_value(session);
-            };
-        };
-
-        Enqueue(func);
-
-        uint32_t session = 0;
-        std::future<uint32_t> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            session = f.get();
+        QStatus status;
+        status = TCBusAttachment::JoinSession(host, port, id);
+        if (ER_OK == status) {
+            status = AuthenticatePeer(host);
         }
-
-        if (!session) {
-            return ER_FAIL;
-        }
-
-        id = session;
-
-        std::promise<AJ_Status> p2;
-        auto func2 = [this, host, &p2] () {
-            // AuthCallback will set p2's value
-            AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &p2);
-        };
-
-        Enqueue(func2);
-
-        AJ_Status authStatus = AJ_ERR_NULL;
-        std::future<AJ_Status> f2 = p2.get_future();
-        st = f2.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            authStatus = f2.get();
-        }
-
-        return (AJ_OK == authStatus) ? ER_OK : ER_AUTH_FAIL;
+        return status;
     }
 
+    QStatus GetProperty(const char* peer, uint32_t pid, int32_t& val) {
+        return TCBusAttachment::GetProperty(peer, PRX_GET_PROP, pid, val);
+    }
+
+    QStatus SetProperty(const char* peer, uint32_t pid, int32_t val) {
+        return TCBusAttachment::SetProperty(peer, PRX_SET_PROP, pid, val);
+    }
+
+    QStatus GetAllProperties(const char* peer, const char* ifn, TCProperties& val) {
+        return TCBusAttachment::GetAllProperties(peer, PRX_ALL_PROP, ifn, val);
+    }
 
     int32_t ReadProp1() {
         return prop1;
@@ -557,252 +249,7 @@ class TCSecurityPolicyRulesThread : public Thread {
         return prop2;
     }
 
-    QStatus GetProperty(const char* peer, uint32_t id, int32_t& i) {
-
-        struct RetVal {
-            int32_t i;
-            QStatus status;
-        };
-
-        std::promise<RetVal> p;
-
-        auto func = [this, peer, id, &p] () {
-            AJ_Status status;
-            AJ_Message msg;
-            status = AJ_MarshalMethodCall(&bus, &msg, PRX_GET_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            AJ_ASSERT(AJ_OK == status);
-            SCStatus = ER_FAIL;
-            response[0] = '\0';
-            propval = 0;
-            RetVal rv = { propval, ER_FAIL };
-
-            AJ_ASSERT((PRX_PROP1 == id) || (PRX_PROP2 == id));
-            propid = id;
-            status = AJ_MarshalPropertyArgs(&msg, propid);
-            if (AJ_OK != status) {
-                if (AJ_ERR_ACCESS == status) {
-                    rv.status = ER_PERMISSION_DENIED;
-                } else {
-                    rv.status = ER_FAIL;
-                }
-                AJ_CloseMsg(&msg);
-                p.set_value(rv);
-                return;
-            }
-            AJ_DeliverMsg(&msg);
-
-            message_handlers[AJ_REPLY_ID(PRX_GET_PROP)] = [this, &p] () {
-                RetVal rv = { propval, SCStatus };
-                p.set_value(rv);
-            };
-        };
-
-        Enqueue(func);
-
-        RetVal ret = { 0, ER_FAIL };
-        std::future<RetVal> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            ret = f.get();
-            i = ret.i;
-        }
-
-        return ret.status;
-    }
-
-    QStatus SetProperty(const char* peer, uint32_t id, int32_t i) {
-
-        std::promise<QStatus> p;
-
-        auto func = [this, peer, id, i, &p] () {
-            AJ_Status status;
-            AJ_Message msg;
-            status = AJ_MarshalMethodCall(&bus, &msg, PRX_SET_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            AJ_ASSERT(AJ_OK == status);
-            SCStatus = ER_FAIL;
-            response[0] = '\0';
-            propid = id;
-
-            status = AJ_MarshalPropertyArgs(&msg, propid);
-            if (AJ_ERR_ACCESS == status) {
-                AJ_CloseMsg(&msg);
-                p.set_value(ER_PERMISSION_DENIED);
-                return;
-            } else if (AJ_OK != status) {
-                AJ_CloseMsg(&msg);
-                p.set_value(ER_FAIL);
-                return;
-            }
-            AJ_MarshalArgs(&msg, "i", i);
-            AJ_DeliverMsg(&msg);
-
-            message_handlers[AJ_REPLY_ID(PRX_SET_PROP)] = [this, &p] () {
-                p.set_value(SCStatus);
-            };
-        };
-
-        Enqueue(func);
-
-        // wait for the results to come back!
-        QStatus status = ER_FAIL;
-        std::future<QStatus> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            status = f.get();
-        }
-
-        return status;
-    }
-
-    QStatus GetAllProperties(const char* peer, const char* ifn, TCProps& props) {
-
-        printf("GetAllProperties!\n");
-
-        struct RetVal {
-            TCProps props;
-            QStatus status;
-        };
-
-        std::promise<RetVal> p;
-
-        auto func = [this, peer, ifn, &p] () {
-            AJ_Status status;
-            (void) status; //suppress warnings
-            AJ_Message msg;
-            SCStatus = ER_FAIL;
-            response[0] = '\0';
-            allprops.Clear();
-            AJ_MarshalMethodCall(&bus, &msg, PRX_ALL_PROP, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            AJ_MarshalArgs(&msg, "s", ifn);
-            status = AJ_DeliverMsg(&msg);
-
-            RetVal rv;
-            rv.status = ER_FAIL;
-            if (AJ_ERR_ACCESS == status) {
-                rv.status = ER_PERMISSION_DENIED;
-                p.set_value(rv);
-                AJ_CloseMsg(&msg);
-                return;
-            } else if (AJ_OK != status) {
-                rv.status = ER_FAIL;
-                p.set_value(rv);
-                AJ_CloseMsg(&msg);
-                return;
-            }
-
-            message_handlers[AJ_REPLY_ID(PRX_ALL_PROP)] = [this, &p] () {
-                RetVal rv = { allprops, SCStatus };
-                p.set_value(rv);
-            };
-        };
-
-        Enqueue(func);
-
-        // wait for the results to come back!
-        RetVal ret;
-        ret.status = ER_FAIL;
-        std::future<RetVal> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            ret = f.get();
-            props = ret.props;
-        }
-
-        return ret.status;
-    }
-
-    QStatus MethodCall(const char* peer, uint32_t id, const char* str) {
-        std::promise<QStatus> p;
-
-        auto func = [this, peer, id, str, &p] () {
-            AJ_Status status;
-            AJ_Message msg;
-            SCStatus = ER_FAIL;
-            response[0] = '\0';
-            AJ_MarshalMethodCall(&bus, &msg, id, peer, session, AJ_FLAG_ENCRYPTED, 25000);
-            AJ_MarshalArgs(&msg, "s", str);
-            status = AJ_DeliverMsg(&msg);
-
-            if (AJ_OK != status) {
-                if (AJ_ERR_ACCESS == status) {
-                    SCStatus = ER_PERMISSION_DENIED;
-                } else {
-                    SCStatus = ER_FAIL;
-                }
-                AJ_CloseMsg(&msg);
-                p.set_value(SCStatus);
-                return;
-            }
-
-            message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
-                printf("Reply: %s\n", QCC_StatusText(SCStatus));
-                p.set_value(SCStatus);
-            };
-        };
-
-        Enqueue(func);
-
-        QStatus status = ER_FAIL;
-        std::future<QStatus> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            status = f.get();
-            printf("FUTURE: %s\n", QCC_StatusText(status));
-        }
-
-        printf("RETURN: %s\n", QCC_StatusText(status));
-        return status;
-    }
-
-    QStatus Signal(const char* peer, uint32_t id, const char* str) {
-        std::promise<QStatus> p;
-
-        auto func = [this, peer, id, str, &p] () {
-            AJ_Status status;
-            AJ_Message msg;
-            SCStatus = ER_FAIL;
-            AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0);
-            AJ_MarshalArgs(&msg, "s", str);
-            status = AJ_DeliverMsg(&msg);
-            if (AJ_OK != status) {
-                if (AJ_ERR_ACCESS == status) {
-                    SCStatus = ER_PERMISSION_DENIED;
-                } else {
-                    SCStatus = ER_FAIL;
-                }
-                AJ_CloseMsg(&msg);
-                p.set_value(SCStatus);
-                return;
-            }
-            SCStatus = ER_OK;
-
-            p.set_value(SCStatus);
-        };
-
-        Enqueue(func);
-        return p.get_future().get();
-    }
-
-    const char* GetErrorName() {
-        return response;
-    }
-
-    const char* GetResponse() {
-        return response;
-    }
-
-    qcc::String router;
-    bool running;
-    bool bound;
-    AJ_BusAttachment bus;
-    uint16_t sessionPort;
-    uint32_t session;
     bool signalReceivedFlag;
-    QStatus SCStatus;
-    char response[1024];
-    uint32_t propid;
-    int32_t propval;
-    TCProps allprops;
 };
 
 static String PrintActionMask(uint8_t actionMask) {
@@ -972,13 +419,12 @@ class SecurityPolicyRulesTest : public testing::Test {
         qcc::String advertisingPrefix = "quiet@" + routingNodePrefix;
         ASSERT_EQ(ER_OK, managerBus.AdvertiseName(advertisingPrefix.c_str(), ajn::TRANSPORT_ANY));
 
-
-        TCBus.router = routingNodePrefix.c_str();
+        TCBus.Connect(routingNodePrefix.c_str());
         TCBus.Start();
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, true));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", SCAuthListener));
-        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", NULL));
+        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA"));
 
         interface = "<node>"
                     "<interface name='" + String(interfaceName) + "'>"
@@ -1185,7 +631,7 @@ class SecurityPolicyRulesTest : public testing::Test {
                                                                         3600,
                                                                         TCMembershipCertificate[0]
                                                                         ));
-        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, false));
+        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
         EXPECT_EQ(ER_OK, sapWithTC.InstallMembership(TCMembershipCertificate, 1));
     }
 
@@ -1217,7 +663,7 @@ class SecurityPolicyRulesTest : public testing::Test {
 
     BusAttachment managerBus;
     BusAttachment SCBus;
-    TCSecurityPolicyRulesThread TCBus;
+    TCPolicyRulesAttachment TCBus;
 
     SessionPort managerSessionPort;
     SessionPort SCSessionPort;
@@ -4342,7 +3788,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test1_properties_succesfully_se
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
     EXPECT_EQ(ER_OK, status);
 
@@ -4570,7 +4016,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test2_only_prop1_successfully_f
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
     EXPECT_EQ(ER_OK, status);
 
@@ -4793,7 +4239,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test3_only_prop1_successfully_f
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     EXPECT_EQ(ER_OK, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     {
@@ -5009,7 +4455,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test4_no_properties_fetched_TC)
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
@@ -5215,7 +4661,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test5_no_properties_fetched_TC)
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
@@ -5430,7 +4876,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test6_properties_successfully_f
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
     EXPECT_EQ(ER_OK, status);
 
@@ -5661,7 +5107,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test7_properties_successfully_f
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     QStatus status = TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props);
     EXPECT_EQ(ER_OK, status);
 
@@ -5879,7 +5325,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test8_no_properties_fetched_TC)
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
@@ -6083,7 +5529,7 @@ TEST_F(SecurityPolicyRulesTest, GetAllProperties_test9_no_properties_fetched_TC)
     SessionId TCToSCSessionId;
     EXPECT_EQ(ER_OK, TCBus.JoinSession(SCBus.GetUniqueName().c_str(), SCSessionPort, TCToSCSessionId));
 
-    TCProps props;
+    TCProperties props;
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
 
     /* clean up */
@@ -6225,7 +5671,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_1_SC)
 
     /* We should be using a ECDHE_NULL based session */
     EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
-    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
@@ -6375,7 +5821,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_1_TC)
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
 
     /* We should be using a ECDHE_NULL based session */
-    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
     EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
 
     SessionOpts opts;
@@ -6550,7 +5996,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_2_SC)
 
     /* We should be using a ECDHE_NULL based session */
     EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
-    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
@@ -6700,7 +6146,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_2_TC)
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
 
     /* We should be using a ECDHE_NULL based session */
-    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
     EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
 
     SessionOpts opts;

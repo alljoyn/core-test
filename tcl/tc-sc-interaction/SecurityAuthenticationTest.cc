@@ -17,11 +17,6 @@
 #include <alljoyn/ApplicationStateListener.h>
 #include <alljoyn/SecurityApplicationProxy.h>
 
-#include <queue>
-#include <functional>
-#include <mutex>
-#include <future>
-
 #include "PermissionMgmtObj.h"
 #include "PermissionMgmtTest.h"
 #include "InMemoryKeyStore.h"
@@ -46,13 +41,13 @@ using namespace std;
 static const char psk_hint[] = "<anonymous>";
 static const char psk_char[] = "faaa0af3dd3f1e0379da046a3ab6ca44";
 static uint32_t authenticationSuccessfull = FALSE;
-static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, AJ_Credential* cred)
+static AJ_Status TCAuthListener(uint32_t mechanism, uint32_t command, AJ_Credential* cred)
 {
     AJ_Status status = AJ_ERR_INVALID;
 
-    AJ_AlwaysPrintf(("AuthListenerCallback authmechanism %d command %d\n", authmechanism, command));
+    AJ_AlwaysPrintf(("TCAuthListener mechanism %x command %x\n", mechanism, command));
 
-    switch (authmechanism) {
+    switch (mechanism) {
     case AUTH_SUITE_ECDHE_NULL:
         cred->expiration = 1;
         status = AJ_OK;
@@ -82,310 +77,22 @@ static AJ_Status AuthListenerCallback(uint32_t authmechanism, uint32_t command, 
     return status;
 }
 
-static void ClearFlags() {
-    authenticationSuccessfull = FALSE;
-}
-
-static void AuthCallback(const void* context, AJ_Status status)
+static void TCAuthCallback(const void* context, AJ_Status status)
 {
+    if (AJ_OK == status) {
+        authenticationSuccessfull = TRUE;
+    }
     std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
     p->set_value(status);
 }
 
-class TCSecurityAuthenticationThread : public Thread {
+static void ClearFlags() {
+    authenticationSuccessfull = FALSE;
+}
 
-    typedef std::function<void (void)> Function;
-    std::queue<Function> funcs;
-    qcc::Mutex funcs_lock;
-
-
-    void HandleQueuedMessages() {
-        //std::lock_guard<std::mutex> guard(funcs_lock);
-        funcs_lock.Lock();
-        while (!funcs.empty()) {
-            //printf("Got func\n");
-            Function f = funcs.front();
-            f();
-            funcs.pop();
-        }
-
-        funcs_lock.Unlock();
-    }
-
-    void Enqueue(Function f) {
-        //printf("Queueing\n");
-        //std::lock_guard<std::mutex> guard(funcs_lock);
-        funcs_lock.Lock();
-        funcs.push(f);
-        AJ_Net_Interrupt();
-        funcs_lock.Unlock();
-    }
-
-    typedef std::map<int, Function> MsgHandlerMap;
-    MsgHandlerMap message_handlers;
-
-    void HandleMessage(AJ_Message* msg) {
-        auto it = message_handlers.find(msg->msgId);
-
-        if (it != message_handlers.end()) {
-            Function handler = it->second;
-            handler();
-            message_handlers.erase(it);
-        }
-    }
-
+class TCAuthenticationAttachment : public TCBusAttachment {
   public:
-
-    TCSecurityAuthenticationThread(const char* name) : qcc::Thread(name), router() {
-    }
-
-    qcc::ThreadReturn Run(void* arg) {
-        QCC_UNUSED(arg);
-        AJ_Status status;
-        AJ_Message msg;
-
-        printf("RUNNING!\n");
-
-        AJ_AlwaysPrintf(("TC SetUp %s\n", router.c_str()));
-        AJ_Initialize();
-        // Ensure that a routing node is found as quickly as possible
-        //AJ_SetSelectionTimeout(10);
-
-        AJ_FindBusAndConnect(&bus, router.c_str(), TC_LEAFNODE_CONNECT_TIMEOUT);
-
-        //This resets the keystore
-        AJ_ClearCredentials(0);
-        AJ_BusSetAuthListenerCallback(&bus, AuthListenerCallback);
-        //PrintXML(AppObjects);
-
-        running = TRUE;
-        sessionPort = 0;
-
-        while (running) {
-            HandleQueuedMessages();
-
-            status = AJ_UnmarshalMsg(&bus, &msg, TC_UNMARSHAL_TIMEOUT);
-
-            if (AJ_ERR_TIMEOUT == status && AJ_ERR_LINK_TIMEOUT == AJ_BusLinkStateProc(&bus)) {
-                status = AJ_ERR_READ;
-            }
-            if (AJ_ERR_READ == status) {
-                running = FALSE;
-                break;
-            } else if (AJ_OK == status) {
-                bool busMessage = FALSE;
-                uint16_t port;
-                uint32_t sessionId;
-                const char* str;
-                switch (msg.msgId) {
-                case AJ_METHOD_ACCEPT_SESSION:
-                    status = AJ_UnmarshalArgs(&msg, "qus", &port, &sessionId, &str);
-                    AJ_ASSERT(AJ_OK == status);
-                    if (port == sessionPort) {
-                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s OK\n", &bus, port, sessionId, str);
-                        AJ_BusReplyAcceptSession(&msg, TRUE);
-                    } else {
-                        printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s BUS\n", &bus, port, sessionId, str);
-                        AJ_ResetArgs(&msg);
-                        busMessage = TRUE;
-                    }
-                    break;
-
-                case AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        /* Can't tell if this was destined for app or bus */
-                        AJ_ASSERT(0);
-                    } else {
-                        uint32_t disposition;
-                        status = AJ_UnmarshalArgs(&msg, "uq", &disposition, &port);
-                        AJ_ASSERT(AJ_OK == status);
-                        if (port == sessionPort) {
-                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d OK\n", &bus, port);
-                            bound = TRUE;
-                        } else {
-                            printf("BindSessionPortReply(bus=%p): AJ_METHOD_BIND_SESSION_PORT %d BUS\n", &bus, port);
-                            AJ_ResetArgs(&msg);
-                            busMessage = TRUE;
-                        }
-                    }
-                    break;
-
-                case AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION):
-                    if (AJ_MSG_ERROR == msg.hdr->msgType) {
-                        AJ_ASSERT(0);
-                    } else {
-                        uint32_t code;
-                        status = AJ_UnmarshalArgs(&msg, "uu", &code, &sessionId);
-                        AJ_ASSERT(AJ_OK == status);
-                        if (code == AJ_JOINSESSION_REPLY_SUCCESS) {
-                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d OK\n", &bus, sessionId);
-                            session = sessionId;
-                        } else {
-                            printf("JoinSessionReply(bus=%p): AJ_METHOD_JOIN_SESSION %d FAIL\n", &bus, sessionId);
-                        }
-                    }
-                    break;
-
-                default:
-                    busMessage = TRUE;
-                    break;
-                }
-                if (busMessage) {
-                    AJ_BusHandleBusMessage(&msg);
-                } else {
-                    HandleMessage(&msg);
-                }
-            }
-            AJ_CloseMsg(&msg);
-        }
-
-        AJ_Disconnect(&bus);
-        return this;
-    }
-
-    QStatus Stop() {
-        running = FALSE;
-        AJ_Net_Interrupt();
-        return Thread::Stop();
-    }
-
-    qcc::String GetUniqueName() {
-        /* May have to wait for the hello message */
-        for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
-            if (bus.uniqueName[0] != '\0') {
-                break;
-            }
-            qcc::Sleep(WAIT_MSECS);
-        }
-        return qcc::String(bus.uniqueName);
-    }
-
-    QStatus EnablePeerSecurity(const char* mechanisms) {
-        qcc::String str(mechanisms);
-
-        std::promise<void> p;
-
-        auto func = [this, &p, str] () {
-            uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
-            size_t numsuites = 0;
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
-            }
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
-            }
-            if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
-                suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
-            }
-            AJ_BusEnableSecurity(&bus, suites, numsuites);
-            p.set_value();
-        };
-
-        Enqueue(func);
-        p.get_future().wait();
-        return ER_OK;
-    }
-
-    void SetApplicationState(uint16_t state) {
-        AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
-    }
-
-    void SetPermissionManifest(AJ_Manifest* manifest) {
-        uint16_t state;
-        uint16_t cap;
-        uint16_t info;
-        AJ_SecurityGetClaimConfig(&state, &cap, &info);
-        AJ_ManifestTemplateSet(manifest);
-        AJ_SecuritySetClaimConfig(&bus, APP_STATE_NEED_UPDATE, cap, info);
-    }
-
-    QStatus BindSessionPort(uint16_t port) {
-        std::promise<bool> p;
-
-        auto func = [this, port, &p] () {
-            bound = FALSE;
-            sessionPort = port;
-            AJ_BusBindSessionPort(&bus, port, NULL, 0);
-
-            message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
-                p.set_value(bound);
-            };
-        };
-
-        Enqueue(func);
-
-        bool bound = false;
-        std::future<bool> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            bound = f.get();
-        }
-
-        return bound ? ER_OK : ER_FAIL;
-    }
-
-    QStatus JoinSession(const char* host, uint16_t port, uint32_t& id) {
-
-        std::promise<uint32_t> p;
-
-        auto func = [this, host, port, &p] () {
-            session = 0;
-            sessionPort = port;
-            AJ_BusJoinSession(&bus, host, port, NULL);
-
-            message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &p] () {
-                p.set_value(session);
-            };
-        };
-
-        Enqueue(func);
-
-        uint32_t session = 0;
-        std::future<uint32_t> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            session = f.get();
-        }
-
-        if (!session) {
-            return ER_FAIL;
-        }
-
-        id = session;
-
-        return ER_OK;
-    }
-
-    QStatus AuthenticatePeer(const char* host) {
-
-        std::promise<AJ_Status> p;
-        auto func = [this, host, &p] () {
-            // AuthCallback will set p's value
-            AJ_BusAuthenticatePeer(&bus, host, AuthCallback, &p);
-        };
-
-        Enqueue(func);
-
-        AJ_Status authStatus = AJ_ERR_NULL;
-        std::future<AJ_Status> f = p.get_future();
-        std::future_status st = f.wait_for(std::chrono::milliseconds(WAIT_SIGNAL));
-        if (st == std::future_status::ready) {
-            authStatus = f.get();
-        }
-
-        if (AJ_OK == authStatus) {
-            authenticationSuccessfull = TRUE;
-        }
-
-        return (AJ_OK == authStatus) ? ER_OK : ER_AUTH_FAIL;
-    }
-
-    qcc::String router;
-    bool running;
-    bool bound;
-    AJ_BusAttachment bus;
-    uint16_t sessionPort;
-    uint32_t session;
+    TCAuthenticationAttachment(const char* name) : TCBusAttachment(name, TCAuthListener, TCAuthCallback) { }
 };
 
 class SecurityAuthenticationTestSessionPortListener : public SessionPortListener {
@@ -554,6 +261,7 @@ class SecurityAuthenticationAuthListener : public AuthListener {
         QCC_UNUSED(authCount);
         QCC_UNUSED(userId);
         QCC_UNUSED(credMask);
+        printf("RequestCredentialsAsync\n");
         requestCredentialsCalled = true;
         Credentials creds;
         if (strcmp(authMechanism, "ALLJOYN_ECDHE_NULL") == 0) {
@@ -586,6 +294,7 @@ class SecurityAuthenticationAuthListener : public AuthListener {
         QCC_UNUSED(authMechanism);
         QCC_UNUSED(authPeer);
         QCC_UNUSED(creds);
+        printf("VerifyCredentialsAsync\n");
         verifyCredentialsCalled = true;
         if (strcmp(authMechanism, "ALLJOYN_ECDHE_ECDSA") == 0) {
             if (creds.IsSet(AuthListener::CRED_CERT_CHAIN)) {
@@ -653,7 +362,7 @@ class SecurityAuthenticationTest : public testing::Test {
         qcc::String advertisingPrefix = "quiet@" + routingNodePrefix;
         ASSERT_EQ(ER_OK, managerBus.AdvertiseName(advertisingPrefix.c_str(), ajn::TRANSPORT_ANY));
 
-        TCBus.router = routingNodePrefix.c_str();
+        TCBus.Connect(routingNodePrefix.c_str());
         TCBus.Start();
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
@@ -827,16 +536,16 @@ class SecurityAuthenticationTest : public testing::Test {
     }
 
     virtual void TearDown() {
+        EXPECT_EQ(ER_OK, TCBus.Stop());
+        EXPECT_EQ(ER_OK, TCBus.Join());
         EXPECT_EQ(ER_OK, managerBus.Stop());
         EXPECT_EQ(ER_OK, managerBus.Join());
         EXPECT_EQ(ER_OK, SCBus.Stop());
         EXPECT_EQ(ER_OK, SCBus.Join());
-        EXPECT_EQ(ER_OK, TCBus.Stop());
-        EXPECT_EQ(ER_OK, TCBus.Join());
     }
     BusAttachment managerBus;
     BusAttachment SCBus;
-    TCSecurityAuthenticationThread TCBus;
+    TCAuthenticationAttachment TCBus;
 
     InMemoryKeyStoreListener managerKeyStoreListener;
     InMemoryKeyStoreListener SCKeyStoreListener;
