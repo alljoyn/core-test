@@ -99,6 +99,8 @@ void TCBusAttachment::Connect(const char* router)
     AJ_ASSERT(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
     AJ_ClearCredentials(0);
     AJ_BusSetAuthListenerCallback(&bus, authlistener);
+    /* These are all Security 2.0 applications - set them claimable */
+    AJ_SecuritySetClaimConfig(&bus, APP_STATE_CLAIMABLE, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
 }
 
 qcc::ThreadReturn TCBusAttachment::Run(void* arg)
