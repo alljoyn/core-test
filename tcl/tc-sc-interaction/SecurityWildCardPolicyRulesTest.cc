@@ -890,9 +890,9 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
     EXPECT_EQ(ER_OK, sapWithTC.InstallMembership(TCMembershipCertificate, 1));
 
-    // Permission policy that will be installed on TC
-    PermissionPolicy TCPolicy;
-    TCPolicy.SetVersion(1);
+    // Permission policy that will be installed on SC
+    PermissionPolicy SCPolicy;
+    SCPolicy.SetVersion(1);
     {
         PermissionPolicy::Acl acls[1];
         {
@@ -915,17 +915,17 @@ void SecurityWildCardPolicyRulesTest::SetUp()
             }
             acls[0].SetRules(1, rules);
         }
-        TCPolicy.SetAcls(1, acls);
+        SCPolicy.SetAcls(1, acls);
     }
 
     {
-        PermissionPolicy TCDefaultPolicy;
-        EXPECT_EQ(ER_OK, sapWithTC.GetDefaultPolicy(TCDefaultPolicy));
-        UpdatePolicyWithValuesFromDefaultPolicy(TCDefaultPolicy, TCPolicy);
+        PermissionPolicy SCDefaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithSC.GetDefaultPolicy(SCDefaultPolicy));
+        UpdatePolicyWithValuesFromDefaultPolicy(SCDefaultPolicy, SCPolicy);
     }
 
-    EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
-    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
+    EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
+    EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 }
 
 void SecurityWildCardPolicyRulesTest::TearDown()
