@@ -1092,7 +1092,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
 
         MsgArg props;
-        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
+        EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
         EXPECT_EQ((size_t)0, props.v_array.GetNumElements());
     }
     // 4. ASG bus sends a signal to the app. bus.
@@ -1275,7 +1275,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
 
         MsgArg props;
-        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
+        EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
         EXPECT_EQ((size_t)0, props.v_array.GetNumElements());
     }
     // 4. Peer A (SC) sends a signal to the app. bus (TC).
