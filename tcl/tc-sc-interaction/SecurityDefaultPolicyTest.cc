@@ -427,6 +427,13 @@ class SecurityDefaultPolicyTest : public testing::Test {
     {
     }
 
+    void GetAppPublicKey(BusAttachment& bus, ECCPublicKey& publicKey)
+    {
+        KeyInfoNISTP256 keyInfo;
+        bus.GetPermissionConfigurator().GetSigningPublicKey(keyInfo);
+        publicKey = *keyInfo.GetPublicKey();
+    }
+
     virtual void SetUp() {
         EXPECT_EQ(ER_OK, managerBus.Start());
         EXPECT_EQ(ER_OK, managerBus.Connect());
@@ -490,17 +497,17 @@ class SecurityDefaultPolicyTest : public testing::Test {
         SecurityApplicationProxy sapWithManager(managerBus, managerBus.GetUniqueName().c_str(), managerToManagerSessionId);
         PermissionConfigurator::ApplicationState applicationStateManager;
         EXPECT_EQ(ER_OK, sapWithManager.GetApplicationState(applicationStateManager));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateManager);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateManager);
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
         PermissionConfigurator::ApplicationState applicationStateSC;
         EXPECT_EQ(ER_OK, sapWithSC.GetApplicationState(applicationStateSC));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateSC);
 
         SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
         PermissionConfigurator::ApplicationState applicationStateTC;
         EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
         managerBus.RegisterApplicationStateListener(appStateListener);
         managerBus.AddApplicationStateRule();
@@ -551,6 +558,8 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithManagerBus(managerBus, managerBus.GetUniqueName().c_str());
+        /* set claimable */
+        managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithManagerBus.Claim(managerKey,
                                                  managerGuid,
                                                  managerKey,
@@ -565,7 +574,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
         }
 
         ECCPublicKey managerPublicKey;
-        sapWithManager.GetEccPublicKey(managerPublicKey);
+        GetAppPublicKey(managerBus, managerPublicKey);
         ASSERT_EQ(*managerKey.GetPublicKey(), managerPublicKey);
 
         ASSERT_EQ(PermissionConfigurator::ApplicationState::CLAIMED, appStateListener.stateMap[managerBus.GetUniqueName()]);
@@ -584,6 +593,8 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
         //Manager claims Peers
+        /* set claimable */
+        SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
                                             managerGuid,
                                             managerKey,
@@ -611,6 +622,9 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       3600,
                                                                       identityCertChainTC[0],
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+        /* set claimable */
+        TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+        EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
         EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
                                             managerGuid,
                                             managerKey,

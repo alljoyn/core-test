@@ -380,6 +380,13 @@ class PolicyRulesTestBusObject : public BusObject {
     int32_t prop2;
 };
 
+static void GetAppPublicKey(BusAttachment& bus, ECCPublicKey& publicKey)
+{
+    KeyInfoNISTP256 keyInfo;
+    bus.GetPermissionConfigurator().GetSigningPublicKey(keyInfo);
+    publicKey = *keyInfo.GetPublicKey();
+}
+
 class SecurityPolicyRulesTest : public testing::Test {
   public:
     SecurityPolicyRulesTest() :
@@ -459,17 +466,17 @@ class SecurityPolicyRulesTest : public testing::Test {
         SecurityApplicationProxy sapWithManager(managerBus, managerBus.GetUniqueName().c_str(), managerToManagerSessionId);
         PermissionConfigurator::ApplicationState applicationStateManager;
         EXPECT_EQ(ER_OK, sapWithManager.GetApplicationState(applicationStateManager));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateManager);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateManager);
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
         PermissionConfigurator::ApplicationState applicationStateSC;
         EXPECT_EQ(ER_OK, sapWithSC.GetApplicationState(applicationStateSC));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateSC);
 
         SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
         PermissionConfigurator::ApplicationState applicationStateTC;
         EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
         EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
         TCKey.SetPublicKey(&TCPublicKey);
@@ -514,6 +521,8 @@ class SecurityPolicyRulesTest : public testing::Test {
                                                                       identityCertChainMaster[0],
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
+        /* set claimable */
+        managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithManager.Claim(managerKey,
                                               managerGuid,
                                               managerKey,
@@ -528,7 +537,7 @@ class SecurityPolicyRulesTest : public testing::Test {
         }
 
         ECCPublicKey managerPublicKey;
-        sapWithManager.GetEccPublicKey(managerPublicKey);
+        GetAppPublicKey(managerBus, managerPublicKey);
         ASSERT_EQ(*managerKey.GetPublicKey(), managerPublicKey);
 
         ASSERT_EQ(PermissionConfigurator::ApplicationState::CLAIMED, appStateListener.stateMap[managerBus.GetUniqueName()]);
@@ -547,6 +556,8 @@ class SecurityPolicyRulesTest : public testing::Test {
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
         //Manager claims Peers
+        /* set claimable */
+        SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
                                             managerGuid,
                                             managerKey,
@@ -574,6 +585,9 @@ class SecurityPolicyRulesTest : public testing::Test {
                                                                       3600,
                                                                       identityCertChainTC[0],
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+        /* set claimable */
+        TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+        EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
         EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
                                             managerGuid,
                                             managerKey,
@@ -591,9 +605,6 @@ class SecurityPolicyRulesTest : public testing::Test {
 
         //Change the managerBus so it only uses ECDHE_ECDSA
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, true));
-
-        PermissionPolicy defaultPolicy;
-        EXPECT_EQ(ER_OK, sapWithManager.GetDefaultPolicy(defaultPolicy));
 
         String membershipSerial = "1";
         qcc::MembershipCertificate managerMembershipCertificate[1];
@@ -7118,7 +7129,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_5_TC)
     SCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SCPublicKey;
-    sapWithSC.GetEccPublicKey(SCPublicKey);
+    GetAppPublicKey(SCBus, SCPublicKey);
 
     SCCert.SetSubjectPublicKey(&SCPublicKey);
     SCCert.SetAlias("SC-cert-alias");
@@ -7576,7 +7587,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_6_TC)
     SCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SCPublicKey;
-    sapWithSC.GetEccPublicKey(SCPublicKey);
+    GetAppPublicKey(SCBus, SCPublicKey);
 
     SCCert.SetSubjectPublicKey(&SCPublicKey);
     SCCert.SetAlias("SC-cert-alias");
@@ -10654,7 +10665,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_14_TC)
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToTCSessionId);
 
     ECCPublicKey SCPublicKey;
-    EXPECT_EQ(ER_OK, sapWithSC.GetEccPublicKey(SCPublicKey));
+    GetAppPublicKey(SCBus, SCPublicKey);
     KeyInfoNISTP256 SCKey;
     SCKey.SetPublicKey(&SCPublicKey);
 
@@ -11124,7 +11135,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_16_TC)
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToTCSessionId);
 
     ECCPublicKey SCPublicKey;
-    EXPECT_EQ(ER_OK, sapWithSC.GetEccPublicKey(SCPublicKey));
+    GetAppPublicKey(SCBus, SCPublicKey);
     KeyInfoNISTP256 SCKey;
     SCKey.SetPublicKey(&SCPublicKey);
 

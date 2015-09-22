@@ -187,7 +187,7 @@ class SecurityClaimApplicationTest : public testing::Test {
     StateNotification_ApplicationStateListener appStateListener;
 };
 
-TEST_F(SecurityClaimApplicationTest, IsClaimable)
+TEST_F(SecurityClaimApplicationTest, IsUnclaimableByDefault)
 {
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -196,13 +196,13 @@ TEST_F(SecurityClaimApplicationTest, IsClaimable)
     SecurityApplicationProxy saWithSecurityManager(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateSecurityManager;
     EXPECT_EQ(ER_OK, saWithSecurityManager.GetApplicationState(applicationStateSecurityManager));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSecurityManager);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateSecurityManager);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     SecurityApplicationProxy saWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, saWithTC.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 }
 
 
@@ -241,6 +241,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
 
     appStateListener.stateChanged = false;
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -342,11 +343,12 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
     securityManagerBus.AddApplicationStateRule();
 
@@ -435,11 +437,12 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
     securityManagerBus.AddApplicationStateRule();
 
@@ -544,6 +547,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -572,7 +576,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
     //Create admin group key
     KeyInfoNISTP256 securityManagerKey;
@@ -690,6 +694,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
 
     SetPsk(psk, 16);
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -802,6 +807,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -920,6 +926,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1042,6 +1049,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1188,20 +1196,8 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
-    EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
-    TCBus.SetApplicationState(APP_STATE_NOT_CLAIMABLE);
-
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     ASSERT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
@@ -1275,6 +1271,7 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1574,6 +1571,7 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1669,6 +1667,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1757,6 +1756,7 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1841,6 +1841,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     EXPECT_FALSE(appStateListener.stateChanged);
     securityManagerBus.AddApplicationStateRule();
@@ -1930,6 +1931,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1994,8 +1996,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
 
     appStateListener.stateChanged = false;
 
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
-//    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str().c_str());
+    ASSERT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
+
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
                                         securityManagerGuid,
                                         securityManagerKey,
@@ -2046,16 +2048,15 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
  * publickey xCo-ordinate and yCo-ordinate are populated and are non-empty and
  *     are preserved and are same as before.
  */
-TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_then_reset_peer)
+TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_claimed_then_reset_peer)
 {
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    appStateListener.stateChanged = false;
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
-    printf("%d: %s\n", __LINE__, securityManagerBus.GetUniqueName().c_str());
 
+    EXPECT_FALSE(appStateListener.stateChanged);
     securityManagerBus.AddApplicationStateRule();
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2067,21 +2068,27 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
 
     ASSERT_TRUE(appStateListener.stateChanged);
+
     EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
+    EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
+    EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
+    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
 
+    appStateListener.stateChanged = false;
+
     //verify we read all the signals
     EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
 
-    appStateListener.stateChanged = false;
+
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
-    printf("%d: %s\n", __LINE__, TCBus.GetUniqueName().c_str());
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2089,16 +2096,20 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
 
     EXPECT_TRUE(appStateListener.stateChanged);
 
+    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
+
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     appStateListener.busNames.pop();
-    //EXPECT_EQ(TCPublicKey, publicKeys.front().GetPublicKey());
+    EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
+    EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
+    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     ECCPublicKey TCPublicKey = *(appStateListener.publicKeys.front().GetPublicKey());
     appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
 
     //verify we read all the signals
@@ -2139,7 +2150,27 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
 
     appStateListener.stateChanged = false;
-    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
+
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
+
+    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
+        if (appStateListener.stateChanged) {
+            break;
+        }
+        qcc::Sleep(WAIT_MSECS);
+    }
+    printf("%d: Slept %d\n", __LINE__, msec);
+
+    EXPECT_TRUE(appStateListener.stateChanged);
+    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
+    appStateListener.busNames.pop();
+    appStateListener.publicKeys.pop();
+    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
+    appStateListener.states.pop();
+
+    appStateListener.stateChanged = false;
+
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
                                         securityManagerGuid,
                                         securityManagerKey,
@@ -2162,8 +2193,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetCurve());
     EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetX());
     EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetY());
-    EXPECT_TRUE(memcmp(TCPublicKey.GetX(), appStateListener.publicKeys.back().GetPublicKey()->GetX(), qcc::ECC_COORDINATE_SZ) == 0);
-    EXPECT_TRUE(memcmp(TCPublicKey.GetY(), appStateListener.publicKeys.back().GetPublicKey()->GetY(), qcc::ECC_COORDINATE_SZ) == 0);
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMED, appStateListener.states.back());
     appStateListener.states.pop();
@@ -2171,131 +2200,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
     //verify we read all the signals
     EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0) << "The Notification State signal was sent more times than expected.";
 
-    appStateListener.stateChanged = false;
-    // We first need a second bus attachment to claim the security manager bus
-    BusAttachment managerClaimingBus("ManagerClaimingBus");
-    EXPECT_EQ(ER_OK, managerClaimingBus.Start());
-    EXPECT_EQ(ER_OK, managerClaimingBus.Connect());
-    EXPECT_EQ(ER_OK, managerClaimingBus.RegisterKeyStoreListener(securityManagerKeyStoreListener));
-    EXPECT_EQ(ER_OK, managerClaimingBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
-    printf("%d: %s\n", __LINE__, managerClaimingBus.GetUniqueName().c_str());
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    ASSERT_TRUE(appStateListener.stateChanged);
-    EXPECT_EQ(managerClaimingBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
-    appStateListener.states.pop();
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
-
-    SecurityApplicationProxy sapWithManagerClaimingBus(managerClaimingBus, securityManagerBus.GetUniqueName().c_str());
-
-    //Create identityCertChain for the secondary bus to claim the securityManagerBus
-    IdentityCertificate identityCertChainToClaimAdmin[1];
-
-    // All Inclusive manifest
-    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
-    manifest[0].SetObjPath("*");
-    manifest[0].SetInterfaceName("*");
-    manifest[0].SetMembers(1, member);
-
-    //uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerClaimingBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
-
-    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerClaimingBus,
-                                                                  "0",
-                                                                  securityManagerGuid.ToString(),
-                                                                  securityManagerKey.GetPublicKey(),
-                                                                  "Alias",
-                                                                  3600,
-                                                                  identityCertChainToClaimAdmin[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
-
-
-
-    appStateListener.stateChanged = false;
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.Claim(securityManagerKey,
-                                                     securityManagerGuid,
-                                                     securityManagerKey,
-                                                     identityCertChainToClaimAdmin, 1,
-                                                     manifest, manifestSize));
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    ASSERT_TRUE(appStateListener.stateChanged);
-    EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMED, appStateListener.states.front());
-    appStateListener.states.pop();
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
-
-    PermissionConfigurator::ApplicationState applicationStateTC;
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
-
-    // After that we reload keystores
-    managerClaimingBus.ReloadKeyStore();
-    securityManagerBus.ReloadKeyStore();
-
-    appStateListener.stateChanged = false;
-    EXPECT_EQ(ER_OK, managerClaimingBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-    ASSERT_TRUE(appStateListener.stateChanged);
-    EXPECT_EQ(managerClaimingBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMED, appStateListener.states.front());
-    appStateListener.states.pop();
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
-
-    appStateListener.stateChanged = false;
-    EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-    ASSERT_TRUE(appStateListener.stateChanged);
-    EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMED, appStateListener.states.front());
-    appStateListener.states.pop();
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
-
-    // Create membership certificate
     String membershipSerial = "1";
     qcc::MembershipCertificate managerMembershipCertificate[1];
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateMembershipCert(membershipSerial,
@@ -2303,16 +2207,17 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_th
                                                                     securityManagerBus.GetUniqueName(),
                                                                     securityManagerKey.GetPublicKey(),
                                                                     securityManagerGuid,
-                                                                    false,
+                                                                    true,
                                                                     3600,
-                                                                    managerMembershipCertificate[0]));
+                                                                    managerMembershipCertificate[0]
+                                                                    ));
+    SecurityApplicationProxy sapWithManagerBus(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+    EXPECT_EQ(ER_OK, sapWithManagerBus.InstallMembership(managerMembershipCertificate, 1));
 
-    // Install membership certificate
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.InstallMembership(managerMembershipCertificate, 1));
+    // After that we reload keystores
+    securityManagerBus.ReloadKeyStore();
 
-    appStateListener.stateChanged = false;
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
-    printf("%d: %s\n", __LINE__, TCBus.GetUniqueName().c_str());
     EXPECT_EQ(ER_OK, sapWithTC.Reset());
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
@@ -2384,6 +2289,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 
     // Setup the test peer
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2637,6 +2543,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
 
     // Setup the test peer
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2794,6 +2701,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
 
     // Setup the test peer
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2854,6 +2762,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2949,55 +2858,12 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
  */
 TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
 {
-    //EnablePeerSecurity
-    // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
-    // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
-
     securityManagerBus.AddApplicationStateRule();
 
-    /* The State signal is only emitted if manifest template is installed */
-    SetManifestTemplate(securityManagerBus);
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    ASSERT_TRUE(appStateListener.stateChanged);
-
-    EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
-    appStateListener.states.pop();
-
     appStateListener.stateChanged = false;
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
 
     // Setup the test peer
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    ASSERT_TRUE(appStateListener.stateChanged);
-    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
-
-    // Get the Permission configurator for the application
-    appStateListener.stateChanged = false;
     TCBus.SetApplicationState(APP_STATE_NOT_CLAIMABLE);
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
@@ -3009,9 +2875,6 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     printf("%d: Slept %d\n", __LINE__, msec);
 
     ASSERT_TRUE(appStateListener.stateChanged);
-
-    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
-
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.back());
 }
@@ -3030,37 +2893,9 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
  */
 TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_off)
 {
-    //EnablePeerSecurity
-    // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
-    // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
-
     securityManagerBus.AddApplicationStateRule();
 
-    /* The State signal is only emitted if manifest template is installed */
-    SetManifestTemplate(securityManagerBus);
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    ASSERT_TRUE(appStateListener.stateChanged);
-
-    EXPECT_EQ(securityManagerBus.GetUniqueName(), appStateListener.busNames.front());
-    appStateListener.busNames.pop();
-    appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
-    appStateListener.states.pop();
-
     appStateListener.stateChanged = false;
-
-    //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
 
     // Setup the test peer
 

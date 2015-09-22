@@ -573,6 +573,13 @@ class ArabicTestBusObject : public BusObject {
     int32_t mini;
 };
 
+static void GetAppPublicKey(BusAttachment& bus, ECCPublicKey& publicKey)
+{
+    KeyInfoNISTP256 keyInfo;
+    bus.GetPermissionConfigurator().GetSigningPublicKey(keyInfo);
+    publicKey = *keyInfo.GetPublicKey();
+}
+
 class SecurityWildCardPolicyRulesTest : public testing::Test {
   public:
     SecurityWildCardPolicyRulesTest() :
@@ -713,17 +720,17 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     SecurityApplicationProxy sapWithManager(managerBus, managerBus.GetUniqueName().c_str(), managerToManagerSessionId);
     PermissionConfigurator::ApplicationState applicationStateManager;
     EXPECT_EQ(ER_OK, sapWithManager.GetApplicationState(applicationStateManager));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateManager);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateManager);
 
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
     PermissionConfigurator::ApplicationState applicationStateSC;
     EXPECT_EQ(ER_OK, sapWithSC.GetApplicationState(applicationStateSC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateSC);
 
     SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
     managerBus.RegisterApplicationStateListener(appStateListener);
     managerBus.AddApplicationStateRule();
@@ -770,6 +777,8 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
     SecurityApplicationProxy sapWithManagerBus(managerBus, managerBus.GetUniqueName().c_str());
+    /* set claimable */
+    managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
     EXPECT_EQ(ER_OK, sapWithManagerBus.Claim(managerKey,
                                              managerGuid,
                                              managerKey,
@@ -784,7 +793,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     }
 
     ECCPublicKey managerPublicKey;
-    sapWithManager.GetEccPublicKey(managerPublicKey);
+    GetAppPublicKey(managerBus, managerPublicKey);
     ASSERT_EQ(*managerKey.GetPublicKey(), managerPublicKey);
 
     ASSERT_EQ(PermissionConfigurator::ApplicationState::CLAIMED, appStateListener.stateMap[managerBus.GetUniqueName()]);
@@ -803,6 +812,8 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
     //Manager claims Peers
+    /* set claimable */
+    SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
     EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
                                         managerGuid,
                                         managerKey,
@@ -830,6 +841,9 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   3600,
                                                                   identityCertChainTC[0],
                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+    /* set claimable */
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+    EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
     EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
                                         managerGuid,
                                         managerKey,
@@ -847,9 +861,6 @@ void SecurityWildCardPolicyRulesTest::SetUp()
 
     //Change the managerBus so it only uses ECDHE_ECDSA
     EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
-
-    PermissionPolicy defaultPolicy;
-    EXPECT_EQ(ER_OK, sapWithManager.GetDefaultPolicy(defaultPolicy));
 
     String membershipSerial = "1";
     qcc::MembershipCertificate managerMembershipCertificate[1];

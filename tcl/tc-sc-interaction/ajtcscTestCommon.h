@@ -110,7 +110,7 @@ static AJ_Status DefaultAuthListener(uint32_t mechanism, uint32_t command, AJ_Cr
 
     switch (mechanism) {
     case AUTH_SUITE_ECDHE_NULL:
-        cred->expiration = 1;
+        cred->expiration = 0;
         status = AJ_OK;
         break;
 

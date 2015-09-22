@@ -261,7 +261,6 @@ class SecurityAuthenticationAuthListener : public AuthListener {
         QCC_UNUSED(authCount);
         QCC_UNUSED(userId);
         QCC_UNUSED(credMask);
-        printf("RequestCredentialsAsync\n");
         requestCredentialsCalled = true;
         Credentials creds;
         if (strcmp(authMechanism, "ALLJOYN_ECDHE_NULL") == 0) {
@@ -294,7 +293,6 @@ class SecurityAuthenticationAuthListener : public AuthListener {
         QCC_UNUSED(authMechanism);
         QCC_UNUSED(authPeer);
         QCC_UNUSED(creds);
-        printf("VerifyCredentialsAsync\n");
         verifyCredentialsCalled = true;
         if (strcmp(authMechanism, "ALLJOYN_ECDHE_ECDSA") == 0) {
             if (creds.IsSet(AuthListener::CRED_CERT_CHAIN)) {
@@ -325,6 +323,12 @@ class SecurityAuthenticationAuthListener : public AuthListener {
 
 };
 
+static void GetAppPublicKey(BusAttachment& bus, ECCPublicKey& publicKey)
+{
+    KeyInfoNISTP256 keyInfo;
+    bus.GetPermissionConfigurator().GetSigningPublicKey(keyInfo);
+    publicKey = *keyInfo.GetPublicKey();
+}
 
 class SecurityAuthenticationTest : public testing::Test {
   public:
@@ -367,8 +371,9 @@ class SecurityAuthenticationTest : public testing::Test {
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", &SCAuthListener));
-        //EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA"));
-        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
+        EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA"));
+        /* set claimable */
+        TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
         SessionOpts opts1;
         SessionId managerToManagerSessionId;
@@ -442,6 +447,8 @@ class SecurityAuthenticationTest : public testing::Test {
                                                                       identityCertChainMaster[0],
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
+        /* set claimable */
+        managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithManager.Claim(managerKey,
                                               managerGuid,
                                               managerKey,
@@ -450,7 +457,7 @@ class SecurityAuthenticationTest : public testing::Test {
 
 
         ECCPublicKey managerPublicKey;
-        sapWithManager.GetEccPublicKey(managerPublicKey);
+        GetAppPublicKey(managerBus, managerPublicKey);
         ASSERT_EQ(*managerKey.GetPublicKey(), managerPublicKey);
 
         //Create SC identityCert
@@ -466,6 +473,8 @@ class SecurityAuthenticationTest : public testing::Test {
                                                                       identityCertChainSC[0],
                                                                       digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
 
+        /* set claimable */
+        SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         //Manager claims Peers
         EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
                                             managerGuid,

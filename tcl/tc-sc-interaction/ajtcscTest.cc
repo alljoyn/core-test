@@ -94,13 +94,11 @@ void TCProperties::HandleReply(AJ_Message* msg)
 
 void TCBusAttachment::Connect(const char* router)
 {
-    AJ_AlwaysPrintf(("TC Connect %s\n", router));
+    //AJ_AlwaysPrintf(("TC Connect %s\n", router));
     AJ_Initialize();
     AJ_ASSERT(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
     AJ_ClearCredentials(0);
     AJ_BusSetAuthListenerCallback(&bus, authlistener);
-    /* These are all Security 2.0 applications - set them claimable */
-    AJ_SecuritySetClaimConfig(&bus, APP_STATE_CLAIMABLE, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
 }
 
 qcc::ThreadReturn TCBusAttachment::Run(void* arg)
@@ -292,8 +290,11 @@ void TCBusAttachment::SetPermissionManifest(AJ_Manifest* manifest)
         uint16_t cap;
         uint16_t info;
         AJ_SecurityGetClaimConfig(&state, &cap, &info);
-        AJ_ManifestTemplateSet(manifest);
-        AJ_SecuritySetClaimConfig(&bus, APP_STATE_NEED_UPDATE, cap, info);
+        /* Only change if already claimed */
+        if (APP_STATE_CLAIMED == state) {
+            AJ_ManifestTemplateSet(manifest);
+            AJ_SecuritySetClaimConfig(&bus, APP_STATE_NEED_UPDATE, cap, info);
+        }
         p.set_value();
     };
 

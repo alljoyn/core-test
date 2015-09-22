@@ -148,6 +148,13 @@ class ChirpSignalReceiver : public MessageReceiver {
     bool signalReceivedFlag;
 };
 
+static void GetAppPublicKey(BusAttachment& bus, ECCPublicKey& publicKey)
+{
+    KeyInfoNISTP256 keyInfo;
+    bus.GetPermissionConfigurator().GetSigningPublicKey(keyInfo);
+    publicKey = *keyInfo.GetPublicKey();
+}
+
 class SecurityManagementPolicyTest : public testing::Test {
   public:
     SecurityManagementPolicyTest() :
@@ -205,6 +212,7 @@ class SecurityManagementPolicyTest : public testing::Test {
         SetManifestTemplate(managerBus);
         SetManifestTemplate(SC1Bus);
         SetManifestTemplate(SC2Bus);
+        TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
         // We are not marking the interface as a secure interface. Some of the
         // tests don't use security. So we use Object based security for any
@@ -320,7 +328,7 @@ class SecurityManagementPolicyTest : public testing::Test {
         }
 
         ECCPublicKey managerPublicKey;
-        sapWithManager.GetEccPublicKey(managerPublicKey);
+        GetAppPublicKey(managerBus, managerPublicKey);
         ASSERT_EQ(*managerKey.GetPublicKey(), managerPublicKey);
 
         ASSERT_EQ(PermissionConfigurator::ApplicationState::CLAIMED, appStateListener.stateMap[managerBus.GetUniqueName()]);
@@ -386,9 +394,6 @@ class SecurityManagementPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, true));
         EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
         EXPECT_EQ(ER_OK, SC1Bus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
-
-        PermissionPolicy defaultPolicy;
-        EXPECT_EQ(ER_OK, sapWithManager.GetDefaultPolicy(defaultPolicy));
 
     }
 
@@ -1005,7 +1010,7 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_digest_mismatch)
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -1021,9 +1026,6 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_digest_mismatch)
     TCCert.SetSubjectCN(leafCN, 4);
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
-
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
 
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("SC1-cert-alias");
@@ -1107,7 +1109,7 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_invalid_icc_chain)
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -1124,9 +1126,6 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_invalid_icc_chain)
     TCCert.SetSubjectCN(leafCN, 4);
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
-
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
 
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("TC-cert-alias");
@@ -1207,7 +1206,7 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_intermediate_ca_fl
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -1223,9 +1222,6 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_intermediate_ca_fl
     TCCert.SetSubjectCN(leafCN, 4);
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
-
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
 
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("TC-cert-alias");
@@ -1306,7 +1302,7 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_fails_on_different_subject_
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -1405,7 +1401,7 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_succeeds_on_long_icc)
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -1444,8 +1440,6 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_succeeds_on_long_icc)
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("TC-cert-alias");
     TCCert.SetCA(false);
@@ -1505,8 +1499,6 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_single_icc_any_sign)
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("TC-cert-alias");
     TCCert.SetCA(true);
@@ -1663,8 +1655,6 @@ TEST_F(SecurityManagementPolicyTest, remove_membership_succeeds)
     memCert.SetValidity(&validity);
     memCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
     memCert.SetSubjectPublicKey(&TCPublicKey);
     memCert.SetCA(true);
     GUID128 asgaGUID;
@@ -1938,7 +1928,7 @@ TEST_F(SecurityManagementPolicyTest, successful_method_call_after_chained_member
     SC1Cert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
     ECCPublicKey SC1PublicKey;
-    sapWithSC1.GetEccPublicKey(SC1PublicKey);
+    GetAppPublicKey(SC1Bus, SC1PublicKey);
 
     SC1Cert.SetSubjectPublicKey(&SC1PublicKey);
     SC1Cert.SetAlias("intermediate-cert-alias");
@@ -2142,9 +2132,6 @@ TEST_F(SecurityManagementPolicyTest, unsuccessful_method_call_after_chained_memb
     validity.validTo = validity.validFrom + TEN_MINS;
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
-
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
 
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("intermediate-cert-alias");
@@ -2542,9 +2529,6 @@ TEST_F(SecurityManagementPolicyTest, unsuccessful_method_call_when_sga_delegatio
     TCCert.SetValidity(&validity);
     TCCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
 
-    ECCPublicKey TCPublicKey;
-    sapWithTC.GetEccPublicKey(TCPublicKey);
-
     TCCert.SetSubjectPublicKey(&TCPublicKey);
     TCCert.SetAlias("intermediate-cert-alias");
     TCCert.SetCA(false);
@@ -2653,14 +2637,7 @@ TEST(SecurityManagementPolicy2Test, DISABLED_ManagedApplication_method_calls_sho
     EXPECT_EQ(ER_OK, SC.Start());
     EXPECT_EQ(ER_OK, SC.Connect());
 
-    // To avoid cross-talk, i.e. thin leaf node connect to unintended
-    // routing nodes, generate and advertise a random routing node prefix.
-    qcc::String routingNodePrefix = "test.rnPrefix.randhex" +
-                                    qcc::RandHexString(64);
-    qcc::String advertisingPrefix = "quiet@" + routingNodePrefix;
-    ASSERT_EQ(ER_OK, SC.AdvertiseName(advertisingPrefix.c_str(), ajn::TRANSPORT_ANY));
-
-    TC.Connect(routingNodePrefix.c_str());
+    TC.Connect(NULL);
     TC.Start();
 
     InMemoryKeyStoreListener bus1KeyStoreListener;
@@ -2670,8 +2647,8 @@ TEST(SecurityManagementPolicy2Test, DISABLED_ManagedApplication_method_calls_sho
 
     SecurityManagementPolicy2AuthListener bus1AuthListener;
 
-    EXPECT_EQ(ER_OK, SC.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &bus1AuthListener));
-    EXPECT_EQ(ER_OK, TC.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
+    EXPECT_EQ(ER_OK, SC.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", &bus1AuthListener));
+    EXPECT_EQ(ER_OK, TC.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
 
     SessionOpts opts;
     SessionPort sessionPort = 42;
@@ -2684,13 +2661,13 @@ TEST(SecurityManagementPolicy2Test, DISABLED_ManagedApplication_method_calls_sho
     SecurityApplicationProxy sapWithBus1toSelf(SC, SC.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateManager;
     EXPECT_EQ(ER_OK, sapWithBus1toSelf.GetApplicationState(applicationStateManager));
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateManager);
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateManager);
 
     {
         SecurityApplicationProxy sapBus1toBus2(SC, TC.GetUniqueName().c_str(), sessionId);
         PermissionConfigurator::ApplicationState applicationStateSC;
         EXPECT_EQ(ER_OK, sapBus1toBus2.GetApplicationState(applicationStateSC));
-        EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC);
+        EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateSC);
 
         // Call Reset
         EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.Reset());
@@ -2774,34 +2751,34 @@ TEST(SecurityManagementPolicy2Test, DISABLED_ManagedApplication_method_calls_sho
 
         // Fetch Version property
         uint16_t version;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetManagedApplicationVersion(version));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetManagedApplicationVersion(version));
 
         // Fetch Identity property
         MsgArg identityCertificate;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetIdentity(identityCertificate));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetIdentity(identityCertificate));
 
         // Fetch Manifest property
         MsgArg manifest;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetManifest(manifest));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetManifest(manifest));
 
         // Fetch IdentityCertificateId property
         String serial;
         qcc::KeyInfoNISTP256 issuerKey;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetIdentityCertificateId(serial, issuerKey));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetIdentityCertificateId(serial, issuerKey));
 
         // Fetch PolicyVersion property
         uint32_t policyVersion;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetPolicyVersion(policyVersion));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetPolicyVersion(policyVersion));
 
         // Fetch Policy property
         PermissionPolicy policy;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetPolicy(policy));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetPolicy(policy));
 
         // Fetch DefaultPolicy property
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetDefaultPolicy(policy));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetDefaultPolicy(policy));
 
         // Fetch MembershipSummaries property
         MsgArg membershipSummaries;
-        EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapBus1toBus2.GetMembershipSummaries(membershipSummaries));
+        EXPECT_EQ(ER_PERMISSION_DENIED, sapBus1toBus2.GetMembershipSummaries(membershipSummaries));
     }
 }
