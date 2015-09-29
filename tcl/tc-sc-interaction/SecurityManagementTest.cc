@@ -2453,6 +2453,281 @@ TEST_F(SecurityManagementPolicyTest, chained_membership_with_two_levels_fails)
     EXPECT_EQ(ER_FAIL, sapWithTC.InstallMembership(membershipCertChain, 4));
 }
 
+TEST_F(SecurityManagementPolicyTest, admin_security_group_members_can_also_call_members_for_managedapplication_default_policy)
+{
+    InstallMembershipOnManager();
+    InstallMembershipOnSC1();
+    InstallMembershipOnTC();
+
+    SessionOpts opts;
+    uint32_t sessionId;
+    EXPECT_EQ(ER_OK, SC1Bus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, sessionId, opts));
+
+    SecurityApplicationProxy sapWithPeer1toPeer2(SC1Bus, TCBus.GetUniqueName().c_str(), sessionId);
+
+    // Call UpdateIdentity
+    // All Inclusive manifest
+    const size_t manifestSize = 1;
+    PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
+    manifest[0].SetInterfaceName("*");
+
+    {
+        PermissionPolicy::Rule::Member member[1];
+        member[0].Set("*",
+                      PermissionPolicy::Rule::Member::NOT_SPECIFIED,
+                      PermissionPolicy::Rule::Member::ACTION_PROVIDE |
+                      PermissionPolicy::Rule::Member::ACTION_MODIFY |
+                      PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        manifest[0].SetMembers(1, member);
+    }
+
+    //Get manager key
+    KeyInfoNISTP256& peer2Key = TCKey;
+
+    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
+    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(SC1Bus,
+                                                               manifest, manifestSize,
+                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+
+    //Create identityCert
+    const size_t certChainSize = 1;
+    IdentityCertificate identityCertChain[certChainSize];
+    GUID128 guid;
+
+
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerBus,
+                                                                  "1",
+                                                                  managerGuid.ToString(),
+                                                                  peer2Key.GetPublicKey(),
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChain[0],
+                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.UpdateIdentity(identityCertChain, certChainSize, manifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.SecureConnection(true));
+
+    MsgArg identityArg;
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.GetIdentity(identityArg));
+
+    IdentityCertificate identityCertChain_out[certChainSize];
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.MsgArgToIdentityCertChain(identityArg, identityCertChain_out, 1));
+
+    ASSERT_EQ(identityCertChain[0].GetSerialLen(), identityCertChain_out[0].GetSerialLen());
+    for (size_t i = 0; i < identityCertChain[0].GetSerialLen(); ++i) {
+        EXPECT_EQ(identityCertChain[0].GetSerial()[i], identityCertChain_out[0].GetSerial()[i]);
+    }
+
+    PermissionPolicy policy;
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.GetDefaultPolicy(policy));
+
+    // Assume the default policy which is always 0
+    EXPECT_EQ(static_cast<uint32_t>(0), policy.GetVersion());
+
+    policy.SetVersion(policy.GetVersion() + 1);
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.UpdatePolicy(policy));
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.SecureConnection(true));
+
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.GetPolicy(policy));
+
+    EXPECT_EQ(static_cast<uint32_t>(1), policy.GetVersion());
+
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.ResetPolicy());
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.SecureConnection(true));
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.GetDefaultPolicy(policy));
+
+    // Reset back to the default policy which is always 0
+    EXPECT_EQ(static_cast<uint32_t>(0), policy.GetVersion());
+
+    String membershipSerial = "2";
+    qcc::MembershipCertificate peer2MembershipCertificate[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateMembershipCert(membershipSerial,
+                                                                    managerBus,
+                                                                    TCBus.GetUniqueName(),
+                                                                    peer2Key.GetPublicKey(),
+                                                                    managerGuid,
+                                                                    false,
+                                                                    3600,
+                                                                    peer2MembershipCertificate[0]
+                                                                    ));
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.InstallMembership(peer2MembershipCertificate, 1));
+
+    MsgArg membershipSummariesArg;
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.GetMembershipSummaries(membershipSummariesArg));
+
+    // Call GetProperty("MembershipSummaries"). This call should show 2 membership certificates
+    size_t count = membershipSummariesArg.v_array.GetNumElements();
+    EXPECT_EQ((uint32_t)2, count);
+    String*serials = new String[count];
+    KeyInfoNISTP256* keyInfos = new KeyInfoNISTP256[count];
+    ASSERT_EQ(ER_OK, sapWithPeer1toPeer2.MsgArgToCertificateIds(membershipSummariesArg, serials, keyInfos, count));
+
+    String serial0("2");
+    String serial1("1");
+    // Compare the serial  in the certificates just retrieved
+    // Membership certs are stored as a non-deterministic set so the order can
+    // change. We just want to make sure both certificates are returned. The
+    // only time order will remain the same is if the certificates are in a
+    // certificate chain.
+    if (serials[0] == serial0) {
+        EXPECT_STREQ(serials[0].c_str(), serial0.c_str());
+        EXPECT_STREQ(serials[1].c_str(), serial1.c_str());
+    } else {
+        EXPECT_STREQ(serials[0].c_str(), serial1.c_str());
+        EXPECT_STREQ(serials[1].c_str(), serial0.c_str());
+    }
+
+    //Get manager key
+    KeyInfoNISTP256 managerKey;
+    PermissionConfigurator& pcManager = managerBus.GetPermissionConfigurator();
+    EXPECT_EQ(ER_OK, pcManager.GetSigningPublicKey(managerKey));
+
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.RemoveMembership("2", managerKey));
+
+    EXPECT_EQ(ER_OK, sapWithPeer1toPeer2.Reset());
+}
+
+TEST_F(SecurityManagementPolicyTest, non_group_members_can_not_call_managedapplication)
+{
+    InstallMembershipOnManager();
+    InstallMembershipOnTC();
+
+    SessionOpts opts;
+    uint32_t sessionId;
+    EXPECT_EQ(ER_OK, SC1Bus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, sessionId, opts));
+
+    SecurityApplicationProxy sapWithPeer1toPeer2(SC1Bus, TCBus.GetUniqueName().c_str());
+
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.Reset());
+
+    // Call UpdateIdentity
+    // All Inclusive manifest
+    const size_t manifestSize = 1;
+    PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
+    manifest[0].SetInterfaceName("*");
+
+    {
+        PermissionPolicy::Rule::Member member[1];
+        member[0].Set("*",
+                      PermissionPolicy::Rule::Member::NOT_SPECIFIED,
+                      PermissionPolicy::Rule::Member::ACTION_PROVIDE |
+                      PermissionPolicy::Rule::Member::ACTION_MODIFY |
+                      PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+        manifest[0].SetMembers(1, member);
+    }
+
+    //Get manager key
+    KeyInfoNISTP256& peer2Key = TCKey;
+    //PermissionConfigurator& pcPeer2 = peer2Bus.GetPermissionConfigurator();
+    //EXPECT_EQ(ER_OK, pcPeer2.GetSigningPublicKey(peer2Key));
+
+    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
+    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(SC1Bus,
+                                                               manifest, manifestSize,
+                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+
+    //Create identityCert
+    const size_t certChainSize = 1;
+    IdentityCertificate identityCertChain[certChainSize];
+    GUID128 guid;
+
+
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerBus,
+                                                                  "1",
+                                                                  managerGuid.ToString(),
+                                                                  peer2Key.GetPublicKey(),
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChain[0],
+                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.UpdateIdentity(identityCertChain, certChainSize, manifest, manifestSize));
+
+
+    PermissionPolicy policy;
+    CreatePermissivePolicy(policy, 1);
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.UpdatePolicy(policy));
+
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.ResetPolicy());
+
+    String membershipSerial = "2";
+    qcc::MembershipCertificate peer2MembershipCertificate[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateMembershipCert(membershipSerial,
+                                                                    managerBus,
+                                                                    TCBus.GetUniqueName(),
+                                                                    peer2Key.GetPublicKey(),
+                                                                    managerGuid,
+                                                                    false,
+                                                                    3600,
+                                                                    peer2MembershipCertificate[0]
+                                                                    ));
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.InstallMembership(peer2MembershipCertificate, 1));
+
+    //Get manager key
+    KeyInfoNISTP256 managerKey;
+    PermissionConfigurator& pcManager = managerBus.GetPermissionConfigurator();
+    EXPECT_EQ(ER_OK, pcManager.GetSigningPublicKey(managerKey));
+
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.RemoveMembership("1", managerKey));
+
+    MsgArg identityCertArg;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetIdentity(identityCertArg));
+    MsgArg manifestArg;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetManifest(manifestArg));
+    String serial;
+    qcc::KeyInfoNISTP256 issuerKey;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetIdentityCertificateId(serial, issuerKey));
+    uint32_t policyVersion;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetPolicyVersion(policyVersion));
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetPolicy(policy));
+    MsgArg membershipSummariesArg;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetMembershipSummaries(membershipSummariesArg));
+}
+
+TEST_F(SecurityManagementPolicyTest, non_members_can_call_managedapplication_methods_if_policy_allows)
+{
+    InstallMembershipOnManager();
+    InstallMembershipOnTC();
+
+    // peer2 == TC
+
+    SecurityApplicationProxy sapWithPeer2(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+    PermissionPolicy defaultPolicy;
+    EXPECT_EQ(ER_OK, sapWithPeer2.GetDefaultPolicy(defaultPolicy));
+    PermissionPolicy policy;
+    CreatePermissivePolicy(policy, 1);
+    EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, policy, true, true, true));
+
+    EXPECT_EQ(ER_OK, sapWithPeer2.UpdatePolicy(policy));
+    EXPECT_EQ(ER_OK, sapWithPeer2.SecureConnection(true));
+
+    BusAttachment nonASGBus("non-ASGBus", true);
+    EXPECT_EQ(ER_OK, nonASGBus.Start());
+    EXPECT_EQ(ER_OK, nonASGBus.Connect());
+
+    InMemoryKeyStoreListener keyStoreListener;
+    EXPECT_EQ(ER_OK, nonASGBus.RegisterKeyStoreListener(keyStoreListener));
+
+    DefaultECDHEAuthListener authListener;
+    EXPECT_EQ(ER_OK, nonASGBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", &authListener));
+    EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA ALLJOYN_ECDHE_NULL"));
+
+    SessionOpts opts;
+    uint32_t sessionId;
+    EXPECT_EQ(ER_OK, nonASGBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, sessionId, opts));
+
+    SecurityApplicationProxy sapWithNonASGBustoPeer2(nonASGBus, TCBus.GetUniqueName().c_str());
+
+    // Policy updated must secure connection to update keys.
+    EXPECT_EQ(ER_OK, sapWithNonASGBustoPeer2.SecureConnection(true));
+    EXPECT_EQ(ER_OK, sapWithNonASGBustoPeer2.Reset());
+
+    EXPECT_EQ(ER_OK, nonASGBus.Stop());
+    EXPECT_EQ(ER_OK, nonASGBus.Join());
+}
+
 TEST_F(SecurityManagementPolicyTest, unsuccessful_method_call_when_sga_delegation_is_false)
 {
     BusAttachment busUsedAsCA("caBus");
