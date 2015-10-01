@@ -1914,3 +1914,45 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
     //EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), AJ_METHOD_MANAGED_UPDATE_IDENTITY, NULL));
     //EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", TCBus.GetErrorName());
 }
+
+
+TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_manager_must_have_certificate_to_interact_with_peers)
+{
+    DefaultRulesTestBusObject managerBusObject(managerBus, "/test", interfaceName);
+    EXPECT_EQ(ER_OK, managerBus.RegisterBusObject(managerBusObject, true));
+
+    TCBus.RegisterObjects(AppObjects, AppObjects, true);
+
+    SessionOpts opts;
+    SessionId managerToPeer1SessionId;
+    EXPECT_EQ(ER_OK, managerBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, managerToPeer1SessionId, opts));
+
+    ProxyBusObject managerToPeer1Proxy = ProxyBusObject(managerBus, TCBus.GetUniqueName().c_str(), "/test", managerToPeer1SessionId, true);
+
+    EXPECT_EQ(ER_OK, managerToPeer1Proxy.ParseXml(interface.c_str()));
+    EXPECT_TRUE(managerToPeer1Proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
+
+    // Verify Method call
+    MsgArg arg("s", "String that should be Echoed back.");
+    Message replyMsg(managerBus);
+    EXPECT_EQ(ER_PERMISSION_DENIED, managerToPeer1Proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
+    EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", replyMsg->GetErrorName());
+
+    // Verify Set/Get Property and GetAll Properties
+    MsgArg prop1Arg;
+    EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
+    EXPECT_EQ(ER_PERMISSION_DENIED, managerToPeer1Proxy.SetProperty(interfaceName, "Prop1", prop1Arg)) << "Peer failed SetProperty call";
+
+    MsgArg prop1ArgOut;
+    EXPECT_EQ(ER_PERMISSION_DENIED, managerToPeer1Proxy.GetProperty(interfaceName, "Prop1", prop1Arg)) << "Peer failed GetProperty call";;
+
+    MsgArg props;
+    EXPECT_EQ(ER_OK, managerToPeer1Proxy.GetAllProperties(interfaceName, props)) << "Peer failed GetAllProperties call";;
+
+
+    SecurityApplicationProxy sapManagertoPeer1(managerBus, TCBus.GetUniqueName().c_str(), managerToPeer1SessionId);
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapManagertoPeer1.Reset());
+
+    /* clean up */
+    managerBus.UnregisterBusObject(managerBusObject);
+}
