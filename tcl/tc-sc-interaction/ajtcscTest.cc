@@ -94,9 +94,8 @@ void TCProperties::HandleReply(AJ_Message* msg)
 
 void TCBusAttachment::Connect(const char* router)
 {
-    //AJ_AlwaysPrintf(("TC Connect %s\n", router));
     AJ_Initialize();
-    AJ_ASSERT(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
+    AJ_VERIFY(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
     AJ_ClearCredentials(0);
     AJ_BusSetAuthListenerCallback(&bus, authlistener);
 }
@@ -390,9 +389,9 @@ QStatus TCBusAttachment::MethodCall(const char* peer, uint32_t id, const char* s
         SCStatus = ER_FAIL;
         response = "";
 
-        AJ_ASSERT(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000));
+        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000));
         if (str) {
-            AJ_ASSERT(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
+            AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
         }
 
         /* Access control is on AJ_DeliverMsg */
@@ -432,9 +431,9 @@ QStatus TCBusAttachment::Signal(const char* peer, uint32_t id, const char* str)
         AJ_Message msg;
         SCStatus = ER_FAIL;
 
-        AJ_ASSERT(AJ_OK == AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0));
+        AJ_VERIFY(AJ_OK == AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0));
         if (str) {
-            AJ_ASSERT(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
+            AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
         }
 
         /* Access control is on AJ_DeliverMsg */
@@ -474,7 +473,7 @@ QStatus TCBusAttachment::GetProperty(const char* peer, uint32_t mid, uint32_t pi
         RetVal rv = { propval, ER_FAIL };
         propid = pid;
 
-        AJ_ASSERT(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
 
         /* Access control is on AJ_MarshalPropertyArgs */
         status = AJ_MarshalPropertyArgs(&msg, propid);
@@ -487,7 +486,7 @@ QStatus TCBusAttachment::GetProperty(const char* peer, uint32_t mid, uint32_t pi
             return;
         }
 
-        AJ_ASSERT(AJ_OK == AJ_DeliverMsg(&msg));
+        AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
 
         message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
             RetVal rv = { propval, SCStatus };
@@ -519,7 +518,7 @@ QStatus TCBusAttachment::SetProperty(const char* peer, uint32_t mid, uint32_t pi
         response = "";
         propid = pid;
 
-        AJ_ASSERT(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
 
         /* Access control is on AJ_MarshalPropertyArgs */
         status = AJ_MarshalPropertyArgs(&msg, propid);
@@ -532,8 +531,8 @@ QStatus TCBusAttachment::SetProperty(const char* peer, uint32_t mid, uint32_t pi
             return;
         }
 
-        AJ_ASSERT(AJ_OK == AJ_MarshalArgs(&msg, "i", val));
-        AJ_ASSERT(AJ_OK == AJ_DeliverMsg(&msg));
+        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "i", val));
+        AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
 
         message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
             p.set_value(SCStatus);
@@ -572,11 +571,11 @@ QStatus TCBusAttachment::GetAllProperties(const char* peer, uint32_t mid, const 
 
         /* Need to explicitly turn encrypt flag on */
         if (secure) {
-            AJ_ASSERT(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, AJ_FLAG_ENCRYPTED, 25000));
+            AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, AJ_FLAG_ENCRYPTED, 25000));
         } else {
-            AJ_ASSERT(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+            AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
         }
-        AJ_ASSERT(AJ_OK == AJ_MarshalArgs(&msg, "s", ifn));
+        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", ifn));
 
         /* Access control is on AJ_DeliverMsg */
         status = AJ_DeliverMsg(&msg);

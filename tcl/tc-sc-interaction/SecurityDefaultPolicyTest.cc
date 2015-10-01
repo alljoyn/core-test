@@ -262,7 +262,7 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
 
         auto func = [this, &p, objs, prxs] () {
             AJ_RegisterObjects(objs, prxs);
-            AJ_ASSERT(AJ_OK == AJ_RegisterObjectsACL());
+            AJ_VERIFY(AJ_OK == AJ_RegisterObjectsACL());
             p.set_value();
         };
 

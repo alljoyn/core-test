@@ -92,6 +92,22 @@ extern "C" {
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+/**
+ * Macro used to avoid the need for a local variable just for an assert. Using a local
+ * variable just for assert, instead of this macro, can cause compiler warnings on
+ * NDEBUG builds.
+ * Example: AJ_VERIFY(foo() == 0); instead of {int local = foo(); AJ_ASSERT(local == 0);}
+ *
+ * @param _cmd  Statement to be executed on both types of builds, and asserted just
+ *              on non-NDEBUG builds.
+ */
+
+#if defined(NDEBUG)
+#define AJ_VERIFY(_cmd) ((void)(_cmd))
+#else
+#define AJ_VERIFY(_cmd) AJ_ASSERT(_cmd)
+#endif
+
 // The parameter passed to AJ_FindBusAndConnect API (value in milliseconds)
 const uint16_t TC_LEAFNODE_CONNECT_TIMEOUT = 1500;
 
