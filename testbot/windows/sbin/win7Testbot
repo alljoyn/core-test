@@ -1,0 +1,2959 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+#	Windows7 testbot main script
+
+# Return:
+# 0 - Success
+# 1 - Block because build directory missing
+# 2 - Invalid command
+# 3 - Fail at least one test failed
+
+# Function name: usage
+# Description: display command parameter
+# Parameter: none
+# Return: none
+function usage() {
+	echo 'Usage: win7Testbot -h -v -r [windows_sdk_path] -a [android_sdk_path] -b [adb_path]'
+	echo '	-h help 
+	-v verbose
+	-r windows_sdks_path
+	-a android_sdks_path
+	-b adb_path'
+}
+
+# Function name: parseCmdArgs
+# Description: Parse command line arguments
+# Parameter: none
+# Return: 
+#   2 - invalid command
+function parseCmdArgs() {
+    echo "Parsing arguments..."
+    
+    args=`getopt hvr:a:b: $*`
+
+    if [ $? != 0 ]; then
+        usage
+        exit 2
+    fi
+
+    set -- $args
+
+	#default is concise
+    verbose=false
+
+	# script name without path
+	scriptName=`basename $0`
+
+	# Default path for windows7 parent of sdk-bin and sdk-rel subdirectories
+	defPath=""
+
+    # Android unzipped package directory
+    androidDir=""
+    
+    # Android adb binary location
+    adbLoc=""
+    
+    for i
+    do
+        case "$i" in
+			-h) shift;usage;exit 0;;
+            -v) shift;verbose=true; echo "verbose $verbose";;
+			-r) shift;defPath=$1;echo "Windows sdks path $defPath";shift;;
+			-a) shift;androidDir=$1;echo "Android sdks path $androidDir";shift;;
+			-b) shift;adbLoc=$1;echo "Android adb location $adbLoc";shift;;
+        esac
+    done
+
+	if [ -n "$defPath" -a -d "$defPath" ]; then
+		winDir="$defPath"
+		lastChr=${defPath#${defPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			winDir=`echo "${defPath%?}"`
+		fi
+	else
+		echo "Invalid windows build path $defPath"
+		exit 2
+	fi
+
+	cppRelBinDir="${winDir}/sdk-rel/cpp/bin"
+	cppRelSampleDir="${winDir}/sdk-rel/cpp/bin/samples"
+	cppDbgBinDir="${winDir}/sdk-dbg/cpp/bin"
+	cppDbgSampleDir="${winDir}/sdk-dbg/cpp/bin/samples"
+
+	if [ -d "$cppRelBinDir" -a -d "$cppRelSampleDir" ]; then
+		echo "CPP release binaries and samples directory exist"
+	elif [ -d "$cppRelBinDir" ]; then
+		echo "Invalid cpp release sample path $cppRelSampleDir"
+		exit 2
+	else
+		echo "Invalid cpp release binary path $cppRelBinDir"
+		exit 2
+	fi
+
+	if [ -d "$cppDbgBinDir" -a -d "$cppDbgSampleDir" ]; then
+		echo "CPP debug binaries and samples directory exist"
+	elif [ -d "$cppDbgBinDir" ]; then
+		echo "Invalid cpp debug sample path $cppDbgSampleDir"
+		exit 2
+	else
+		echo "Invalid cpp debug binary path $cppDbgBinDir"
+		exit 2
+	fi
+
+	jarRelDir="${winDir}/sdk-rel/java/jar"
+	jarDbgDir="${winDir}/sdk-dbg/java/jar"
+	javaRelLibDir="${winDir}/sdk-rel/java/lib"
+	javaDbgLibDir="${winDir}/sdk-dbg/java/lib"
+
+	if [ -d "$jarRelDir" -a -d "$javaRelLibDir" ]; then
+		echo "Java release jar and library directory exist"
+	elif [ -d "$jarRelDir" ]; then
+		echo "Nonexist java release library path $javaRelLibDir"
+		exit 2
+	else
+		echo "Nonexist java release jar path $jarRelDir"
+		exit 2
+	fi
+
+	if [ -d "$jarDbgDir" -a -d "$javaDbgLibDir" ]; then
+		echo "Java debug jar and library directory exist"
+	elif [ -d "$jarDbgDir" ]; then
+		echo "Nonexist java debug library path $javaDbgLibDir"
+		exit 2
+	else
+		echo "Nonexist java debug jar path $jarDbgDir"
+		exit 2
+	fi
+
+    # To run java tests, relative path for jar and lib file are required
+    # Jenkins and testbot have different current path, default to testbot
+    jarRelRelativeDir="./buildbot/sdk-rel/java/jar"
+	jarDbgRelativeDir="./buildbot/sdk-dbg/java/jar"
+	javaRelRelativeLibDir="./buildbot/sdk-rel/java/lib"
+	javaDbgRelativeLibDir="./buildbot/sdk-dbg/java/lib"
+	
+    currentDir=`pwd`
+    #/cygdrive/c/jenkins/WIN7X64/workspace/win7_testbot_master
+    JenkinsPathKey="jenkins"
+    #/cygdrive/c/buildslave/win7x64-testbot/win7testbot_12_master/platform/
+    TestbotPathKey="buildslave"
+    
+    masterKey="master"
+    
+	if [[ $currentDir =~ $JenkinsPathKey ]]; then
+	    if [[ $currentDir =~ $masterKey ]]; then
+            echo "Jenkins master test with $currentDir "
+            jarRelRelativeDir="../../../../buildslave/win7x64-testbot/win7testbot_12_master/platform/buildbot/sdk-rel/java/jar"
+            jarDbgRelativeDir="../../../../buildslave/win7x64-testbot/win7testbot_12_master/platform/buildbot/sdk-dbg/java/jar"
+            javaRelRelativeLibDir="../../../../buildslave/win7x64-testbot/win7testbot_12_master/platform/buildbot/sdk-rel/java/lib"
+	        javaDbgRelativeLibDir="../../../../buildslave/win7x64-testbot/win7testbot_12_master/platform/buildbot/sdk-dbg/java/lib"
+	    else
+	        echo "Jenkins branch test with $currentDir "
+            jarRelRelativeDir="../../../../buildslave/win7x64-testbot/win7testbot_12_branch/platform/buildbot/sdk-rel/java/jar"
+            jarDbgRelativeDir="../../../../buildslave/win7x64-testbot/win7testbot_12_branch/platform/buildbot/sdk-dbg/java/jar"
+            javaRelRelativeLibDir="../../../../buildslave/win7x64-testbot/win7testbot_12_branch/platform/buildbot/sdk-rel/java/lib"
+	        javaDbgRelativeLibDir="../../../../buildslave/win7x64-testbot/win7testbot_12_branch/platform/buildbot/sdk-dbg/java/lib"
+	    fi
+    fi
+	  
+	# Android parent path for sdk-rel subdirectory
+	if [ -n "$androidDir" -a -d "$androidDir" ]; then
+		androidPath="$androidDir"
+		lastChr=${androidDir#${androidDir%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			androidPath=`echo "${androidDir%?}"`
+		fi
+		androidRelCppBin="${androidPath}/sdk-rel/cpp/bin"
+	else
+		echo "Non-exist android build path $androidDir"
+	fi
+	
+	androidSdkMissing=0
+
+	if [ -d "$androidRelCppBin" ]; then
+		echo "Android release binary path $androidRelCppBin"
+	else
+		echo "Invalid android release binary path $androidRelCppBin"
+		androidSdkMissing=1
+	fi
+    
+    	# Android parent path for sdk-rel subdirectory
+	if [ -n "$adbLoc" -a -d "$adbLoc" ]; then
+		adbPath="$adbLoc"
+		lastChr=${adbLoc#${adbLoc%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			adbPath=`echo "${adbLoc%?}"`
+		fi
+		ADB="${adbPath}/adb.exe"
+	else
+		echo "Non-exist adb path $adbLoc"
+	fi
+	
+	adbMissing=0
+
+	if [ -x "$ADB" ]; then
+		echo "Android adb looks fine"
+	else
+		echo "Android adb is NOT executable!"
+		adbMissing=1
+	fi
+	
+    	
+	# Default path for thin client unit test subdirectory
+	tcUnitTestPath="${winDir}/../buildbot_ajtcl/scons/core/ajtcl/unit_test"
+	tcUnitTestMissing=0
+
+	if [ -n "$tcUnitTestPath" -a -d "$tcUnitTestPath" ]; then
+		echo "TC unit test folder exists"
+	else
+		echo "Invalid tc unit test path $tcUnitTestPath"
+		tcUnitTestMissing=1
+	fi
+	
+	# Default path for thin client test subdirectory
+	tcTestPath="${winDir}/../buildbot_ajtcl/scons/core/ajtcl/dist/test"
+	tcTestMissing=0
+
+	if [ -n "$tcTestPath" -a -d "$tcTestPath" ]; then
+		echo "TC test folder exists"
+	else
+		echo "Invalid tc test path $tcTestPath"
+		tcTestMissing=1
+	fi
+	
+    # Default path for standard client test tools(ajtcsctest.exe/ajtrawservice.exe...) subdirectory
+	scToolsPath="${winDir}/../buildbot/test_tools-rel"
+	scToolsMissing=0
+
+	if [ -n "$scToolsPath" -a -d "$scToolsPath" ]; then
+		echo "SC test tools folder exists"
+	else
+		echo "Invalid sc test tools path $scToolsPath"
+		scToolsMissing=1
+	fi
+}
+
+# Function name: SetUpGlobalVariables
+# Description: setup global variables 
+# Parameter: none
+# Return: none
+function SetUpGlobalVariables() {
+
+	# Test result file
+    testResultFile="${scriptName}_result.txt"
+    testResultHtml="${scriptName}_result.html"
+    
+	#detail command log file
+	testDetailLog="${scriptName}_detail.txt"
+
+	# Intermediate error log file
+	testProgressLog="${scriptName}_progress.txt"
+
+	BASIC_CLIENT_OK="Basic client exiting with status 0x0000"
+	BBCLIENT_OK="bbclient exiting with status 0 "
+
+	AndroidTestDir="/data/local/tmp"
+	
+	
+	# Commit id related
+	SC_COMMIT_TYPE=1
+	TC_COMMIT_TYPE=2
+	SC_URL_PREFIX="https://git.allseenalliance.org/cgit/core/alljoyn.git/commit/?id="
+	TC_URL_PREFIX="https://git.allseenalliance.org/cgit/core/ajtcl.git/commit/?id="
+	UNKNOWN_ID="unknown"
+}
+
+# Function name: getCommitIds
+# Description: 
+#   Get commit ids from manifest.txt of core and tc sdk
+# Parameter: none
+# Return: 
+#   scCommitId      - commit ref id of SC SDK
+#   tcCommitId      - commit ref id of TC SDK
+#   androidCommitId - commit ref id of Android SDK
+function getCommitIds() {
+	echo "Get commit ref ids from both SC and TC SDK..." >> $testDetailLog
+    
+    scCommitId="${UNKNOWN_ID}"
+    tcCommitId="${UNKNOWN_ID}"
+    androidCommitId="${UNKNOWN_ID}"
+    
+    local scManifest="${winDir}/sdk-rel/manifest.txt"
+    local tcManifest="${winDir}/../buildbot_ajtcl/scons/manifest.txt"
+    local androidManifest="${androidPath}/sdk-rel/manifest.txt"
+    
+    local scCommit="unknown"
+    local tclCommit="unknown"
+    local androidCommit="unknown"
+    
+	if [ -e "$scManifest" ]; then
+	    scCommit=`grep -i "commit ref:" $scManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$scCommit" ]; then
+	        scCommitId=$scCommit
+		    echo "SC SDK commit id is $scCommitId"
+		else
+		    echo "SC SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+	
+	if [ -e "$tcManifest" ]; then
+	    tclCommit=`grep -i "commit ref:" $tcManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$tclCommit" ]; then
+	        tcCommitId=$tclCommit
+		    echo "TC SDK commit id is $tcCommitId"
+		else
+		    echo "TC SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+	
+	if [ -e "$androidManifest" ]; then
+	    androidCommit=`grep -i "commit ref:" $androidManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$androidCommit" ]; then
+	        androidCommitId=$androidCommit
+		    echo "Android SDK commit id is $scCommitId"
+		else
+		    echo "Android SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+}
+
+# Function name: createCommitIdUrl
+# Description: 
+#   Create link url for commid id
+# Parameter: 
+#   commitType - SC or TC commit
+#   commitId   - commit id
+# Return: 
+#   commitUrl is set to valid url or unknown
+function createCommitIdUrl() {
+	echo "Create commit id url from $commitId ..." >> $testDetailLog
+	local commitType=$1
+	local commitId=$2
+	
+	commitUrl="${UNKNOWN_ID}"
+	
+	if [ "$commitType" -eq "${SC_COMMIT_TYPE}" ]; then
+	    commitUrl="${SC_URL_PREFIX}${commitId}"
+	else
+	    commitUrl="${TC_URL_PREFIX}${commitId}"
+	fi 
+	
+	echo "commit id url is $commitUrl"
+	
+}
+
+# Function name: checkAndroidCnt
+# Description: 
+#	Check number of android device(s) connected through USB
+# Parameter: none
+# Return: 
+#	devices is set to have android deviceid;
+#   androidCnt flag is set to 1 if one android connected; 
+#	set to 0 if no android device connected,
+#	set to actual number of devices if >1 devices connected
+function checkAndroidCnt() {
+    $verbose && echo "How many android device connected?" >> $testDetailLog
+
+	timeout 2 $ADB devices 2>android_devices.log 1>&2
+
+	# adb command is not stable, so always run as background to prevent block
+    devices=`timeout 2 $ADB devices | grep 'device$' | cut -f 1`
+	echo "Connected android id $devices"
+
+    androidCnt=`echo $devices | wc -w`
+    
+    if [ "$androidCnt" -eq 0 ]; then
+        echo "No android device connected!"
+    elif [ "$androidCnt" -gt 1 ]; then
+        echo "$androidCnt android connected, remove extra!"
+	else
+		echo "One android connected, good to go"
+    fi
+
+    $verbose && echo "$androidCnt android connected" >> $testDetailLog
+
+}
+
+# Function name: getAndroidIpAddr
+# Description: 
+#	Get android ip address
+# Parameter: none
+# Return: 
+#   androidIp is set to 192.168.x.xxx if wifi ready; empty otherwise
+function getAndroidIpAddr() {
+	local wifiConfig="${scriptName}_android_wifi.txt"
+	local ipPort="${scriptName}_android_ipPort.txt"
+	local upKey="UP"
+    local zeroIp="0.0.0.0"
+    local wifiInterface="wlan0|eth0"
+      
+	echo "Retrieve android ip address..."
+
+	androidIp=""
+
+	# TODO: if netcfg is not available, use ifconfig
+	timeout 3 $ADB shell netcfg 2>$wifiConfig 1>&2 
+
+	# wifi config file should include a line:
+	#       eth0     UP    192.168.1.104/23   255.255.255.0   0x00001043
+	# Exclude local interface
+	awk -F" +" -v status="$upKey" -v wifi="$wifiInterface" '$2 ~ status && $1 ~ wifi {print $3}' $wifiConfig > $ipPort	
+
+	# Remove "/port" from ip for ICS 8960
+	androidIp=`awk -F"/" '{print $1}' $ipPort`
+
+	echo "Android ip address $androidIp"
+
+	# If no access point is active and Wifi ON, ip address will be 0.0.0.0
+	if [ -n "$androidIp" -a "$androidIp" != "$zeroIp" ]; then
+		$verbose && echo "Android ip ready $androidIp"
+	else
+		$verbose && echo "Android has no IP!"
+		androidIp=""
+	fi
+}
+
+# Function name: getWinWlanIPAddr
+# Description: 
+#	Get windows host wlan ip address
+# Parameter: none
+# Return: 
+#   winIp is set to 192.168.x.xxx if wifi ready; empty otherwise
+function getWinWlanIPAddr() {
+	local wifiConfig="${scriptName}_windows_wifi.txt"
+    local ipv4Hdr="IPv4 Address"
+	local wlanIpPrefix="192.168"
+	   
+	echo "Retrieve windows ip address..."
+
+	winIp=""
+
+	# use ipconfig to search IPv4 Address...:192.168.x.x
+	ipconfig | grep -i "${ipv4Hdr}.*${wlanIpPrefix}" | awk -F":" '{print $2}'  2>$wifiConfig 1>&2 &
+               
+	sleep 2
+
+	# Remove leading spaces
+	winIp=`cat $wifiConfig | tr -d ' '`
+
+	echo "Windows wlan ip address is $winIp"
+}
+
+# Function name: winAndroidSameNet
+# Description: 
+#	check if windows and android on same wlan network
+# Parameter: 
+#   1. androidIp - android wlan ip
+#	2. windowsIp - windows wlan ip
+# Return: 
+#	sameNetwork is set to 1 if true; 0 otherwise
+function winAndroidSameNet() {
+    local androidIp=$1
+	local windowsIp=$2
+
+	local winPingAndroid="${scriptName}_win_ping_android"
+	local androidPingWin="${scriptName}_android_ping_win"
+	local winPingOk=0
+	local androidPingOk=0
+	local winPingKeys="Reply from $androidIp"
+	local androidPingKeys="64 bytes from $windowsIp"
+	
+	echo "Windows $windowsIp and android $androidIp share same wlan?"
+	sameNetwork=0
+
+	# Both android and windows should have non-empty wlan ip address
+	if [ -n "$androidIp" -a -n "$windowsIp" ]; then
+		# Ping android from windows host
+		timeout 15 ping $androidIp |grep "$winPingKeys" 2>$winPingAndroid 1>&2
+
+		# Ping windows from android
+		timeout 15 $ADB shell ping $windowsIp | grep "$androidPingKeys" 2>$androidPingWin 1>&2
+
+		winPingOk=`cat $winPingAndroid | wc -l`
+		androidPingOk=`cat $androidPingWin | wc -l`
+
+		echo "Windows get $winPingOk replies from android in 15 seconds"
+		echo "Android get $androidPingOk replies from windows in 15 seconds"
+
+		# At least 2 pings should got replies
+		if [ "$androidPingOk" -ge 2 ]; then
+			echo "Windows and android on same wlan network"
+			sameNetwork=1
+		else
+			echo "Android can not ping windows!"
+		fi
+	elif [ -z "$androidIp" ]; then
+		echo "Android is NOT connected to wifi"
+	else
+		echo "Windows is NOT connected to wifi"
+	fi
+		
+}
+# Function name: loadTestToAndroid
+# Description: 
+#	Load test binaries to android
+# Parameter: none
+# Return: 
+#	loadSuccess is 0 if load succeed; 1 otherwise
+function loadTestToAndroid() {
+	echo "Loading test binaties to android..."
+
+	local androidBbservice="${androidRelCppBin}/bbservice"
+	local androidBbclient="${androidRelCppBin}/bbclient"
+
+	loadSuccess=1
+
+	# Push binaries
+	if [ -e "$androidBbservice" -a -e "$androidBbclient" ]; then
+
+		# Delete old file on android
+		timeout 15 $ADB shell rm ${AndroidTestDir}/bbservice
+		timeout 15 $ADB shell rm ${AndroidTestDir}/bbclient
+		
+		# TODO: check file is deleted
+
+		# adb does not know path like /cygdrive/c/...
+		# copy bbservice and bbclient
+		cp $androidBbservice bbservice
+		cp $androidBbclient bbclient
+
+		# 20 seconds should be enough to push one file
+		timeout 20 $ADB push bbservice $AndroidTestDir
+		timeout 20 $ADB push bbclient $AndroidTestDir
+
+		# Make test binaries executable
+		timeout 15 $ADB shell chmod 777 ${AndroidTestDir}/bbservice
+		timeout 15 $ADB shell chmod 777 ${AndroidTestDir}/bbclient
+
+		# TODO: check file is pushed and changed correctly
+
+		loadSuccess=0
+	else
+		echo "$androidBbservice or $androidBbclient not exist!"
+	fi	
+		
+}
+
+# Function name: getWinPids
+# Description: Get windows process ids with given name
+# Parameter: 
+#	1. processName - process name
+# Return: 
+#	pids has process ids
+function getWinPids() {
+	local processName=$1
+
+	$verbose && echo "Checking $processName..."
+
+	# find pids for processName	
+	pids=`ps -ef | grep "$processName" | grep -v "grep" | awk -F" +" '{print $2}'`
+
+	$verbose && echo "$processName ids: $pids"
+	
+}
+# Function name: getAndroidPids
+# Description: 
+#	Get android process ids with given name
+# Parameter: 
+#   1. processName - process name
+# Return: 
+#	pids has process ids
+function getAndroidPids() {
+	local processName=$1
+	local pidFile="pid_android_${processName}.log"
+
+	# adb command is not stable, run with timeout to prevent block
+	timeout 2 $ADB shell ps > $pidFile
+	
+	pids=`awk -F" +" -v pN="$processName" '$0 ~ pN {print $2}' $pidFile`
+
+	rm -rf $pidFile
+	
+}
+
+# Function name: cleanKeyStore
+# Description: 
+#	Clean keystore before each security test
+# Parameter: none
+# Return: none
+function cleanKeyStore() {
+    local keystoreDir1="$LOCALAPPDATA/.alljoyn_secure_keystore"
+    local keystoreDir2="$LOCALAPPDATA/.alljoyn_keystore"
+    local keystoreDir3="$USERPROFILE/.alljoyn_keystore"
+    local keystoreDir4="$USERPROFILE/.alljoyn_secure_keystore"
+    
+	rm -rf $keystoreDir1
+	rm -rf $keystoreDir2
+	rm -rf $keystoreDir3
+	rm -rf $keystoreDir4
+}
+
+# Function name: killWinProcess
+# Description: kill windows process
+# Parameter: 
+#   1. processName - alljoyn-daemon, bbclient or bbService
+# Return: 
+#	none
+function killWinProcess() {
+    local processName=$1
+
+    $verbose && echo "Stopping all $processName..."
+
+	getWinPids $processName
+
+    processCount=`echo $pids | wc -w`
+        
+    $verbose && echo " $processCount $processName exists"
+
+    if [ "$processCount" -ge 1 ]; then 
+        for pid in $pids; do
+			$verbose && echo "kill $pid"
+			kill -9 $pid 2>/dev/null  1>&2
+        done   
+    fi
+
+}
+# Function name: killAndroidProcess
+# Description: kill all specified processes on android device
+# Parameter: 
+#   1. processName - bbClient, bbService
+# Return: 
+#	processKill flag is set to 0 if succeed; 1 otherwise
+function killAndroidProcess() {
+    local processName=$1
+
+    $verbose && echo "Stopping all $processName on android..." >> $testDetailLog
+
+    # kill running alljoyn-daemon process on device 
+    processKill=0
+
+	# adb command not stable, run as background to prevent     
+    getAndroidPids $processName
+
+    processCount=`echo $pids | wc -w`
+        
+    $verbose && echo " $processCount $processName find on android" >> $testDetailLog
+
+    if [ "$processCount" -ge 1 ]; then 
+        for pid in $pids; do
+            $verbose && echo "Old $processName process id is $pid " >> $testDetailLog
+
+            timeout 2 $ADB shell "kill -9 $pid"
+
+        done   
+
+		# timeout if process not terminated
+		sleep 2
+
+	    # confirm bbclient or bbservice is killed 
+	    getAndroidPids $processName
+		processCount=`echo $pids | wc -w`
+
+	    if [ "$processCount" -ge 1 ]; then
+	        $verbose && echo "Stop $processName failed for android!" >> $testDetailLog
+	        processKill=1
+		else
+			$verbose && echo "All $processName stopped on android" >> $testDetailLog
+		fi
+	else
+		$verbose && echo "No $processName on android" >> $testDetailLog
+    fi
+
+}
+
+# Function name: isProcessLive
+# Description: 
+#	check if target process id still live
+# Parameter: 
+#   1. procId - process id
+# Return: 
+#	procLive is set to 0 if not live; 1 if live
+function isProcessLive() {
+    local procId=$1
+
+	procLive=0
+    echo "Is process id $procId live?"
+
+	# 2nd field is PID
+    local pids=`ps -ef | awk -F" +" '{print $2}'`
+
+	echo "find $procId from $pids"
+	echo ""
+
+    local processCount=`echo $pids | wc -w`
+
+    if [ "$processCount" -ge 1 ]; then 
+        for pid in $pids; do
+			if [ "$pid" == "$procId" ]; then
+				echo "Live"
+				procLive=1
+				break
+			fi
+        done   
+    fi
+}
+
+# Function name: padLog
+# Description: 
+#	Add padding for log to avoid output buffering
+# Parameter: 
+#	logFile - log file name to pad
+# Return: none
+function padLog() {
+	local logFile=$1
+
+	local line=0
+	local totalLines=100
+	local paddingLine="**********"
+
+	echo "Add $totalLines lines of padding to $logFile"
+
+	# Padding 100 lines
+	for (( line=0; line<$totalLines; line++))
+	do
+		echo "$paddingLine" >> $logFile
+	done
+	
+}
+# Function name: logHasKeysExactTimes
+# Description: 
+#	Check if test log includes keys exact times
+# Parameter:
+#	logName
+#	passKey
+#	count
+# Return: 
+#	testResult will be set to 0 if log match keys exact times; 
+#   1 if log has keys more than expected;
+#	-1 if log has keys less than expected
+function logHasKeysExactTimes() {
+	local logName=$1
+	local passKey=$2
+	local count=$3
+	
+	local actualTimes=0
+
+	$verbose && echo "Deciding test result in $logName with $passKey..." >> $testDetailLog
+
+	testResult=0
+	
+	if [ -n "$logName" -a -n "$passKey" ]; then
+		if [ -e "$logName" -a -s "$logName" ]; then
+			actualTimes=`grep "$passKey" $logName|wc -l`
+
+			if [ "$actualTimes" -eq "$count" ]; then
+				testResult=0
+				echo "Log looks OK"
+			elif [ "$actualTimes" -gt "$count" ]; then
+                testResult=1
+				# Test fail
+				echo "Log $logName has $passKey $actualTimes times, more than expected!" >> $testProgressLog
+			else
+			    testResult=-1
+				# Test fail
+				echo "Log $logName has $passKey $actualTimes times, less than expected!" >> $testProgressLog
+			fi
+		else
+			echo "Empty or non-exist file $logName !" >> $testDetailLog
+			echo "Empty or non-exist file $logName !" >> $testProgressLog
+		fi
+	else
+		echo "File $logName or key $passKey is null !" >> $testDetailLog
+		echo "File $logName or key $passKey is null !" >> $testProgressLog
+	fi
+}
+
+# Function name: logHasKeysMinTimes
+# Description: 
+#	Check if test log includes keys at least minimum times
+# Parameter:
+#	logName
+#	passKey
+#	minimum
+# Return: 
+#	testResult will be set to 0 if pass; 6 if fail
+#	errMsg will be set if testResult is 6
+function logHasKeysMinTimes() {
+	local logName=$1
+	local passKey=$2
+	local minimum=$3
+	
+	local actualTimes=0
+
+	$verbose && echo "Does $logName contain $passKey at least $minimum times?" >> $testDetailLog
+
+	testResult=6
+	
+	if [ -n "$logName" -a -n "$passKey" ]; then
+		if [ -e "$logName" -a -s "$logName" ]; then
+			actualTimes=`grep "$passKey" $logName|wc -l`
+
+			if [ "$actualTimes" -ge "$minimum" ]; then
+				testResult=0
+				echo "Log looks OK"
+			else
+
+				# Test fail
+				echo "Log $logName miss $passKey !" >> $testProgressLog
+			fi
+		else
+			echo "Empty or non-exist file $logName !" >> $testDetailLog
+			echo "Empty or non-exist file $logName !" >> $testProgressLog
+		fi
+	else
+		echo "File $logName or key $passKey is null !" >> $testDetailLog
+		echo "File $logName or key $passKey is null !" >> $testProgressLog
+	fi
+}
+# Function name: basicServiceClient
+# Description: basic_service and basic_client test 
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function basicServiceClient() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="basic_client_$buildVariant.txt"
+	local SERVICE_LOG="basic_service_$buildVariant.txt"
+	
+	# error log names in Jenkins archieve
+	local CLIENT_ERROR="basic_client_$buildVariant_error.txt"
+	local SERVICE_ERROR="basic_service_$buildVariant_error.txt"
+    
+	local SERVICE_PATH="$cppRelSampleDir"
+	local CLIENT_PATH="$cppRelSampleDir"
+
+	if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug sample variant"
+		SERVICE_PATH="$cppDbgSampleDir"
+		CLIENT_PATH="$cppDbgSampleDir"
+	fi
+
+	# Launch basic_service
+	echo "Launch basic_service..."
+	${SERVICE_PATH}/basic_service.exe 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 2
+
+	# Launch basic_client
+	echo "Launch basic_client..."
+	${CLIENT_PATH}/basic_client.exe 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 10
+
+	#Check log to decide test result
+	echo "Check client log..."
+	local FOUND_NAME="FoundAdvertisedName"
+	local JOIN_SESSION="JoinSession SUCCESS"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysMinTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysMinTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$BASIC_CLIENT_OK" 1
+	local clientOk=$testResult
+
+	isProcessLive $client_pid
+	local clientExit=$procLive
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+		if [ "$clientExit" -ne 0 ]; then
+			echo "basic_client still running!" >> $testProgressLog
+		fi
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinsession fail!</a>)</p>" >> $testResultHtml
+	elif [ "$clientOk" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(basic_client NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">basic_client NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up service $service_pid and client $client_pid ..."
+	kill $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: runScSecurity
+# Description: 
+#   SC security 2.0 tests
+# Parameter: 
+#	buildVariant - release or debug
+#   transport    - tcp or udp
+#   auth         - authentication(SRP/LOGON/ECDHE_NULL/ECDHE_PSK/ECDHE_ECDSA)
+# Return: none
+function runScSecurity() {
+	local buildVariant=$1
+	local transport=$2
+	local auth=$3
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+    
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase($buildVariant Messaging with Authentication $auth over $transport)"
+	echo "Test case=$testCase($buildVariant Messaging with Authentication $auth over $transport)">> $testResultFile
+    echo "<p>Test case=$testCase($buildVariant Messaging with Authentication $auth over $transport)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="bbclient_${buildVariant}_${transport}_${auth}.txt"
+	local SERVICE_LOG="bbservice_${buildVariant}_${transport}_${auth}.txt"
+
+	# error log names in Jenkins archieve
+	local CLIENT_ERROR="bbclient_${buildVariant}_${transport}_${auth}_error.txt"
+	local SERVICE_ERROR="bbservice_${buildVariant}_${transport}_${auth}_error.txt"
+	
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$cppRelBinDir"
+	
+	# Default transport TCP
+	local transportFlag="-t"
+	local transportEnum="0x4"
+	
+	# Default autntication is SRP
+	local authFlag="-ek SRP"
+	local authSuccess="Authentication ALLJOYN_SRP_KEYX succesful"
+	
+    if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug test variant"
+		SERVICE_PATH="$cppDbgBinDir"
+		CLIENT_PATH="$cppDbgBinDir"
+	fi
+
+    if [ "$transport" == "udp" -o "$transport" == "UDP" ]; then
+        echo "Transport $transport is set"
+        transportFlag="-u"
+        transportEnum="0x100"      
+    fi
+    
+    if [ "$auth" == "logon" -o "$auth" == "LOGON" ]; then
+        echo "LOGON is set"
+        authFlag="-ek LOGON happy"
+        authSuccess="Authentication ALLJOYN_SRP_LOGON succesful"
+    elif [ "$auth" == "ecdhe_null" -o "$auth" == "ECDHE_NULL" ]; then
+        echo "ECDHE_NULL is set"
+        authFlag="-ek ECDHE_NULL"
+        authSuccess="Authentication ALLJOYN_ECDHE_NULL succesful"
+    elif [ "$auth" == "ecdhe_psk" -o "$auth" == "ECDHE_PSK" ]; then
+        echo "ECDHE_PSK is set"
+        authFlag="-ek ECDHE_PSK"
+        authSuccess="Authentication ALLJOYN_ECDHE_PSK succesful"
+    elif [ "$auth" == "ecdhe_ecdsa" -o "$auth" == "ECDHE_ECDSA" ]; then
+        echo "ECDHE_ECDSA is set"
+        authFlag="-ek ECDHE_ECDSA"
+        authSuccess="Authentication ALLJOYN_ECDHE_ECDSA succesful"
+    else
+        echo "SRP is set"
+        authFlag="-ek SRP"
+        authSuccess="Authentication ALLJOYN_SRP_KEYX succesful"
+    fi
+    
+    local wkName="win.security"
+    
+	# Launch basic_service
+	echo "Launch bbservice..."
+	${SERVICE_PATH}/bbservice.exe -n $wkName $transportFlag 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 2
+
+	# Launch bbclient
+	echo "Launch bbclient..."
+	${CLIENT_PATH}/bbclient.exe -n $wkName -d -c 5 $authFlag 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 60
+
+	local FOUND_NAME="FoundAdvertisedName(name=$wkName, transport=$transportEnum, prefix=$wkName)"
+	local JOIN_SESSION="JoinSession $transportEnum takes"
+    
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysExactTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$authSuccess" 1
+	local authStatus=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	# bbclient should exit
+	isProcessLive $client_pid
+	local clientExit=$procLive
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$authStatus" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+		if [ "$clientExit" -ne 0 ]; then
+			echo "bbclient still running!" >> $testProgressLog
+		fi	
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinsession fail!</a>)</p>" >> $testResultHtml
+	elif [ "$authStatus" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(authentication fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">authentication fail!</a>)</p>" >> $testResultHtml
+	elif [ "$clientOk" -ne 0 ]; then
+    	mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">exit error</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up service $service_pid and client $client_pid ..."
+	kill $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: ScSecurityTests
+# Description: standard client security tests
+# Parameter: none
+# Return: none
+function ScSecurityTests() {
+	echo "Standard client security tests"
+	
+	# Clean old keystore so previous bad keystore won't impact current test
+    cleanKeyStore
+    
+    # TCP SRP test	
+    runScSecurity "release" "tcp" "SRP"
+    
+    cleanKeyStore
+    
+    # TCP LOGON test
+    runScSecurity "release" "tcp" "LOGON"
+    
+    cleanKeyStore
+    
+    # TCP ECDHE_NULL test
+    runScSecurity "release" "tcp" "ECDHE_NULL"
+    
+    cleanKeyStore
+    
+    # TCP ECDHE_PSK test
+    runScSecurity "release" "tcp" "ECDHE_PSK"
+    
+    cleanKeyStore
+    
+    # TCP ECDHE_ECDSA test
+    runScSecurity "release" "tcp" "ECDHE_ECDSA"
+   
+    cleanKeyStore
+       
+    # UDP SRP test	
+    runScSecurity "release" "udp" "SRP"
+    
+    cleanKeyStore
+    
+    # UDP LOGON test
+    runScSecurity "release" "udp" "LOGON"
+    
+    cleanKeyStore
+    
+    # UDP ECDHE_NULL test
+    runScSecurity "release" "udp" "ECDHE_NULL"
+    
+    cleanKeyStore
+    
+    # UDP ECDHE_PSK test
+    runScSecurity "release" "udp" "ECDHE_PSK"
+    
+    cleanKeyStore
+    
+    # UDP ECDHE_ECDSA test
+    runScSecurity "release" "udp" "ECDHE_ECDSA"
+}
+
+# Function name: bbServiceClient
+# Description: bbService and bbClient test 
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function bbServiceClient() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="bbclient_$buildVariant.txt"
+	local SERVICE_LOG="bbservice_$buildVariant.txt"
+
+	# error log names in Jenkins archieve
+	local CLIENT_ERROR="bbclient_$buildVariant_error.txt"
+	local SERVICE_ERROR="bbservice_$buildVariant_error.txt"
+	
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$cppRelBinDir"
+	
+    if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug test variant"
+		SERVICE_PATH="$cppDbgBinDir"
+		CLIENT_PATH="$cppDbgBinDir"
+	fi
+
+	# Launch basic_service
+	echo "Launch bbservice..."
+	${SERVICE_PATH}/bbservice.exe -n com.w13 -t 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 2
+
+	# Launch bbclient
+	echo "Launch bbclient..."
+	${CLIENT_PATH}/bbclient.exe -n com.w13 -d -c 100 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 40
+
+	local FOUND_NAME="FoundAdvertisedName(name=com.w13, transport=0x4, prefix=com.w13)"
+	local JOIN_SESSION="JoinSession 0x4 takes"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysExactTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	# bbclient should exit
+	isProcessLive $client_pid
+	local clientExit=$procLive
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+		if [ "$clientExit" -ne 0 ]; then
+			echo "bbclient still running!" >> $testProgressLog
+		fi	
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinsession fail!</a>)</p>" >> $testResultHtml
+	elif [ "$clientOk" -ne 0 ]; then
+    	mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">bbclient NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up service $service_pid and client $client_pid ..."
+	kill $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: runWinService1
+# Description: 
+#	bbservice on windows and bbclient on android
+#	bbservice starts 1st 
+# Parameter: 
+#	advName   - advertised name
+#	sleepTime - sleep time between bbservice and bbclient
+#	testDesc  - test description
+# Return: 
+# 	testResult is 0 if pass; 6 if fail
+function runWinService1() {
+	local advName=$1
+	local sleepTime=$2
+	local testDesc=$3
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase($testDesc)"
+	echo "Test case=$testCase($testDesc)">> $testResultFile
+    echo "<p>Test case=$testCase($testDesc)</p>">> $testResultHtml
+    
+	local androidClientLog="android_bbclient_${testCase}.log"
+	local winServiceLog="win_bbservice_${testCase}.log"
+
+	# Possible error logs to minimize Jenkins archieve
+	local androidClientError="android_bbclient_${testCase}_error.txt"
+	local winServiceError="win_bbservice_${testCase}_error.txt"
+	
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$AndroidTestDir"
+
+	killWinProcess "bbservice"
+
+	# Launch bbservice on windows
+	echo "Launch bbservice..."
+	${SERVICE_PATH}/bbservice.exe -n $advName -t 2>$winServiceLog 1>&2 &
+	service_pid=$!
+
+	# Wait
+	sleep $sleepTime
+
+	killAndroidProcess "bbclient"
+
+	# Launch bbclient
+	echo "Launch bbclient on android..."
+	timeout 90 $ADB shell ${CLIENT_PATH}/bbclient -n $advName -d -c 10 2>$androidClientLog 1>&2
+
+	local FOUND_NAME="FoundAdvertisedName(name=$advName, transport=0x4, prefix=$advName)"
+	local JOIN_SESSION="JoinSession 0x4 takes"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysExactTimes $androidClientLog "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $androidClientLog "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $androidClientLog "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">joinsession fail!</a>)</p>" >> $testResultHtml
+	else
+	    mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">bbclient NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up service $service_pid ..."
+	kill $service_pid
+
+	killAndroidProcess "bbclient"
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: runWinService2
+# Description: 
+#	bbservice on windows and bbclient on android
+#	bbclient starts 1st 
+# Parameter: 
+#	advName   - advertise name
+#	sleepTime - sleep time between bbservice and bbclient
+#	testDesc  - test description
+# Return: 
+# 	testResult is 0 if pass; 6 if fail
+function runWinService2() {
+	local advName=$1
+	local sleepTime=$2
+	local testDesc=$3
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase($testDesc)"
+	echo "Test case=$testCase($testDesc)">> $testResultFile
+    echo "<p>Test case=$testCase($testDesc)</p>">> $testResultHtml
+    
+	local androidClientLog="android_bbclient_${testCase}.log"
+	local winServiceLog="win_bbservice_${testCase}.log"
+
+	# Possible error logs to minimize Jenkins archieve
+	local androidClientError="android_bbclient_${testCase}_error.txt"
+	local winServiceError="win_bbservice_${testCase}_error.txt"
+	
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$AndroidTestDir"
+
+	killAndroidProcess "bbclient"
+
+	killWinProcess "bbservice"
+
+	# Launch bbclient
+	echo "Launch bbclient on android..."
+	$ADB shell ${CLIENT_PATH}/bbclient -n $advName -d -c 10 2>$androidClientLog 1>&2 &
+
+	# Wait
+	sleep $sleepTime
+
+	# Launch bbservice on windows
+	echo "Launch bbservice..."
+	timeout 90 ${SERVICE_PATH}/bbservice.exe -n $advName -t 2>$winServiceLog 1>&2
+
+	local FOUND_NAME="FoundAdvertisedName(name=$advName, transport=0x4, prefix=$advName)"
+	local JOIN_SESSION="JoinSession 0x4 takes"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysExactTimes $androidClientLog "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $androidClientLog "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $androidClientLog "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">$discovery fail!)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+    	mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">joinsession fail!</a>)</p>" >> $testResultHtml
+	else
+	    mv $androidClientLog $androidClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$androidClientError">bbclient NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	killAndroidProcess "bbclient"
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+# Function name: runWinClient1
+# Description: 
+#	bbclient on windows and bbservice on android 
+#	bbservice starts 1st
+# Parameter: 
+#	advName   - advertised name
+#	sleepTime - sleep time between bbservice and bbclient
+#	testDesc  - test description
+# Return: 
+# 	testResult is 0 if pass; 6 if fail
+function runWinClient1() {
+	local advName=$1
+	local sleepTime=$2
+	local testDesc=$3
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase($testDesc)"
+	echo "Test case=$testCase($testDesc)">> $testResultFile
+    echo "<p>Test case=$testCase($testDesc)</p>">> $testResultHtml
+    
+	local winClientLog="win7_bbclient_${testCase}.log"
+	local androidServiceLog="android_bbservice_${testCase}.log"
+	
+	# Possible error logs to minimize Jenkins archieve
+	local winClientError="win7_bbclient_${testCase}_error.txt"
+	local androidServiceError="android_bbservice_${testCase}_error.txt"
+
+	local SERVICE_PATH="$AndroidTestDir"
+	local CLIENT_PATH="$cppRelBinDir"
+
+	killAndroidProcess "bbservice"
+	killAndroidProcess "bbclient"
+
+	killWinProcess "bbservice"
+	killWinProcess "bbclient"
+
+	# Launch bbservice on andoid
+	echo "Launch bbservice on android"
+	$ADB shell ${SERVICE_PATH}/bbservice -n $advName -t 2>$androidServiceLog 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep $sleepTime
+
+	# Launch bbclient
+	echo "Launch bbclient on windows..."
+	timeout 60 ${CLIENT_PATH}/bbclient -n $advName -d -c 10 2>$winClientLog 1>&2
+
+	local FOUND_NAME="FoundAdvertisedName(name=$advName, transport=0x4, prefix=$advName)"
+	local JOIN_SESSION="JoinSession 0x4 takes"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	# Windows7 client should discover exact once
+	logHasKeysExactTimes $winClientLog "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $winClientLog "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $winClientLog "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -ne 0 ]; then
+        mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">joinsession fail!</a>)</p>" >> $testResultHtml
+	else
+	    mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">bbclient NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up bbservice on android ..."
+
+	killAndroidProcess "bbservice"
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+# Function name: runWinClient2
+# Description: 
+#	bbclient on windows and bbservice on android 
+#	bbclient starts 1st
+# Parameter: 
+#	advName   - advertised name
+#	sleepTime - sleep time between bbservice and bbclient
+#	testDesc  - test description
+# Return: 
+# 	testResult is 0 if pass; 6 if fail
+function runWinClient2() {
+	local advName=$1
+	local sleepTime=$2
+	local testDesc=$3
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase($testDesc)"
+	echo "Test case=$testCase($testDesc)">> $testResultFile
+    echo "<p>Test case=$testCase($testDesc)</p>">> $testResultHtml
+    
+	local winClientLog="win7_bbclient_${testCase}.log"
+	local androidServiceLog="android_bbservice_${testCase}.log"
+
+    # Possible error logs to minimize Jenkins archieve
+    local winClientError="win7_bbclient_${testCase}_error.txt"
+	local androidServiceError="android_bbservice_${testCase}_error.txt"
+	
+	local SERVICE_PATH="$AndroidTestDir"
+	local CLIENT_PATH="$cppRelBinDir"
+
+	killWinProcess "bbservice"
+	killWinProcess "bbclient"
+
+	killAndroidProcess "bbservice"
+	killAndroidProcess "bbclient"
+
+	# Launch bbclient
+	echo "Launch bbclient on windows..."
+	${CLIENT_PATH}/bbclient -n $advName -d -c 10 2>$winClientLog 1>&2 &
+
+	# Wait 
+	sleep $sleepTime
+
+	# Launch bbservice on andoid, timeout will wait 40 seconds so discovery complete
+	echo "Launch bbservice on android"
+	timeout 40 $ADB shell ${SERVICE_PATH}/bbservice -n $advName -t 2>$androidServiceLog 1>&2 
+
+	local FOUND_NAME="FoundAdvertisedName(name=$advName, transport=0x4, prefix=$advName)"
+	local JOIN_SESSION="JoinSession 0x4 takes"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	# Windows7 client should disciver once
+	logHasKeysExactTimes $winClientLog "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $winClientLog "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $winClientLog "$BBCLIENT_OK" 1
+	local clientOk=$testResult
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">discovery fail!</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+	    mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession fail!)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">joinsession fail!</a>)</p>" >> $testResultHtml
+	else
+	    mv $winClientLog $winClientError
+		testResults[totalTests]=6
+		echo "Test result=Fail(bbclient NOT exit 0)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="$winClientLog">bbclient NOT exit 0</a>)</p>" >> $testResultHtml
+	fi
+
+	killWinProcess "bbclient"
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+# Function name: lostAdvertisedName
+# Description: 
+#	bbClient foundAdvertisedName from bbservice 1st,
+#	bbservice quit and bbclient received lostAdvertisedName signal
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function lostAdvertisedName() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W003 lostAdvertisedName test $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W005 lostAdvertisedName test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W005 lostAdvertisedName test $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="bbclient_lost_$buildVariant.txt"
+	local SERVICE_LOG="bbservice_lost_$buildVariant.txt"
+
+    # Possible error logs to minimize Jenkins archieve
+    local CLIENT_ERROR="bbclient_lost_$buildVariant_error.txt"
+	local SERVICE_ERROR="bbservice_lost_$buildVariant_error.txt"
+	
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$cppRelBinDir"
+
+	if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug test variant"
+		SERVICE_PATH="$cppDbgBinDir"
+		CLIENT_PATH="$cppDbgBinDir"
+	fi
+
+	# Launch basic_service
+	echo "Launch bbservice..."
+	${SERVICE_PATH}/bbservice.exe -n gov.a -t 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 1
+
+	# Launch bbclient
+	echo "Launch bbclient..."
+	${CLIENT_PATH}/bbclient.exe -n gov -d 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery
+	sleep 10
+
+	# Quit bbservice by interrupt (ctrl +c)
+	kill -2 $service_pid
+
+	# Wait lostAdvertisedName to reach bbclient
+	sleep 5
+
+	local FOUND_NAME="FoundAdvertisedName(name=gov.a, transport=0x4, prefix=gov)"
+	local LOST_Name="LostAdvertisedName(name=gov.a, transport=0x4, prefix=gov)"
+
+	#Check log to decide test result
+	echo "Check client log to make sure foundName and lostName signals..."
+	logHasKeysExactTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$LOST_Name" 1
+	local lostName=$testResult
+
+	if [ "$foundName" -eq 0 -a "$lostName" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -eq 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(lostAdvertisedName signal not received)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">lostAdvertisedName signal not received</a>)</p>" >> $testResultHtml
+	else
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(foundAdvertisedName signal not received)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">foundAdvertisedName signal not received</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up client $client_pid ..."
+
+	kill $client_pid 
+
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: javaMethodCall
+# Description: 
+#	Java binding sample service/client method call
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function javaMethodCall() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="java_method_client_$buildVariant.txt"
+	local SERVICE_LOG="java_method_service_$buildVariant.txt"
+	
+    # Possible error logs to minimize Jenkins archieve
+    local CLIENT_ERROR="java_method_client_${buildVariant}_error.txt"
+	local SERVICE_ERROR="java_method_service_${buildVariant}_error.txt"
+	
+	local SERVICE_PATH="$jarRelRelativeDir"
+	local CLIENT_PATH="$SERVICE_PATH"
+	local javaLibPath="$javaRelRelativeLibDir"
+
+	# Launch JavaSDKDocMethodsService in relative path
+	# Java does not recognize full path like: /cygdrive/c/...
+	echo "Launch JavaSDKDocMethodsService..."
+	java -Djava.library.path=$javaLibPath -jar ${SERVICE_PATH}/JavaSDKDocMethodsService.jar 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 2
+
+	# Launch JavaSDKDocMethodsClient
+	echo "Launch JavaSDKDocMethodsClient..."
+	java -Djava.library.path=$javaLibPath -jar ${CLIENT_PATH}/JavaSDKDocMethodsClient.jar 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 90
+
+	# Add some padding at log end to avoid output buffering
+	padLog $CLIENT_LOG
+
+	local FOUND_NAME="BusListener.foundAdvertisedName"
+	local JOIN_SESSION="BusAttachement.joinSession successful"
+	local PING_RET="Ping : Hello World"
+	local CONCAT="Concatenate : The Eagle has landed!"
+	local FIBONACCI="Fibonacci(4) : 3"
+	local THREAD11="Thread 1: Starting callculate P1"
+	local THREAD21="Thread 2: Starting callculate P1"
+	local THREAD12="Thread 1: Pi(1000000000) = 3.1415926525880504"
+	local THREAD22="Thread 2: Pi(1000000000) = 3.1415926525880504"
+
+	#Check log to decide test result
+	echo "Check client log ..."
+	logHasKeysMinTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysMinTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$PING_RET" 1
+	local pingHello=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$CONCAT" 1
+	local concat=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$THREAD11" 1
+	local thread11=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$THREAD12" 1
+	local thread12=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$THREAD21" 1
+	local thread21=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$THREAD22" 1
+	local thread22=$testResult
+
+	isProcessLive $client_pid
+	local clientExit=$procLive
+	
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 ]; then
+		if [ "$pingHello" -eq 0 -a "$concat" -eq 0 ]; then
+			if [ "$thread11" -eq 0 -a "$thread12" -eq 0 ]; then
+				if [ "$thread21" -eq 0 -a "$thread22" -eq 0 ]; then
+					testResults[totalTests]=0
+					echo "Test result=Pass" >> $testResultFile
+					echo "<p>Test result=Pass</p>" >> $testResultHtml
+					if [ "$clientExit" -ne 0 ]; then		
+						echo "JavaSDKDocMethodsClient still running!" >> $testProgressLog
+					fi
+				elif [ "$thread21" -eq 0 ]; then
+				    mv $CLIENT_LOG $CLIENT_ERROR
+					testResults[totalTests]=6
+					echo "Test result=Fail(Thread2 incomplete)" >> $testResultFile
+					echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Thread2 incomplete</a>)</p>" >> $testResultHtml
+				else
+				    mv $CLIENT_LOG $CLIENT_ERROR
+					testResults[totalTests]=6
+					echo "Test result=Fail(Thread2 NOT started)" >> $testResultFile
+					echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Thread2 NOT started</a>)</p>" >> $testResultHtml
+				fi
+			elif [ "$thread11" -eq 0 ]; then
+			    mv $CLIENT_LOG $CLIENT_ERROR
+				testResults[totalTests]=6
+				echo "Test result=Fail(Thread1 incomplete)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Thread1 incomplete</a>)</p>" >> $testResultHtml
+			else
+			    mv $CLIENT_LOG $CLIENT_ERROR
+				testResults[totalTests]=6
+				echo "Test result=Fail(Thread1 NOT started)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Thread1 NOT started</a>)</p>" >> $testResultHtml
+			fi
+		elif [ "$pingHello" -eq 0 ]; then
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(Concat missing)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Concat missing</a>)</p>" >> $testResultHtml
+		else
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(ping missing)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">ping missing</a>)</p>" >> $testResultHtml
+		fi
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(foundAdvertisedName)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">foundAdvertisedName</a>)</p>" >> $testResultHtml
+	else
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinSession)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinSession</a>)</p>" >> $testResultHtml
+	fi
+
+	# Quit bbservice by interrupt (ctrl +c)
+	kill -2 $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: javaProperty
+# Description: 
+#	Java binding sample PropertyService/client method call
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function javaProperty() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="java_property_client_$buildVariant.txt"
+	local SERVICE_LOG="java_property_service_$buildVariant.txt"
+	
+	# Possible error log files 
+	local CLIENT_ERROR="java_property_client_${buildVariant}_error.txt"
+	local SERVICE_ERROR="java_property_service_${buildVariant}_error.txt"
+
+	local SERVICE_PATH="$jarRelRelativeDir"
+	local CLIENT_PATH="$SERVICE_PATH"
+	local javaLibPath="$javaRelRelativeLibDir"
+	
+	# Launch JavaSDKDocPropertiesService in relative path
+	# Java does not recognize full path like: /cygdrive/c/...
+	echo "Launch JavaSDKDocPropertiesService..."
+	java -Djava.library.path=$javaLibPath -jar ${SERVICE_PATH}/JavaSDKDocPropertiesService.jar 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 1
+
+	# Launch JavaSDKDocPropertiesClient
+	echo "Launch JavaSDKDocPropertiesClient..."
+	java -Djava.library.path=$javaLibPath -jar ${CLIENT_PATH}/JavaSDKDocPropertiesClient.jar 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 60
+
+	local FOUND_NAME="BusListener.foundAdvertisedName"
+	local JOIN_SESSION="BusAttachement.joinSession successful"
+	local TEXTSIZE1="TextSize = 12"
+	local TEXTSIZE2="TextSize = 3"
+
+	#Check log to decide test result
+	echo "Check client log ..."
+	logHasKeysMinTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysMinTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$TEXTSIZE1" 1
+	local textSize1=$testResult
+
+	# TextSize = 3 should appear twice
+	logHasKeysExactTimes $CLIENT_LOG "$TEXTSIZE2" 2
+	local textSize2=$testResult
+
+	isProcessLive $client_pid
+	local clientExit=$procLive
+
+	
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 ]; then
+		if [ "$textSize1" -eq 0 -a "$textSize2" -eq 0 ]; then
+			testResults[totalTests]=0
+			echo "Test result=Pass" >> $testResultFile
+			echo "<p>Test result=Pass</p>" >> $testResultHtml
+			if [ "$clientExit" -ne 0 ]; then
+				echo "JavaSDKDocPropertiesClient still running!" >> $testProgressLog
+			fi
+		elif [ "$textSize1" -ne 0 ]; then
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail($TEXTSIZE1 miss)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">$TEXTSIZE1 miss</a>)</p>" >> $testResultHtml
+		else
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail($TEXTSIZE2 miss)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">$TEXTSIZE2 miss</a>)</p>" >> $testResultHtml
+		fi
+	elif [ "$foundName" -eq 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinSession)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinSession</a>)</p>" >> $testResultHtml
+	else
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(foundAdvertisedName)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">foundAdvertisedName</a>)</p>" >> $testResultHtml
+	fi
+
+	# Quit bbservice by interrupt (ctrl +c)
+	kill -2 $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: javaSignal
+# Description: 
+#	Java binding sample SignalService/client method call
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function javaSignal() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="java_signal_client_$buildVariant.txt"
+	local SERVICE_LOG="java_signal_service_$buildVariant.txt"
+	
+	local CLIENT_ERROR="java_signal_client_${buildVariant}_error.txt"
+	local SERVICE_ERROR="java_signal_service_${buildVariant}_error.txt"
+
+	local SERVICE_PATH="$jarRelRelativeDir"
+	local CLIENT_PATH="$SERVICE_PATH"
+	local javaLibPath="$javaRelRelativeLibDir"
+	
+
+	if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug sample variant"
+
+		SERVICE_PATH="$jarDbgRelativeDir"
+	    local CLIENT_PATH="$SERVICE_PATH"
+	    local javaLibPath="$javaDbgRelativeLibDir"
+	
+	fi
+	# Launch JavaSDKDocSignalService in relative path
+	# Java does not recognize full path like: /cygdrive/c/...
+	echo "Launch JavaSDKDocSignalService..."
+	java -Djava.library.path=$javaLibPath -jar ${SERVICE_PATH}/JavaSDKDocSignalService.jar 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 1
+
+	# Launch JavaSDKDocSignalClient
+	echo "Launch JavaSDKDocSignalClient..."
+	java -Djava.library.path=$javaLibPath -jar ${CLIENT_PATH}/JavaSDKDocSignalClient.jar 2>$CLIENT_LOG 1>&2 &
+	local client_pid=$!
+
+	#wait for client to complete discovery, join and method call
+	sleep 60
+
+	local FOUND_NAME="BusListener.foundAdvertisedName"
+	local JOIN_SESSION="BusAttachement.joinSession successful"
+	local POSITON="Players position is 100, 50, 45"
+
+	#Check log to decide test result
+	echo "Check client log ..."
+	logHasKeysMinTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysMinTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+
+	# Client should be live	to receive signals
+	isProcessLive $client_pid
+	local clientExit=$procLive
+
+	# service should be live to send signals
+	isProcessLive $service_pid
+	local serviceExit=$procLive
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 ]; then	
+		local receivedSignals=`grep "$POSITON" $CLIENT_LOG|wc -l`
+
+		# Client should receive at least one position signal
+		if [ "$receivedSignals" -gt 0 ]; then
+			# service and client should both running
+			if [ "$serviceExit" -ne 0 -a "$clientExit" -ne 0 ]; then	
+				testResults[totalTests]=0
+				echo "Test result=Pass" >> $testResultFile
+				echo "<p>Test result=Pass</p>" >> $testResultHtml
+			elif [ "$serviceExit" -eq 0 ]; then
+			    mv $CLIENT_LOG $CLIENT_ERROR
+				testResults[totalTests]=6
+				echo "Test result=Fail(service stopped sending signal)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">service stopped sending signal</a>)</p>" >> $testResultHtml
+			else
+			    mv $CLIENT_LOG $CLIENT_ERROR
+				testResults[totalTests]=6
+				echo "Test result=Fail(client stopped receiving signal)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">client stopped receiving signal</a>)</p>" >> $testResultHtml
+			fi
+		else
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(client receive 0 signal)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">client receive 0 signal</a>)</p>" >> $testResultHtml
+		fi
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(foundAdvertisedName)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">foundAdvertisedName</a>)</p>" >> $testResultHtml
+	else
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinSession)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinSession</a>)</p>" >> $testResultHtml
+	fi
+
+	# Quit bbservice by interrupt (ctrl +c)
+	kill -2 $service_pid
+
+	echo "Clean up client $client_pid ..."
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: javaSecurityLogon
+# Description: 
+#	Java binding sample SecurityLogonService/client
+# Parameter: 
+#	buildVariant - release or debug
+# Return: none
+function javaSecurityLogon() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)"
+	echo "Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="java_logon_client_$buildVariant.txt"
+	local SERVICE_LOG="java_logon_service_$buildVariant.txt"
+	
+	local CLIENT_ERROR="java_logon_client_${buildVariant}_error.txt"
+	local SERVICE_ERROR="java_logon_service_${buildVariant}_error.txt"
+
+	local SERVICE_PATH="$jarRelRelativeDir"
+	local CLIENT_PATH="$SERVICE_PATH"
+	local javaLibPath="$javaRelRelativeLibDir"
+	
+	# Launch JavaSDKDocSecurityLogonService in relative path
+	# Java does not recognize full path like: /cygdrive/c/...
+	echo "Launch JavaSDKDocSecurityLogonService..."
+	java -Djava.library.path=$javaLibPath -jar ${SERVICE_PATH}/JavaSDKDocSecurityLogonService.jar 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 1
+
+	# Launch JavaSDKDocSecurityLogonClient with 2 returns
+	echo "Launch JavaSDKDocSecurityLogonClient..."
+	java -Djava.library.path=$javaLibPath -jar ${CLIENT_PATH}/JavaSDKDocSecurityLogonClient.jar 2>$CLIENT_LOG 1>&2 <<EOF &
+
+
+EOF
+
+	local client_pid=$!
+
+	#wait for client to complete discovery, join, authentication and ping
+	sleep 60
+
+	local FOUND_NAME="BusListener.foundAdvertisedName"
+	local JOIN_SESSION="BusAttachement.joinSession successful"
+	local PING_HELLO="Ping = Hello AllJoyn"
+	local REPLY_HELLO="Reply : Hello AllJoyn"
+
+	#Check log to decide test result
+	echo "Check client log ..."
+
+	logHasKeysMinTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysMinTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$PING_HELLO" 1
+	local clientPing=$testResult
+
+	logHasKeysExactTimes $SERVICE_LOG "$REPLY_HELLO" 1
+	local serviceReply=$testResult
+
+	isProcessLive $client_pid
+	local clientExit=$procLive
+	
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 ]; then
+		# Client ping Hello and service reply
+		if [ "$clientPing" -eq 0 -a "$serviceReply" -eq 0 ]; then
+			testResults[totalTests]=0
+			echo "Test result=Pass" >> $testResultFile
+			echo "<p>Test result=Pass</p>" >> $testResultHtml
+			if [ "$clientExit" -ne 0 ]; then
+				echo "JavaSDKDocSecurityLogonClient still running!" >> $testProgressLog
+			fi
+		elif [ "$clientPing" -ne 0 ]; then
+		    mv $CLIENT_LOG $CLIENT_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(client ping miss)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">client ping miss</a>)</p>" >> $testResultHtml
+		else
+		    mv $SERVICE_LOG $SERVICE_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(service reply miss)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$SERVICE_ERROR\"">service reply miss</a>)</p>" >> $testResultHtml
+		fi
+	elif [ "$foundName" -ne 0 ]; then
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">discovery</a>)</p>" >> $testResultHtml
+	else
+	    mv $CLIENT_LOG $CLIENT_ERROR
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinSession)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">joinSession</a>)</p>" >> $testResultHtml
+	fi
+
+	# Quit bbservice by interrupt (ctrl +c)
+	kill -2 $service_pid
+
+	if [ "$clientExit" -ne 0 ]; then
+		kill $client_pid
+	fi
+
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: rawServiceClient
+# Description: 
+#	rawservice and rawclient over TCP
+# Parameter:
+#	buildVariant - release or debug
+# Return: none
+function rawServiceClient() {
+	local buildVariant=$1
+
+	# Initialize result to success
+	testResults[totalTests]=0
+
+	# Test case start from 1
+	local testCase=$(($totalTests + 1))
+
+	# Leave an empty line between tests in report
+	echo >> $testResultFile
+    echo "<br>" >> $testResultHtml
+    
+	echo "Test case=$testCase(rawservice/rawclient TCP)"
+	echo "Test case=$testCase(rawservice/rawclient TCP)">> $testResultFile
+    echo "<p>Test case=$testCase(rawservice/rawclient TCP)</p>">> $testResultHtml
+    
+	local CLIENT_LOG="rawclient_$buildVariant.txt"
+	local SERVICE_LOG="rawservice_$buildVariant.txt"
+
+	local SERVICE_PATH="$cppRelBinDir"
+	local CLIENT_PATH="$cppRelBinDir"
+
+	if [ "$buildVariant" == "debug" -o "$buildVariant" == "dbg" ]; then
+		echo "Debug sample variant"
+		SERVICE_PATH="$cppDbgBinDir"
+		CLIENT_PATH="$cppDbgBinDir"
+	fi
+
+	killWinProcess "rawservice"
+
+	killWinProcess "rawclient"
+
+	# Launch rawservice
+	echo "Launch rawservice..."
+	${SERVICE_PATH}/rawservice.exe 2>$SERVICE_LOG 1>&2 &
+	service_pid=$!
+
+	# Wait 
+	sleep 2
+
+	# Launch rawclient
+	echo "Launch rawclient..."
+	timeout 40 ${CLIENT_PATH}/rawclient.exe 2>$CLIENT_LOG 1>&2
+
+	#Check log to decide test result
+	echo "Check client log..."
+	local FOUND_NAME="FoundAdvertisedName(name=org.alljoyn.raw_test, transport=0x4, prefix=org.alljoyn.raw_test)"
+	local JOIN_SESSION="Session Joined with session id"
+	local READ_CONTENT="Bytes: abcdefghijklmnopqrstuvwxyz"
+	local EXIT_OK="rawclient exiting with status 0x0"
+
+	#Check log to decide test result
+	echo "Check client log..."
+
+	logHasKeysExactTimes $CLIENT_LOG "$FOUND_NAME" 1
+	local foundName=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$JOIN_SESSION" 1
+	local joinSession=$testResult
+	
+	logHasKeysExactTimes $CLIENT_LOG "$READ_CONTENT" 1
+	local readOk=$testResult
+
+	logHasKeysExactTimes $CLIENT_LOG "$EXIT_OK" 1
+	local clientOk=$testResult
+
+	if [ "$foundName" -eq 0 -a "$joinSession" -eq 0 -a "$readOk" -eq 0 -a "$clientOk" -eq 0 ]; then
+		testResults[totalTests]=0
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+	elif [ "$foundName" -ne 0 ]; then
+		testResults[totalTests]=6
+		echo "Test result=Fail(discovery)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_LOG\"">discovery</a>)</p>" >> $testResultHtml
+	elif [ "$joinSession" -ne 0 ]; then
+		testResults[totalTests]=6
+		echo "Test result=Fail(joinsession)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_LOG\"">joinsession</a>)</p>" >> $testResultHtml
+	elif [ "$readOk" -ne 0 ]; then
+		testResults[totalTests]=6
+		echo "Test result=Fail(read)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_LOG\"">read</a>)</p>" >> $testResultHtml
+	else
+		testResults[totalTests]=6
+		echo "Test result=Fail(exit non-zero)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_LOG\"">exit non-zero</a>)</p>" >> $testResultHtml
+	fi
+
+	echo "Clean up service $service_pid and client $client_pid ..."
+	kill $service_pid
+
+	# Wait 3 seconds till cleanup
+	sleep 3
+
+	# Increse test count
+	totalTests=$(($totalTests + 1))	
+}
+
+# Function name: runTcUnitTest
+# Description: 
+#	Thin client ajtcltest
+# Parameter: None
+# Return: none
+function runTcUnitTest() {
+
+	local SERVICE_PATH="$cppRelBinDir"
+	local UNIT_PATH="$tcUnitTestPath"
+	
+	local ajtclTest="${UNIT_PATH}/ajtcltest.exe"
+
+	# altcltest.exe must exist to continue test
+	if [ -e "$ajtclTest" ]; then
+
+		# Initialize result to success
+		testResults[totalTests]=0
+
+		# Test case start from 1
+		local testCase=$(($totalTests + 1))
+
+		# Leave an empty line between tests in report
+		echo >> $testResultFile
+		
+        echo "<br>" >> $testResultHtml
+
+		echo "Test case=$testCase(ajtcltest)"
+		echo "Test case=$testCase(ajtcltest)">> $testResultFile
+        echo "<p>Test case=$testCase(ajtcltest)</p>">> $testResultHtml
+        
+		killWinProcess "bbservice"
+		killWinProcess "ajtcltest"
+
+		local UNIT_LOG="ajtcltest.txt"
+		local SERVICE_LOG="bbservice_tc_unit.txt"
+		
+		local UNIT_ERROR="ajtcltest_error.txt"
+		local SERVICE_ERROR="bbservice_tc_unit_error.txt"
+
+		# Launch bbservice so Security tests can connect to
+		echo "Launch bbservice..."
+		${SERVICE_PATH}/bbservice.exe -n org.alljoyn.svclite 2>$SERVICE_LOG 1>&2 &
+	    local service_pid=$!
+
+		# Wait 
+		sleep 1
+
+		# Launch ajtcltest
+		echo "Launch ajtcltest..."
+		
+		# ajtcltest SecurityTest has race condition: ASACORE-1848
+		timeout 60 ${UNIT_PATH}/ajtcltest.exe --gtest_filter=-SecurityTest* 2>$UNIT_LOG 1>&2
+        local testStatus=$?
+        
+        echo "ajtcltest exit with $testStatus"
+        
+		isProcessLive $service_pid
+		local serviceLive=$procLive
+
+		# bbservice should NOT crash
+		if [ "$serviceLive" -ne 0 ]; then
+
+            if [ "$testStatus" -eq 0 ]; then
+                testResults[totalTests]=0
+				echo "Test result=Pass" >> $testResultFile
+				echo "<p>Test result=Pass</p>" >> $testResultHtml
+            else
+                mv $UNIT_LOG $UNIT_ERROR
+                testResults[totalTests]=6
+				echo "Test result=Fail(exit $testStatus)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$UNIT_ERROR\"">log</a>)</p>" >> $testResultHtml
+            fi
+
+		else
+		    mv $SERVICE_LOG $SERVICE_ERROR
+			testResults[totalTests]=6
+			echo "Test result=Fail(bbservice crash)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$SERVICE_ERROR\"">bbservice crash</a>)</p>" >> $testResultHtml
+		fi
+	
+
+		kill $service_pid
+
+		# Wait 3 seconds till cleanup
+		sleep 3
+        
+		# Increse test count
+		totalTests=$(($totalTests + 1))
+	
+	else
+		echo "$ajtclTest is missing, skip test!" >> $testDetailLog
+	fi
+}
+
+# Function name: runTcScTest
+# Description: 
+#	Thin client Standard client interaction tests - ajtcsctest
+# Parameter: None
+# Return: none
+function runTcScTest() {
+	
+	local ajtcscTest="${scToolsPath}/ajtcsctest.exe"
+	
+	# altcsctest.exe must exist to continue test
+	if [ -d "$scToolsPath" -a -e "$ajtcscTest" ]; then
+
+		# Initialize result to success
+		testResults[totalTests]=0
+
+		# Test case start from 1
+		local testCase=$(($totalTests + 1))
+
+		# Leave an empty line between tests in report
+		echo >> $testResultFile
+		
+        echo "<br>" >> $testResultHtml
+
+		echo "Test case=$testCase(ajtcsctest)"
+		echo "Test case=$testCase(ajtcsctest)">> $testResultFile
+        echo "<p>Test case=$testCase(ajtcsctest)</p>">> $testResultHtml
+        
+		killWinProcess "ajtcsctest"
+
+		local UNIT_LOG="ajtcsctest.txt"
+		
+		local UNIT_ERROR="ajtcsctest_error.txt"
+
+		# Launch ajtcsctest
+		echo "Launch ajtcsctest..."
+		
+		# ajtcsctest should complete in 2 min
+		timeout 720 $ajtcscTest 2>$UNIT_LOG 1>&2
+        local testStatus=$?
+        
+        echo "ajtcsctest exit with $testStatus"
+        
+        if [ "$testStatus" -eq 0 ]; then
+            testResults[totalTests]=0
+            echo "Test result=Pass" >> $testResultFile
+            echo "<p>Test result=Pass</p>" >> $testResultHtml
+        else
+            mv $UNIT_LOG $UNIT_ERROR
+            testResults[totalTests]=6
+            echo "Test result=Fail(exit $testStatus)" >> $testResultFile
+            echo "<p>Test result=Fail(<a class="error" href="\"$UNIT_ERROR\"">log</a>)</p>" >> $testResultHtml
+        fi
+        
+		# Increse test count
+		totalTests=$(($totalTests + 1))
+	
+	else
+		echo "$ajtcscTest is missing, skip test!" >> $testDetailLog
+	fi
+}
+
+# Function name: runTcScAuthTest
+# Description: 
+#	Thin client talks to standard client locally with ECDHE_NULL, ECDHE_PSK or ECDHE_ECDSA
+# Parameter: 
+#   AUTH - ECDHE_NULL, ECDHE_PSK or ECDHE_ECDSA
+# Return: none
+function runTcScAuthTest() {
+    local AUTH=$1
+
+	local SERVICE_PATH="$tcTestPath"
+	local CLIENT_PATH="$cppRelBinDir"
+	
+	local DAEMON_PATH="${cppRelBinDir}/samples"
+
+	local trustedTLSampleRN="${DAEMON_PATH}/TrustedTLSampleRN.exe"
+	local svclite="${SERVICE_PATH}/svclite.exe"
+
+	# SC TrustedTLSampleRN and svclite must exist to continue test
+	if [ -x "$trustedTLSampleRN" -a -x "$svclite" ]; then
+
+		# Initialize result to success
+		testResults[totalTests]=0
+
+		# Test case start from 1
+		local testCase=$(($totalTests + 1))
+
+		# Leave an empty line between tests in report
+		echo >> $testResultFile
+
+        echo "<br>" >> $testResultHtml
+        
+		echo "Test case=$testCase(ATL service to ASL client authentication $AUTH)"
+		echo "Test case=$testCase(ATL service to ASL client authentication $AUTH)">> $testResultFile
+        echo "<p>Test case=$testCase(ATL service to ASL client authentication $AUTH)</p>">> $testResultHtml
+        
+		killWinProcess "TrustedTLSampleRN"
+		killWinProcess "svclite"
+		killWinProcess "bbclient"
+
+		local CLIENT_LOG="bbclient_${AUTH}.txt"
+		local SERVICE_LOG="svclite_${AUTH}.txt"
+		local DAEMON_LOG="trustedTLSampleRN_${AUTH}.log"
+		
+		local CLIENT_ERROR="bbclient_${AUTH}_error.txt"
+        local SERVICE_ERROR="svclite_${AUTH}_error.txt"
+		local DAEMON_ERROR="trustedTLSampleRN_${AUTH}_error.txt"
+		
+		# Launch TrustedTLSampleRN
+		echo "Launch TrustedTLSampleRN..."
+		${trustedTLSampleRN} 2>$DAEMON_LOG 1>&2 &
+		local daemon_pid=$!
+
+		# Wait 
+		sleep 1
+
+		# Launch svclite
+		echo "Launch svclite..."
+		${svclite} 2>$SERVICE_LOG 1>&2 &
+		local svclite_pid=$!
+
+		# Wait 
+		sleep 1
+
+		# Launch bbclient
+		echo "Launch bbclient..."
+		timeout 40 ${CLIENT_PATH}/bbclient.exe -d -n org.alljoyn.svclite -c 100 -ek ${AUTH} 2>$CLIENT_LOG 1>&2
+
+		isProcessLive $daemon_pid
+		local daemonLive=$procLive
+
+		isProcessLive $svclite_pid
+		local svcliteLive=$procLive
+
+		# TrustedTLSampleRN and svclite should NOT crash
+		if [ "$daemonLive" -ne 0 -a "$svcliteLive" -ne 0 ]; then
+
+			#Check log to decide test result
+			echo "Check client log..."
+
+            local AUTH_OK="Authentication ALLJOYN_${AUTH} succesful"
+			local EXIT_OK="bbclient exiting with status 0 "
+			
+			logHasKeysExactTimes $CLIENT_LOG "$AUTH_OK" 1
+			local authStatus=$testResult
+			    
+			logHasKeysExactTimes $CLIENT_LOG "$EXIT_OK" 1
+			local exitStatus=$testResult
+
+            if [ "$authStatus" -eq 0 ]; then			            
+                if [ "$exitStatus" -eq 0 ]; then
+                    testResults[totalTests]=0
+                    echo "Test result=Pass" >> $testResultFile
+                    echo "<p>Test result=Pass</p>" >> $testResultHtml
+                else
+                    mv ${CLIENT_LOG} ${CLIENT_ERROR}
+                    testResults[totalTests]=6
+				    echo "Test result=Fail(exit non-zero)" >> $testResultFile
+				    echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">exit non-zero</a>)</p>" >> $testResultHtml
+                fi
+            else
+                mv ${CLIENT_LOG} ${CLIENT_ERROR}
+                testResults[totalTests]=6
+                echo "Test result=Fail(Authentication)" >> $testResultFile
+                echo "<p>Test result=Fail(<a class="error" href="\"$CLIENT_ERROR\"">Authentication</a>)</p>" >> $testResultHtml
+            fi
+    			
+        elif [ "$daemonLive" -eq 0 ]; then
+            mv ${DAEMON_LOG} ${DAEMON_ERROR}
+			testResults[totalTests]=6
+			echo "Test result=Fail(TrustedTLSampleRN crash)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$DAEMON_ERROR\"">TrustedTLSampleRN crash</a>)</p>" >> $testResultHtml
+		else
+		    mv ${SERVICE_LOG} ${SERVICE_ERROR}
+			testResults[totalTests]=6
+			echo "Test result=Fail(svclite crash)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$SERVICE_ERROR\"">svclite crash</a>)</p>" >> $testResultHtml
+		fi
+	
+		echo "Clean up daemon $daemon_pid and svclite $svclite_pid ..."
+		kill $daemon_pid
+
+		kill $svclite_pid
+
+		# Wait 3 seconds till cleanup
+		sleep 3
+
+		# Increse test count
+		totalTests=$(($totalTests + 1))
+	
+	# svclite.exe is missing
+	elif [ -x "$trustedTLSampleRN" ]; then
+		echo "$svclite not exist or not executable, skip test!" >> $testDetailLog
+	else
+		echo "$trustedTLSampleRN not exist or not executable, skip test!" >> $testDetailLog
+	fi
+}
+# Function name: runTcTests
+# Description: thin client tests
+# Parameter: none
+# Return: none
+function runTcTests() {
+	echo "Thin client related tests"
+	
+	# run tc/sc interaction unit test when required folder exist
+	if [ "$scToolsMissing" -eq 0 ]; then
+	    # Clean old keystore so previous bad keystore won't impact current test
+	    cleanKeyStore
+	    runTcScTest
+	fi
+	
+	# run tc unit test when required folder exist
+	if [ "$tcUnitTestMissing" -eq 0 ]; then
+	    # Clean old keystore so previous bad keystore won't impact current test
+    	cleanKeyStore
+    	
+        runTcUnitTest
+	fi
+    
+	# run tc test when required folder exist
+	if [ "$tcTestMissing" -eq 0 ]; then
+	    cleanKeyStore
+        runTcScAuthTest "ECDHE_NULL"
+
+        cleanKeyStore
+        runTcScAuthTest "ECDHE_PSK"
+        
+        cleanKeyStore
+        runTcScAuthTest "ECDHE_ECDSA"
+
+	fi
+}
+
+# Function name: runCppTests
+# Description: cpp tests
+# Parameter: none
+# Return: none
+function runCppTests() {
+
+    # Standard client security tests
+    ScSecurityTests
+    
+	# rawservice/rawclient 
+	rawServiceClient "release"
+
+	# basic_service/basic_client test
+	basicServiceClient "release"
+
+	# bbservice/bbclient test
+	bbServiceClient "release"
+
+	# Enable debug tests after vs2013 express installed
+	bbServiceClient "debug"
+
+	# FIXME: cygwin buffers output lostAdvertisedName test
+	# lostAdvertisedName "release"
+
+}
+
+# Function name: runJavaTests
+# Description: java binding tests
+# Parameter: none
+# Return: none
+function runJavaTests() {
+	echo "Java binding tests..."
+
+	# JavaSDKDocMethod release/debug over TCP
+	# FIXME: discovery not working sometimes
+	javaMethodCall "release"
+
+	# JavaSDKDocProperties over TCP 
+	javaProperty "release"
+
+	# JavaSDKDocSignal over TCP 
+	javaSignal "release"
+
+	javaSignal "debug"
+
+	# JavaSDKDocSecurityLogon over TCP 
+	cleanKeyStore
+	javaSecurityLogon "release"
+}
+
+
+# Function name: runAndroidIntTests
+# Description: Windows-Android interop tests
+# Parameter: none
+# Return: none
+function runAndroidIntTests() {
+	echo "Windows-Android interop tests..."
+
+	# Check android sdk exist and adb ready
+	if [ "$androidSdkMissing" -eq 0 -a "$adbMissing" -eq 0 ]; then
+
+		checkAndroidCnt
+
+		# Only one android device is connected
+		if [ "$androidCnt" -eq 1 ]; then
+			# Get windows host wlan ip
+			getWinWlanIPAddr
+
+			# Get android ip address
+			getAndroidIpAddr
+
+			# Make sure android and windows on same network by ping
+			winAndroidSameNet "$androidIp" "$winIp" 
+
+			if [ "$sameNetwork" -eq 1 ]; then
+
+				# Push test binaries to android
+				loadTestToAndroid
+
+				if [ "$loadSuccess" -eq 0 ]; then
+					# Start win-bbservice/android-bbclient test
+					# 2 seconds between bbservice and bbclient
+					runWinService1 "com.iop" 2 "SCLPTP-IOP041 Win bbservice/Android bbClient"
+		
+					# Start win-bbclient/android-bbservice test
+					runWinClient1 "gov.iopa" 2 "SCLPTP-IOP007 Android bbservice/Win7 bbClient"
+
+					# Start NGNS inter-op tests
+					runWinService1 "org.ngns.unicast.response1" 45 "SCLNGNS-INTEROP-1 Android discovery Unicast response"
+
+					runWinService2 "org.ngns.unsolicited.multicast1" 45 "SCLNGNS-INTEROP-2 Android discovery multicast advertise"
+
+					runWinClient1 "org.ngns.unicast.response2" 45 "SCLNGNS-INTEROP-3 Win7 iscovery Unicast response"
+
+					runWinClient2 "org.ngns.unsolicited.multicast2" 45 "SCLNGNS-INTEROP-4 Win7 discovery multicast advertise"
+
+				else
+					echo "Load binaries to android fail, quit tests!"
+				fi
+			else
+				echo "Windows-Android NOT on same wlan, quit tests!"
+			fi
+		else
+			echo "No android or more than one android connected, quit tests!"
+		fi
+	else
+		echo "Android sdk or adb is missing, quit tests!"
+	fi
+}
+
+# Clean up old logs
+rm -rf *.html *.error *.log *.txt 2>/dev/null 1>&2
+
+#parse input argument
+parseCmdArgs $*
+
+SetUpGlobalVariables
+echo "Test started..." >> $testDetailLog
+
+#Print test report summary common to all tests
+testDate=`eval date +%Y%m%d`
+echo "Test date=$testDate" > $testResultFile
+
+
+# Html format
+echo "<html> <style> a.error {color:red} a.info {color:green} </style>" > $testResultHtml
+echo "<body>" >> $testResultHtml
+echo "<h3>Test date=$testDate </h3>" >> $testResultHtml
+
+
+# Get core,tc and android commit id ref from sdk manifest.txt
+getCommitIds
+
+if [ "$scCommitId" != "${UNKNOWN_ID}" ]; then
+    createCommitIdUrl ${SC_COMMIT_TYPE} "$scCommitId"
+    echo "Windows commit id=$scCommitId" >> $testResultFile
+	echo "<p>Windows commit id=<a class="info" href="\"$commitUrl\"">$scCommitId</a></p>" >> $testResultHtml
+fi
+
+if [ "$tcCommitId" != "${UNKNOWN_ID}" ]; then
+    createCommitIdUrl ${TC_COMMIT_TYPE} "$tcCommitId"
+    
+    echo "TC SDK commit id=$tcCommitId" >> $testResultFile
+	echo "<p>TC SDK commit id=<a class="info" href="\"$commitUrl\"">$tcCommitId</a></p>" >> $testResultHtml
+fi
+
+if [ "$androidCommitId" != "${UNKNOWN_ID}" ]; then
+    # Android SDK should have same prefix as SC core
+    createCommitIdUrl ${SC_COMMIT_TYPE} "$androidCommitId"
+    echo "Android SDK commit id=$androidCommitId" >> $testResultFile
+	echo "<p>Android SDK commit id=<a class="info" href="\"$commitUrl\"">$androidCommitId</a></p>" >> $testResultHtml
+fi
+
+echo "......" >> $testResultFile
+echo "<p>......</p>" >> $testResultHtml
+
+totalTests=0
+passedTest=0
+failedTest=0
+blockedTest=0
+
+# Change all cpp test and sample applications to executable
+chmod 777 $cppRelSampleDir/*
+chmod 777 $cppRelBinDir/*
+chmod 777 $cppDbgSampleDir/*
+chmod 777 $cppDbgBinDir/*
+
+chmod 777 $tcTestPath/*
+chmod 777 $tcUnitTestPath/*
+
+# Run thin client tests
+runTcTests
+
+runCppTests
+
+# FIXME: ASACORE-1945 name conflict cause random failure
+#runJavaTests
+
+# Run Windows-android inter-operation tests
+runAndroidIntTests
+
+echo "......" >> $testResultFile
+
+echo "Total tests=$totalTests" >> $testResultFile
+
+echo "<p>......</p>" >> $testResultHtml
+
+echo "<p>Total tests=$totalTests</p>" >> $testResultHtml
+
+for (( testCase=0; testCase<$totalTests; testCase++))
+do
+	currentResult=${testResults[testCase]}
+
+	if [ "$currentResult" -eq 0 ]; then
+		passedTest=`expr $passedTest + 1`
+	elif [ "$currentResult" -eq 6 ]; then
+		failedTest=`expr $failedTest + 1`
+	else
+		blockedTest=`expr $blockedTest + 1`
+	fi
+done
+
+echo "Test passed=$passedTest" >> $testResultFile
+echo "Test failed=$failedTest" >> $testResultFile
+echo "Test blocked=$blockedTest" >> $testResultFile
+
+echo "<p>Test passed=$passedTest</p>" >> $testResultHtml
+echo "<p>Test failed=$failedTest</p>" >> $testResultHtml
+echo "<p>Test blocked=$blockedTest</p>" >> $testResultHtml
+echo "</body>" >> $testResultHtml
+echo "</html>" >> $testResultHtml
+
+echo "Test complete, passed $passedTest failed $failedTest, check $testResultFile"
+
+if [ "$failedTest" -eq 0 ]; then
+	exit 0
+else
+	exit 3
+fi

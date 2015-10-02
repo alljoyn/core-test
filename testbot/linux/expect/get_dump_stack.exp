@@ -1,0 +1,85 @@
+#!/usr/bin/expect -f
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+## 
+set testToRun [lindex $argv 0]
+set dumpFile [lindex $argv 1]
+set resultFile [lindex $argv 2]
+
+puts "Test to run $testToRun \n"
+puts "Dump file $dumpFile \n"
+puts "Stack file $resultFile \n"
+
+set timeout 15
+
+## procedure to launch gdb; result 0 if OK, -1 otherwise
+proc launchGdb {testProgram coreDump} {
+    set cmd "gdb $testProgram $coreDump"
+	spawn {*}$cmd
+    puts "$spawn_id \n"
+	return $spawn_id
+}
+
+## procedure to launch gdb; result spawn_id if OK, -1 otherwise
+proc backTrace {spawnId} {
+    set spawn_id $spawnId
+    # expect_out(buffer) only saves 2K chars by default
+    match_max 100000
+    expect {
+		"(gdb)" {
+			puts "Prompt ready\n"
+			send "bt\r"
+            expect {
+		        "(gdb)" {
+		            set stackTrace $expect_out(buffer)
+			        #puts "Trace extracted OK $stackTrace \n"
+			        send "quit\r"
+			        close $spawn_id
+			        return $stackTrace
+		            }
+	        }
+		}
+	}
+	
+	#puts "Trace extracted fail \n"
+	close $spawn_id
+	return "Invalid"
+}
+
+## procedure to save file;
+proc saveOutput {result stackDump} {
+    #puts "After quit: $stackDump\n"
+    file delete -force $result
+    set outfile [open $result w]
+    puts $outfile "$stackDump"
+    close $outfile
+}
+
+## procedure to quit gdb;
+proc quitGdb {spawnId} {
+    set spawn_id $spawnId
+	send "quit\r"
+	close $spawn_id
+}
+
+set gdbId [launchGdb $testToRun $dumpFile]
+sleep 3
+
+set stackString [backTrace $gdbId]
+
+sleep 1
+
+[saveOutput $resultFile $stackString]
+
+exit 0

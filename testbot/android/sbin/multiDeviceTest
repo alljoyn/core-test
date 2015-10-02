@@ -1,0 +1,6163 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+#   Android testbot main script
+
+# Return:
+# 0 - Success
+# 1 - Wrong parameter
+# 2 - Less than 2 devices connected
+# 3 - alljoyn-daemon, bbservice or bbclient not exist on device
+# 4 - alljoyn-daemon can not be launched on one device
+# 5 - test apk path not setup correctly
+# 6 - At least one test case fail
+# 7 - Push files failed from build machine to device
+# 8 - android adb path is NOT setup correctly
+# 9 - At least one test blocked for wifi ap connection
+
+# Function name: parseCmdArgs
+# Description: Parse command arguments
+# Parameter: none
+# Return: 
+#   1 - invalid command
+function parseCmdArgs() {
+
+    echo "Parsing arguments..."
+    
+    args=`getopt vp:bsc:l:k:a: $*`
+
+    if [ $? != 0 ]; then
+        echo 'Usage: -v -p [jellybean_path] -b -s -c # -l [thin_path] -k [test_apk_path] -a [adb_path]'
+		echo '-v verbose: -p jellybean_build_path: -b bundled daemon: -s stress: -c count#: -l thin_client_path: -k test_apk_path -a adb_path' 
+        exit 1
+    fi
+
+    set -- $args
+
+	#default is concise
+    verbose=false
+
+	# Nightly jellybean build path, should be passed in from command line parameter
+	defPath=""
+
+	# default test is on pre-installed daemon
+	bundledMode=0
+
+    #default test run is 1
+    plannedTests=1
+
+	#default is regular test without interruption
+	stressMode=0
+
+	# script name without path
+	scriptName=`basename $0`
+
+	# Nightly thin client sdk path, optional
+	thinPath=""
+
+    # Test apk directory
+    apkPath=""
+    
+    for i
+    do
+        case "$i" in
+            -v) shift;verbose=true; echo "verbose $verbose";;
+			-p) shift;defPath=$1; echo "Gingerbread build path $defPath";shift;;
+			-b) shift;bundledMode=1; echo "Bundled daemon test";;
+			-s) shift;stressMode=1; echo "stress $stressMode";;
+			-c) shift;plannedTests=$1;echo "Test count $plannedTests";shift;;
+			-l) shift;thinTest=1; thinPath=$1; echo "Thin client path $thinPath";shift;;
+			-k) shift;apkPath=$1; echo "test apK path $apkPath";shift;;
+			-a) shift;adbDir=$1; echo "Android adb path $adbDir";shift;;
+        esac
+    done
+
+	if [ -n "$defPath" -a -d "$defPath" ]; then
+		gbPath="$defPath"
+		lastChr=${defPath#${defPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			gbPath=`echo "${defPath%?}"`
+		fi
+	else
+		$verbose && echo "Invalid android jellybean path $defPath"
+		exit 1
+	fi
+
+	if [ -n "$apkPath" -a -d "$apkPath" ]; then
+		apkDir="$apkPath"
+		lastChr=${apkPath#${apkPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			apkDir=`echo "${apkPath%?}"`
+		fi
+	else
+		$verbose && echo "Invalid test apk path $apkPath"
+		exit 5
+	fi
+	
+	if [ -n "$adbDir" -a -d "$adbDir" ]; then
+		adbPath="$adbDir"
+		lastChr=${adbDir#${adbDir%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			adbPath=`echo "${adbDir%?}"`
+		fi
+		ADB="$adbPath/adb"
+	else
+		$verbose && echo "Invalid android adb path $adbDir"
+		exit 8
+	fi
+    
+	if [ -n "$thinPath" -a -d "$thinPath" ]; then
+		thinDir="$thinPath"
+		lastChr=${thinPath#${thinPath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			thinDir=`echo "${thinPath%?}"`
+		fi
+	else
+		echo "Invalid thin client path $thinPath"
+	fi
+}
+
+
+# Function name: SetUpGlobalVariables
+# Description: setup global variables 
+# Parameter: none
+# Return: none
+function SetUpGlobalVariables() {
+	#Overall test result init to 1=success
+	testResult=1
+
+	binaryType="Release"
+
+	# Process launch mode: super user / regular user / unit test HOME variable to set first
+	REGMODE=0
+	SUMODE=1
+	UTHOME=2
+	BDMODE=3
+	SRPMODE=4
+	LOGONMODE=6
+	THINMODE=9
+
+	#Wifi by default,find this from client log
+	socketTrans=0x1
+	btTrans=0x2
+	wifiTrans=0x4
+	unknownTrans=999
+
+	testTransString="WiFi"
+	actualTrans=$wifiTrans
+
+	namePrefix="org.xxx"
+
+	# bbclient method call success keyword
+	BBCLIENTOK="bbclient exiting with status 0 "
+    SRPAUTHOK="Authentication ALLJOYN_SRP_KEYX succesful"
+	LOGONAUTHOK="Authentication ALLJOYN_SRP_LOGON succesful"
+
+	# bbclient method call success keyword
+	BBSIGOK="bbsig exiting with 0 "
+
+	# Regular test or stress test
+	testType="Regular"
+	if [ "$stressMode" -eq 1 ]; then
+		testType="Stress"
+	fi
+		
+    #actual executed tests, may not equal to planned tests because of daemon crash
+    actualTests=0 
+
+    #How many times daemon has to be relaunched
+    daemonFailures=0
+
+    #How many times service has to be relaunched
+    serviceFailures=0
+
+    # Binary release directory on build machine, same for gb and froyo
+	binaryDir="${gbPath}/sdk-rel/cpp/bin"
+
+	# Debug binary directory on build machine, same for gb and froyo
+	dbgBinaryDir="${gbPath}/sdk-dbg/cpp/bin"
+
+	# Jni chat apk path
+	jniChatApkDir="${gbPath}/sdk-rel/cpp/samples/chat/bin"
+	jniChatApk="Chat.apk"
+	jniChatTest="JniChatServiceSolo.apk"
+
+	# Jni simpleService/client apk
+	SETTING_FILE="alljoyn.setting"
+	jniSsApkDir="${gbPath}/sdk-rel/cpp/samples/simple/service/bin"
+	jniSsApk="SimpleService.apk"
+	jniSsTest="JniSimpleServiceSolo.apk"
+
+	jniScApkDir="${gbPath}/sdk-rel/cpp/samples/simple/client/bin"
+	jniScApk="SimpleClient.apk"
+	jniScTest="JniSimpleClientSolo.apk"
+
+	# Java chat apk path
+	chatApkDir="${gbPath}/sdk-rel/java/samples/chat/bin"
+	chatApk="Chat.apk"
+	chatServiceTest="ChatTest.apk"
+	chatClientTest="ChatClientTest.apk"
+
+	# Java simple service/client apk
+	ssApkDir="${gbPath}/sdk-rel/java/samples/simple/service/bin"
+	ssApk="SimpleService.apk"
+	scApkDir="${gbPath}/sdk-rel/java/samples/simple/client/bin"
+	scApk="SimpleClient.apk"
+	scTest="TestSimpleClient.apk"
+
+	# Java property service/client apk
+	propServiceApkDir="${gbPath}/sdk-rel/java/samples/properties/PropertiesService/bin"
+	propServiceApk="PropertiesService.apk"
+	propServiceTest="TestPropertyService.apk"
+
+	propClientApkDir="${gbPath}/sdk-rel/java/samples/properties/PropertiesClient/bin"
+	propClientApk="PropertiesClient.apk"
+	propClientTest="TestPropertyClient.apk"
+
+	# Java sessionless service/client apk
+	slServiceApkDir="${gbPath}/sdk-rel/java/samples/sessionless/service/bin"
+	slServiceApk="SessionlessService.apk"
+	slServiceTest="TestSessionlessService.apk"
+
+	slClientApkDir="${gbPath}/sdk-rel/java/samples/sessionless/client/bin"
+	slClientApk="SessionlessClient.apk"
+	slClientTest="TestSessionlessClient.apk"
+
+	# SDK release directory
+	sdkRelDir="${gbPath}/sdk-rel"
+
+	# SDK bundled daemon library(bundle.jar/libdaemon-jni.so) directory
+	sdkBundledLibDir="${sdkRelDir}/cpp/lib"
+	bundleJarFile="${sdkBundledLibDir}/bundle.jar"
+	bundleSoFile="${sdkBundledLibDir}/libdaemon-jni.so"
+
+	# SDK alljoyn jar(alljoyn.jar) directory	
+	sdkAlljoynJarDir="${sdkRelDir}/java/jar"
+	alljoynJarFile="${sdkAlljoynJarDir}/alljoyn.jar"
+
+	# SDK alljoyn java library(liballjoyn_java.so) directory
+	sdkAlljoynLibDir="${sdkRelDir}/java/lib"
+	alljoynSoFile="${sdkAlljoynLibDir}/liballjoyn_java.so"
+
+	junitPassKey="OK ([1-9][0-9]* tests*)"
+
+	# Apk applications
+	apkFiles=(EnableWifi.apk ScreenNeverOff.apk)
+
+    # Test result file
+    testResultFile="${scriptName}_result.txt"
+    testResultHtml="${scriptName}_result.html"
+    
+	#detail analysis and intermediate files
+    testErrorLog="${scriptName}_detail.txt"
+	testDetailLog="${scriptName}_progress.txt"
+	mergeFile="${scriptName}_merge.log"
+    analysisFile="${scriptName}_analysis.log"
+    
+    longFile="${scriptName}_long.log"
+    shortFile="${scriptName}_short.log"
+	findFile="${scriptName}_find.log"
+	joinFile="${scriptName}_join.log"
+
+	# Bundled client app test log
+	bundleLog="${scriptName}_bundleClient.log"
+
+	# Total device number
+	deviceCount=0
+
+    #Number of client devices
+    clientCount=0
+
+    #bbclient_[deviceId].log
+    clientLogPrefix="${scriptName}_client_"
+
+    # This is the client log start string for each test
+    testStartString="AllJoyn Library version"
+
+    serviceLog="${scriptName}_service.log"
+
+    # Where alljoyn-daemon, bbservice, bbclient, bbsig... are stored on each device
+    dest="/data/local/tmp"
+    requiredFiles=(alljoyn-daemon bbclient bbservice bbsig rawclient rawservice)
+	dbgFiles=(alljoyn-daemon bbservice bbclient)
+    fileNotExistMsg="No such file"
+   
+   	# timeout command supported flag init to false
+	# each test need to wait a fixed amount of time if timeout not supported
+	# each test either complete or timeout, whichever is faster
+	timeOutSupported=0
+
+	if [ "$stressMode" -eq 1 ]; then
+		clientRun=10000
+		# long bbclient (bbclient -c 10000) should be interrupted within 239 seconds
+		timeOut=239
+	else
+		clientRun=10
+		 # wifi bbclient (bbclient -c 100) should complete in 119 seconds
+		timeOut=179
+	fi
+
+	# FindAdvertisedName takes > 200ms 1st time, rest calls take much less time (~20ms)
+	longDiscoverLimit=200
+
+    # These are flags to check if alljoyn-daemon / bbservice / bbclient process exist
+    processKill=1
+    clientCompleted=1
+
+	# for multi-iteration test, number of iterations passed to total iterations percentage 
+	passLine=80
+	
+	# id/ip pairs for all devices
+	#   [devId] 192.168.1.101
+	ipTable="${scriptName}_ip_table.txt"
+
+	pingReach="64 bytes from"
+
+	# rawclient method call success keywords
+	RAWCLIENTOK="rawclient exiting with status 0x0"
+
+	# arduino related
+	readonly daemon_port_number=$(( 49152 + ($(head -c 1 /dev/urandom| od -t u | head --lines=1 | awk '{print $2}') % 64) * 255 + $(head -c 1 /dev/urandom| od -t u | head --lines=1 | awk '{print $2}')))
+
+	readonly daemon_local_transport="unix:abstract=alljoyn-$daemon_port_number"
+
+	daemonConfigFile="alljoyn_daemon.conf"
+	arduinoLaunchServiceLog="arduino_launch_svc.log"
+	arduinoLaunchClientLog="arduino_launch_client.log"
+	arduinoLaunchSigLog="arduino_launch_siglite.log"
+	arduinoRunLog="arduino_run.log"
+	svcname="org.alljoyn.svclite"
+
+	arduinoPath="/opt/arduino-1.5.2"
+    arduinoBoard="arduino:sam:arduino_due_x_dbg"
+	arduinoPort="/dev/ttyACM0"
+
+	SIGRECEIVED="RxSignal: /org/alljoyn/alljoyn_test"
+		
+	# Build type
+	masterType=0
+	branchType=1
+	masterKey="master"
+	branchKey="branch"
+	buildType=$branchType
+
+	# test tools release directory
+	TOOLS_REL_DIR="${gbPath}/test_tools-rel"
+	TOOLS_DBG_DIR="${gbPath}/test_tools-dbg"
+
+	# NGNS unit test release binary
+	NGNS_BIN_NAME="ajr2rtest"
+	NGNS_REL_BIN="${TOOLS_REL_DIR}/${NGNS_BIN_NAME}"
+	NGNS_DBG_BIN="${TOOLS_DBG_DIR}/${NGNS_BIN_NAME}"
+
+	# About cpp samples directory
+	aboutSampleDir="${gbPath}/sdk-rel/cpp/bin/samples"
+	aboutService="AboutService"
+	aboutServiceBin="${aboutSampleDir}/${aboutService}"
+
+	# appId and DeviceId fixed from AboutService cpp sample
+	APPID="01b3ba14-1e82-11e4-8651-d1561d5d46b0"
+	DEVICEID="93c06771-c725-48c2-b1ff-6a2a59d445b8"
+	
+	# Commit id related
+	SC_COMMIT_TYPE=1
+	TC_COMMIT_TYPE=2
+	SC_URL_PREFIX="https://git.allseenalliance.org/cgit/core/alljoyn.git/commit/?id="
+	TC_URL_PREFIX="https://git.allseenalliance.org/cgit/core/ajtcl.git/commit/?id="
+	UNKNOWN_ID="unknown"
+} 
+
+# Function name: getCommitIds
+# Description: 
+#   Get commit ids from manifest.txt of core and tc sdk
+# Parameter: none
+# Return: 
+#   scCommitId - commit ref id of SC SDK
+#   tcCommitId   - commit ref id of TC SDK
+function getCommitIds() {
+	echo "Get commit ref ids from both SC and TC SDK..." >> $testDetailLog
+    
+    scCommitId="${UNKNOWN_ID}"
+    tcCommitId="${UNKNOWN_ID}"
+    
+    local scManifest="${gbPath}/sdk-rel/manifest.txt"
+    local tcManifest="${thinDir}/scons/manifest.txt"
+    
+    local scCommit="${UNKNOWN_ID}"
+    local tclCommit="${UNKNOWN_ID}"
+    
+	if [ -e "$scManifest" ]; then
+	    scCommit=`grep -i "commit ref:" $scManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$scCommit" ]; then
+	        scCommitId=$scCommit
+		    echo "Android SDK commit id is $scCommitId"
+		else
+		    echo "Android SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+	
+	if [ -e "$tcManifest" ]; then
+	    tclCommit=`grep -i "commit ref:" $tcManifest | head -n 1 |awk -F " " '{print $NF}'`
+	    if [ ! -z "$tclCommit" ]; then
+	        tcCommitId=$tclCommit
+		    echo "TC SDK commit id is $tcCommitId"
+		else
+		    echo "TC SDK commit id is unknown since manifest.txt does NOT have commit id information"
+		fi
+	fi
+}
+
+# Function name: createCommitIdUrl
+# Description: 
+#   Create link url for commid id
+# Parameter: 
+#   commitType - SC or TC commit
+#   commitId   - commit id
+# Return: 
+#   commitUrl is set to valid url or unknown
+function createCommitIdUrl() {
+	echo "Create commit id url from $commitId ..." >> $testDetailLog
+	local commitType=$1
+	local commitId=$2
+	
+	commitUrl="${UNKNOWN_ID}"
+	
+	if [ "$commitType" -eq "${SC_COMMIT_TYPE}" ]; then
+	    commitUrl="${SC_URL_PREFIX}${commitId}"
+	else
+	    commitUrl="${TC_URL_PREFIX}${commitId}"
+	fi 
+	
+	echo "commit id url is $commitUrl"
+	
+}
+
+# Function name: checkBuildType
+# Description: check master or release branch build
+# Parameter: 
+#	buildPath - build path  
+# Return: 
+#   buildType is set to masterType or branchType
+function checkBuildType() {
+	local buildPath=$1
+	$verbose && echo "Check if build path $buildPath is on master or branch..." >> $testDetailLog
+
+	# Master build path should contains master
+	if [[ $buildPath =~ $masterKey ]]; then
+		$verbose && echo "Master build" >> $testDetailLog
+		buildType=$masterType
+	else
+		$verbose && echo "Release branch build" >> $testDetailLog
+		buildType=$branchType
+	fi
+}
+
+# Function name: checkDevices
+# Description: Make sure at least two devices are connected through USB
+# Parameter: none
+# Return: 
+#   2 - less than 2 devices connected
+function checkDevices() {
+    $verbose && echo "Check connected devices..." >> $testDetailLog
+
+	# adb command is not stable, so always run as background to prevent block
+    devices=`$ADB devices | grep 'device$' | cut -f 1 &`
+	sleep 1	
+    deviceCount=`echo $devices | wc -w`
+    
+    if [ -z "$devices" ]; then
+        echo "No devices detected!" >> $testDetailLog
+		echo "No devices detected!" >> $testErrorLog
+		echo "No devices detected!" >> $testResultFile
+		echo "<p>No devices detected!</p>" >> $testResultHtml
+		echo "Setup failed!" >> $testErrorLog
+        exit 2
+    elif [ "$deviceCount" -lt 2 ]; then
+        echo "Only one connected, at least two devices needed!" >> $testDetailLog
+		echo "Only one connected, at least two devices needed!" >> $testErrorLog
+		echo "Only one connected, at least two devices needed!" >> $testResultFile
+		echo "<p>Only one connected, at least two devices needed!</p>" >> $testResultHtml
+		echo "Setup failed!" >> $testErrorLog
+        exit 2
+    fi
+
+    $verbose && echo "$deviceCount devices connected" >> $testDetailLog
+
+}
+
+# Function name: checkApkExist
+# Description: 
+#   Is required apk file exist on host?
+# Parameter: 
+#	apkDistDir - apk distribution directory
+#   apkName    - apk file name
+# Return: 
+#   apkExist is set to 0 if apk file exist; 1 otherwise
+function checkApkExist() {
+	local apkDistDir=$1
+	local apkName=$2
+
+	$verbose && echo "Check if $apkName exist under $apkDistDir ..."
+	$verbose && echo "Check if $apkName exist under $apkDistDir ..." >> $testDetailLog
+	
+	local apkCompletePath="$apkDistDir/$apkName"
+	apkExist=0
+            
+    if [ -d "$apkDistDir" -a -e "$apkCompletePath" ]; then
+        echo "APK exist" >> $testErrorLog
+    else
+        echo "APK NOT exist! " >> $testDetailLog
+        apkExist=1
+    fi
+}
+
+# Function name: removePropertyService
+# Description: remove property service and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removePropertyService()
+{
+	testDevId=$1
+
+	$verbose && echo "Remove property service and test apk on $testDevId..."
+	$verbose && echo "Remove property service and test apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall property service apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.properties_service 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+
+	# Remove property service test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.properties_service.test 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+# Function name: removePropertyClient
+# Description: remove property client and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removePropertyClient()
+{
+	testDevId=$1
+
+	$verbose && echo "Remove property client and test apk on $testDevId..."
+	$verbose && echo "Remove property client and test apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall property client apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.properties_client 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+
+	# Remove property client test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.properties_client.test 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+
+# Function name: installPropertyService
+# Description: install property service apk and test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function installPropertyService() {
+	testDevId=$1
+
+	$verbose && echo "Install property service and test on $testDevId..."
+	$verbose && echo "Install property service and test on $testDevId..." >> $testDetailLog
+
+	# Install chat apk
+	$ADB -s $testDevId install -r $propServiceApkDir/$propServiceApk 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+
+	# Install chat service test apk
+	$ADB -s $testDevId install -r $apkDir/$propServiceTest 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+}
+
+# Function name: installPropertyClient
+# Description: install property client apk and test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function installPropertyClient() {
+	testDevId=$1
+
+	$verbose && echo "Install property client apk and test on $testDevId..."
+	$verbose && echo "Install property client apk and test on $testDevId..." >> $testDetailLog
+
+	# Install property client apk
+	$ADB -s $testDevId install -r $propClientApkDir/$propClientApk 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+
+	# Install property client test apk
+	$ADB -s $testDevId install -r $apkDir/$propClientTest 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+}
+
+# Function name: launchPropertyServiceTest
+# Description: launch property service test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchPropertyServiceTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start property service test on $testDevId..."
+	$verbose && echo "Start property service test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.properties_service.test.TestPropertyService
+	$ADB -s $testDevId shell am instrument -w -e class  org.alljoyn.bus.samples.properties_service.test.TestPropertyService#testSetGreenLarge org.alljoyn.bus.samples.properties_service.test/android.test.InstrumentationTestRunner  > $testLog &
+
+	# Wait 1 second
+	sleep 1
+}
+# Function name: launchPropertyClientTest
+# Description: launch property client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchPropertyClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start property client test on $testDevId..."
+	$verbose && echo "Start property client test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.properties_service.test.TestPropertyService
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.samples.properties_client.test.TestPropertyClient#testGetGreenAndSetLarge org.alljoyn.bus.samples.properties_client.test/android.test.InstrumentationTestRunner > $testLog &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: removeSlService
+# Description: remove sessionless service and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeSlService()
+{
+	testDevId=$1
+
+	$verbose && echo "Remove sessionless service and test apk on $testDevId..."
+	$verbose && echo "Remove sessionless service and test apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall sessionless service apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.slservice 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+
+	# Remove sessionless service test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.slservice.test 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+}
+# Function name: removeSlClient
+# Description: remove sessionless client and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeSlClient()
+{
+	testDevId=$1
+
+	$verbose && echo "Remove sessionless client and test apk on $testDevId..."
+	$verbose && echo "Remove sessionless client and test apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall sessionless client apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.slclient 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+
+	# Remove sessionless client test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.slclient.test 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+}
+
+# Function name: installSlService
+# Description: install sessionless service apk and test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is 0 if succeeds;
+#   1 if service apk not exist
+#   2 if test apk not exist
+function installSlService() {
+	testDevId=$1
+
+	$verbose && echo "Install sessionless service and test on $testDevId..."
+	$verbose && echo "Install sessionless service and test on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    checkApkExist $slServiceApkDir $slServiceApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $slServiceTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install sesionless service apk
+	    $ADB -s $testDevId install -r $slServiceApkDir/$slServiceApk 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+
+	    # Install sessionless service test apk
+	    $ADB -s $testDevId install -r $apkDir/$slServiceTest 2>>$testDetailLog 1>&2 &
+
+    	sleep 20
+    elif [ "$appApkExist" -ne 0 ]; then
+        echo "$slServiceApkDir/$slServiceApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$slServiceTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+}
+
+# Function name: installSlClient
+# Description: install sessionless client apk and test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function installSlClient() {
+	testDevId=$1
+
+	$verbose && echo "Install sessionless client apk and test on $testDevId..."
+	$verbose && echo "Install sessionless client apk and test on $testDevId..." >> $testDetailLog
+
+	# Install sessionless client apk
+	$ADB -s $testDevId install -r $slClientApkDir/$slClientApk 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+
+	# Install sessionless client test apk
+	$ADB -s $testDevId install -r $apkDir/$slClientTest 2>>$testDetailLog 1>&2 &
+
+	sleep 20
+}
+
+# Function name: launchSlServiceTest
+# Description: launch sessionless service test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchSlServiceTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start sessionless service test on $testDevId..."
+	$verbose && echo "Start sessionless service test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.slservice.test.TestPropertyService
+	$ADB -s $testDevId shell am instrument -w -e class  org.alljoyn.bus.samples.slservice.test.TestSessionlessService#testSignalFromClient org.alljoyn.bus.samples.slservice.test/android.test.InstrumentationTestRunner  > $testLog &
+
+	# Wait 1 second
+	sleep 1
+}
+# Function name: launchSlClientTest
+# Description: launch sessionless client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchSlClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start sessionless client test on $testDevId..."
+	$verbose && echo "Start sessionless client test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.slclient.test.TestSessionlessClient
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.samples.slclient.test.TestSessionlessClient#testClientPing org.alljoyn.bus.samples.slclient.test/android.test.InstrumentationTestRunner > $testLog &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: installJniChatTest
+# Description: install chat and test apks on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is 0 if succeeds
+#   1 if jni chat apk NOT exist;
+#   2 if jni chat test NOT exist
+function installJniChatTest() {
+	testDevId=$1
+
+	$verbose && echo "Install jni chat and test apks on $testDevId..."
+	$verbose && echo "Install jni chat and test apks on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    
+    checkApkExist $jniChatApkDir $jniChatApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $jniChatTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install chat apk
+	    $ADB -s $testDevId install -r $jniChatApkDir/$jniChatApk 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+
+	    # Install chat service test apk
+	    $ADB -s $testDevId install -r $apkDir/$jniChatTest 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+	
+    elif [ "$testApkExist" -eq 0 ]; then
+        echo "$jniChatApkDir/$jniChatApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$jniChatTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+    
+}
+
+# Function name: installChatService
+# Description: install chat apk and service test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is 0 if succeeds
+#   1 if jni chat apk NOT exist;
+#   2 if jni chat test NOT exist
+function installChatService() {
+	testDevId=$1
+
+	$verbose && echo "Install chat apk and service test on $testDevId..."
+	$verbose && echo "Install chat apk and service test on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    
+    checkApkExist $chatApkDir $chatApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $chatServiceTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install chat apk
+	    $ADB -s $testDevId install -r $chatApkDir/$chatApk 2>>$testDetailLog 1>&2 &
+        sleep 20
+
+	    # Install chat service test apk
+	    $ADB -s $testDevId install -r $apkDir/$chatServiceTest 2>>$testDetailLog 1>&2 &
+        sleep 20
+    elif [ "$appApkExist" -ne 0 ]; then
+        echo "$chatApkDir/$chatApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$chatServiceTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+}
+
+# Function name: removeJniChat
+# Description: remove jni chat apk and service test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeJniChat() {
+	testDevId=$1
+
+	$verbose && echo "Remove jni chat and test apks on $testDevId..."
+	$verbose && echo "Remove jni chat and test apks on $testDevId..." >> $testDetailLog
+
+	# Uninstall jni chat apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.chat 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+
+	# Remove jni chat test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.chat.test 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+}
+
+# Function name: removeChat
+# Description: remove chat apk and service test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeChat() {
+	testDevId=$1
+
+	$verbose && echo "Remove chat apk and service test on $testDevId..."
+	$verbose && echo "Remove chat apk and service test on $testDevId..." >> $testDetailLog
+
+	# Uninstall chat apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.sample.chat 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+
+	# Remove chat service test and client test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.sample.chat.test 2>>$testDetailLog 1>&2 &
+
+	sleep 10
+}
+
+# Function name: installChatClient
+# Description: install chat apk and test on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is 0 if succeeds
+#   1 if jni chat apk NOT exist;
+#   2 if jni chat test NOT exist
+function installChatClient() {
+	testDevId=$1
+
+	$verbose && echo "Install chat apk and client test on $testDevId..."
+	$verbose && echo "Install chat apk and client test on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    
+    checkApkExist $chatApkDir $chatApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $chatClientTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install chat apk
+    	$ADB -s $testDevId install -r $chatApkDir/$chatApk 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+
+	    # Install chat client test apk
+	    $ADB -s $testDevId install -r $apkDir/$chatClientTest 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+    elif [ "$appApkExist" -ne 0 ]; then
+        echo "$chatApkDir/$chatApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$chatClientTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+
+}
+
+# Function name: launchJniChatServiceTest
+# Description: launch jni chat service test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchJniChatServiceTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start jni chat service test on $testDevId..."
+	$verbose && echo "Start jni chat service test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.chat.test.JniChatServiceSolo
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.samples.chat.test.JniChatServiceSolo#testServerMessage org.alljoyn.bus.samples.chat.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: launchChatServiceTest
+# Description: launch chat service test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchChatServiceTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start chat service test on $testDevId..."
+	$verbose && echo "Start chat service test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.sample.chat.test.ChatTest
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.sample.chat.test.ChatTest#testService org.alljoyn.bus.sample.chat.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: launchJniChatClientTest
+# Description: launch jni chat client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchJniChatClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start jni chat client test on $testDevId..."
+	$verbose && echo "Start jni chat client test on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.chat.test.JniChatServiceSolo
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.samples.chat.test.JniChatServiceSolo#testClientMessage org.alljoyn.bus.samples.chat.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: launchChatClientTest
+# Description: launch chat client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchChatClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start chat client test on $testDevId..."
+	$verbose && echo "Start chat client test on $testDevId..." >> $testDetailLog
+
+	# Client class name must be complete: org.alljoyn.bus.sample.chat.test.ChatClientTest
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.sample.chat.test.ChatClientTest#testClient org.alljoyn.bus.sample.chat.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: installAboutService
+# Description: install AboutService on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   aboutReady is set to 0 if binary exist; 1 otherwise
+function installAboutService() {
+	local testDevId=$1
+
+	$verbose && echo "Install AboutService on $testDevId..."
+	$verbose && echo "Install AboutService on $testDevId..." >> $testDetailLog
+
+	aboutReady=1
+
+	if [ -d "${aboutSampleDir}" -a -x "${aboutServiceBin}" ]; then
+		echo "AboutService sample exist"
+
+		# timeout to prevent adb push hang sometimes
+		timeout 20 $ADB -s $testDevId push ${aboutServiceBin} $dest 2>>$testDetailLog 1>&2
+		local pushStatus=$?
+
+		if [ "$pushStatus" -eq 0 ]; then
+			aboutReady=0
+		else
+			echo "adb push for ${aboutServiceBin} fails!"
+		fi		
+	elif [ ! -d "${aboutSampleDir}" ]; then
+		echo "About cpp sample directory ${aboutSampleDir} NOT exist!"
+		echo "About cpp sample directory ${aboutSampleDir} NOT exist!" >> $testErrorLog
+	else
+		echo "AboutService binary ${aboutServiceBin} NOT exist!"
+		echo "AboutService binary ${aboutServiceBin} NOT exist!" >> $testErrorLog
+	fi
+	
+}
+
+# Function name: checkValidationApk
+# Description: 
+#   Is validation apk installed on device?
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   validationInstalled is set to 0 if installed; 1 otherwise
+function checkValidationApk() {
+	local testDevId=$1
+
+	$verbose && echo "Check if validation apk installed on $testDevId..."
+	$verbose && echo "Check if validation apk installed on $testDevId..." >> $testDetailLog
+	
+	validationInstalled=1
+
+    local validationcheck=`$ADB -s $testDevId shell pm list packages | grep validation_tests |wc -l &`
+    sleep 3
+            
+    if [ "$validationcheck" -eq 0 ]; then
+        echo "Validation apk NOT installed on $testDevId !" >> $testErrorLog
+    else
+        echo "Validation apk installed on $testDevId " >> $testDetailLog
+        validationInstalled=0
+    fi
+}
+	
+# Function name: launchAboutService
+# Description: launch AboutService on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchAboutService() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start AboutService on $testDevId..."
+	$verbose && echo "Start AboutService on $testDevId..." >> $testDetailLog
+
+	# AboutService
+    $ADB -s $testDevId shell "$dest/$aboutService" 2>>$testLog 1>&2 </dev/null &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: launchAboutCertSuite
+# Description: launch about certification suite(11 tests) on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchAboutCertSuite() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start about certification test on $testDevId at `date +%H:%M:%S` ..."
+	$verbose && echo "Start about certification test on $testDevId..." >> $testDetailLog
+
+	# About certification test is like junit test
+	$ADB -s $testDevId shell am instrument -w -e appId $APPID  -e deviceId $DEVICEID -e testSuiteList org.alljoyn.validation.testing.suites.about.AboutTestSuite org.alljoyn.validation.validation_tests.validation_tests_it/org.alljoyn.validation.testing.instrument.ValidationInstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: installJniSimpleService
+# Description: install setting file, simple service and test apks on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is set to 0 if successful; 
+#   1 if app apk NOT exist; 2 if test apk NOT exist
+function installJniSimpleService() {
+	testDevId=$1
+
+	$verbose && echo "Install jni simple service and test apks on $testDevId..."
+	$verbose && echo "Install jni simple service and test apks on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    
+	# Push setting file
+	$ADB -s $testDevId push $apkDir/$SETTING_FILE $dest 2>>$testDetailLog 1>&2 &
+
+	sleep 15
+
+    checkApkExist $jniSsApkDir $jniSsApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $jniSsTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+    	# Install jni simple service apk
+	    $ADB -s $testDevId install -r $jniSsApkDir/$jniSsApk 2>>$testDetailLog 1>&2 &
+    	sleep 15
+    	
+        # Install jni simple service test apk
+	    $ADB -s $testDevId install -r $apkDir/$jniSsTest 2>>$testDetailLog 1>&2 &
+        sleep 15
+	
+    elif [ "$testApkExist" -eq 0 ]; then
+        echo "$jniSsApkDir/$jniSsApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$jniSsTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+	
+}
+
+# Function name: removeJniSimpleService
+# Description: remove setting, jni simple service and test apks on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeJniSimpleService() {
+	testDevId=$1
+
+	$verbose && echo "Remove setting, jni simple service and test apks on $testDevId..."
+	$verbose && echo "Remove setting, jni simple service and test apks on $testDevId..." >> $testDetailLog
+
+	#remove setting file
+	$ADB -s $testDevId shell rm $dest/$SETTING_FILE 2>>$testDetailLog 1>&2 &
+
+	# Uninstall jni simple service apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleservice 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+
+	# Uninstall simple service test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleservice.test 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+
+# Function name: installJniSimpleClient
+# Description: install setting, jni simple client and test apks on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus will be 0 if ok; 
+#   1 if app apk NOT exist; 2 if test apk NOT exist
+function installJniSimpleClient() {
+	testDevId=$1
+
+	$verbose && echo "Install jni simple client and test apk on $testDevId..."
+	$verbose && echo "Install jni simple client and test apk on $testDevId..." >> $testDetailLog
+
+	# Push setting file
+	$ADB -s $testDevId push $apkDir/$SETTING_FILE $dest 2>>$testDetailLog 1>&2 &
+
+	sleep 15
+
+    installStatus=0
+    
+    checkApkExist $jniScApkDir $jniScApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $jniScTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install jni simple client apk
+	    $ADB -s $testDevId install -r $jniScApkDir/$jniScApk 2>>$testDetailLog 1>&2 &
+	    sleep 15
+
+	    # Install jni simple client test apk
+	    $ADB -s $testDevId install -r $apkDir/$jniScTest 2>>$testDetailLog 1>&2 &
+	    sleep 15
+	    	
+    elif [ "$testApkExist" -eq 0 ]; then
+        echo "$jniScApkDir/$jniScApk NOT exist in SDK!" >>$testErrorLog 
+        installStatus=1
+    else
+        echo "$apkDir/$jniScTest NOT exist in test!" >>$testErrorLog 
+        installStatus=2
+    fi
+}
+
+# Function name: removeJniSimpleClient
+# Description: remove jni simple client and test apks on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeJniSimpleClient() {
+	testDevId=$1
+
+	$verbose && echo "Remove simple client and test apks on $testDevId..."
+	$verbose && echo "Remove simple service and test apks on $testDevId..." >> $testDetailLog
+
+	#remove setting file
+	$ADB -s $testDevId shell rm $dest/$SETTING_FILE 2>>$testDetailLog 1>&2 &
+
+	# Uninstall jni simple client apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleclient 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+
+	# Uninstall simple client test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleclient.test 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+
+# Function name: launchJniSimpleService
+# Description: launch jni simple service test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchJniSimpleServiceTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start jni simple service on $testDevId..."
+	$verbose && echo "Start jni simple service on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.simpleservice
+	$ADB -s $testDevId shell am instrument -w org.alljoyn.bus.samples.simpleservice.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: launchJniSimpleClientTest
+# Description: launch jni simple client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchJniSimpleClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start simple client test on $testDevId..."
+	$verbose && echo "Start simple client test on $testDevId..." >> $testDetailLog
+
+	# Client class name must be complete: org.alljoyn.bus.samples.simpleclient.test.Test
+	$ADB -s $testDevId shell am instrument -w org.alljoyn.bus.samples.simpleclient.test/android.test.InstrumentationTestRunner 2>$testLog 1>&2 &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: installSimpleService
+# Description: install simple service apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is set to 0 if succeeds;
+#   1 otherwise
+function installSimpleService() {
+	testDevId=$1
+
+	$verbose && echo "Install simple service apk on $testDevId..."
+	$verbose && echo "Install simple service apk on $testDevId..." >> $testDetailLog
+
+    installStatus=0
+    
+    checkApkExist $ssApkDir $ssApk
+    local appApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 ]; then
+	    # Install simple service apk
+	    $ADB -s $testDevId install -r $ssApkDir/$ssApk 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+	else
+	    echo "$ssApkDir/$ssApk NOT exist!" >> $testErrorLog
+	    installStatus=1
+	fi
+}
+
+# Function name: removeSimpleService
+# Description: remove simple service apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeSimpleService() {
+	testDevId=$1
+
+	$verbose && echo "Remove simple service apk on $testDevId..."
+	$verbose && echo "Remove simple service apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall simple service apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleservice 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+
+# Function name: installSimpleClient
+# Description: install simple client and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   installStatus is set to 0 if succeeds;
+#   1 if client apk not exist
+#   2 if test apk not exist
+function installSimpleClient() {
+	testDevId=$1
+
+	$verbose && echo "Install simple client and test apk on $testDevId..."
+	$verbose && echo "Install simple client and test apk on $testDevId..." >> $testDetailLog
+	
+    installStatus=0
+    
+    checkApkExist $scApkDir $scApk
+    local appApkExist=$apkExist
+    
+    checkApkExist $apkDir $scTest
+    local testApkExist=$apkExist
+    
+    if [ "$appApkExist" -eq 0 -a "$testApkExist" -eq 0 ]; then
+	    # Install simple client apk
+	    $ADB -s $testDevId install -r $scApkDir/$scApk 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+
+	    # Install simple client test apk
+	    $ADB -s $testDevId install -r $apkDir/$scTest 2>>$testDetailLog 1>&2 &
+
+	    sleep 20
+	elif [ "$appApkExist" -ne 0 ]; then
+	    echo "$scApkDir/$scApk NOT exist!" >>$testErrorLog
+	    installStatus=1
+	else
+	    echo "$apkDir/$scTest NOT exist!" >>$testErrorLog
+	    installStatus=2
+	fi
+}
+
+# Function name: removeSimpleClient
+# Description: remove simple client and test apk on device
+# Parameter: 
+#	testDevId - test device id
+# Return: 
+#   none
+function removeSimpleClient() {
+	testDevId=$1
+
+	$verbose && echo "Remove simple client and test apk on $testDevId..."
+	$verbose && echo "Remove simple service and test apk on $testDevId..." >> $testDetailLog
+
+	# Uninstall simple client apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleclient 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+
+	# Remove simple client test apk
+	$ADB -s $testDevId uninstall org.alljoyn.bus.samples.simpleclient.test 2>>$testDetailLog 1>&2 &
+
+	sleep 5
+}
+
+# Function name: launchSimpleService
+# Description: launch simple service on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchSimpleService() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start simple service on $testDevId..."
+	$verbose && echo "Start simple service on $testDevId..." >> $testDetailLog
+
+	# Service class name must be complete: org.alljoyn.bus.samples.simpleservice
+	$ADB -s $testDevId shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.samples.simpleservice/.Service 2>>$testDetailLog 1>&2 &
+
+	# Wait 3 second
+	sleep 3
+}
+
+# Function name: launchSimpleClientTest
+# Description: launch simple client test on device
+# Parameter: 
+#	testDevId - test device id
+#	testLog - test log file
+# Return: 
+#   none
+function launchSimpleClientTest() {
+	testDevId=$1
+	testLog=$2
+
+	$verbose && echo "Start simple client test on $testDevId..."
+	$verbose && echo "Start simple client test on $testDevId..." >> $testDetailLog
+
+	# Client class name must be complete: org.alljoyn.bus.samples.simpleclient.test.Test
+	$ADB -s $testDevId shell am instrument -w -e class org.alljoyn.bus.samples.simpleclient.test.TestSimpleClient#testClientPing org.alljoyn.bus.samples.simpleclient.test/android.test.InstrumentationTestRunner > $testLog &
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: checkJunitResult
+# Description: check junit test result
+# Parameter: 
+#	testLog - test log file
+# Return: 
+#   junitPass is set to 1 if sucessful; 0 otherwise
+function checkJunitResult() {
+	testLog=$1
+
+	$verbose && echo "Check junit log $testLog..."
+	$verbose && echo "Check junit log $testLog..." >> $testDetailLog
+
+	junitPass=0
+
+	if [ -e "$testLog" -a -s "$testLog" ]; then
+		# Check if last no-empty line contains "OK ("
+		local passFlag=`grep "^${junitPassKey}" $testLog|wc -w`
+
+		if [ "$passFlag" -gt 0 ]; then
+			$verbose && echo "junit test passed"
+			junitPass=1
+		else
+			$verbose && echo "junit test failed"
+		fi
+	else
+		$verbose && echo "$testLog not exist or empty!"
+	fi
+}
+
+# Function name: screenON
+# Description: set screen always ON
+# Parameter: none
+# Return: 
+#   none
+function screenON() {
+	$verbose && echo "Set screen on for wifi test..." >> $testDetailLog
+	
+	# Screen never timeout
+	for phone in $devices; do
+        $ADB -s $phone shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.tests.screenon/.ScreenNeverOff >> $testDetailLog &
+	done
+
+	# Wait 1 second
+	sleep 1
+}
+
+# Function name: disableWifi
+# Description: Disable Wifi
+# Parameter: none
+# Return: 
+#   none
+function disableWifi() {
+	$verbose && echo "Disabling wifi..." >> $testDetailLog
+
+	# disable wifi 
+	for phone in $devices; do
+        $ADB -s $phone shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.tests.wifioff/.DisableWifi >> $testDetailLog &
+	done
+
+	# Wait ap is set to cisco3 
+	sleep 30
+}
+
+# Function name: getIPAddr
+# Description: check if device wifi ap connected
+# Parameter: 
+#      myPhone - phone device id
+# Return: 
+#   myIp is set to 192.168.x.xxx if wifi ready; empty otherwise
+function getIPAddr() {
+	local myPhone=$1
+
+	local wifiConfig="${scriptName}_${myPhone}_wifi.txt"
+	local ipPort="${scriptName}_${myPhone}_ipPort.txt"
+	local upKey="UP"
+    local zeroIp="0.0.0.0"
+    local wifiInterface="wlan0|eth0"
+      
+	myIp=""
+
+	# TODO: if netcfg is not available, use ifconfig
+	$ADB -s $myPhone shell netcfg 2>$wifiConfig 1>&2 &
+               
+	sleep 3
+	# wifi config file should include a line:
+	#       eth0     UP    192.168.1.104   255.255.255.0   0x00001043
+	# Exclude local interface
+	awk -F" +" -v status="$upKey" -v wifi="$wifiInterface" '$2 ~ status && $1 ~ wifi {print $3}' $wifiConfig > $ipPort	
+
+	# Remove "/port" from ip for ICS 8960
+	myIp=`awk -F"/" '{print $1}' $ipPort`
+
+	# If no access point is active and Wifi ON, ip address will be 0.0.0.0
+	if [ -n "$myIp" -a "$myIp" != "$zeroIp" ]; then
+		$verbose && echo "Device $myPhone ip ready $myIp"
+	else
+		$verbose && echo "Device $myPhone has no IP!"
+		myIp=""
+	fi
+}
+
+# Function name: addDevIdIpPair
+# Description: add device id and ip pair into file
+# Parameter: 
+#	devId - device id
+#	devIp - device ip
+# Return: 
+#   none
+function addDevIdIpPair() {
+	local devId=$1
+	local devIp=$2
+	$verbose && echo "add $devId and $devIp " >> $testDetailLog
+
+	local devIpExist=""
+	if [ -n "$devId" -a -n "$devIp" ]; then
+		# Don't insert duplicate
+		if [ -e "$ipTable" -a -s "$ipTable" ]; then
+			devIpExist=`grep $devId $ipTable`
+		fi
+		# If not exist, append
+		if [ -z "$devIpExist" ]; then
+			echo "$devId $devIp" >> $ipTable
+		else
+			$verbose && echo "Already exist $devIpExist" >> $testDetailLog
+		fi
+	fi
+		
+}
+# Function name: enableWifi
+# Description: Enable Wifi on all devices
+# Parameter: none
+# Return: 
+#   none
+function enableWifi() {
+	$verbose && echo "Screen on and enable wifi..." >> $testDetailLog
+
+	# Turn wifi on each device
+	for phone in $devices; do
+        $ADB -s $phone shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.tests.wifion/.EnableWifi >> $testDetailLog &
+	done
+
+	# Wait wifi scan is complete and connected to ap 
+	sleep 90
+
+	# Create device id/ip table, so we can look up later
+	for phone in $devices; do
+        getIPAddr $phone
+
+		addDevIdIpPair $phone $myIp
+	done
+}
+
+# Function name: connectApOneDevice
+# Description: 
+#	Connect phone to specified access point: SEAQUIC-AP1/AP2/AP3...
+# Parameter: 
+#	ap    - access point
+#	phone - device id
+# Return: 
+#   none
+function connectApOneDevice() {
+	local ap=$1
+	local phone=$2
+
+	$verbose && echo "Connect ap $ap on $phone ..." >> $testDetailLog
+
+	# For android activity to get different ap as extras, activity is to be launched as new task
+	# 0x18000000 = FLAG_ACTIVITY_NEW_TASK + FLAG_ACTIVITY_MULTIPLE_TASK 
+	$ADB -s $phone shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.tests.wifion/.EnableWifi -f 0x18000000 -e SSID $ap >> $testDetailLog &
+
+	# TODO: adb logcat to check ap is connected
+}
+
+# Function name: pushFiles
+# Description: adb push required files from build machine to deivces 
+# Parameter: none
+# Return: 
+#   7 - push failed
+function pushFiles() { 
+    $verbose && echo "Pushing files from $binaryDir to phone" >> $testDetailLog
+
+    # adb push will treat non-existing dest as a file
+    # Create a directory 1st in this case
+    # If adb shell cd command succeed, then no output; otherwise error output
+    for phone in $devices; do
+        cd_dest=`$ADB -s $phone shell cd $dest &`
+        sleep 1
+
+        # If target directory not exist, create
+        if [ ! -z "$cd_dest" ]; then
+            # If device not fully rooted and pops up Allow dialog, command fails
+            noPermission=`$ADB -s $phone shell "mkdir $dest" | grep "Permission denied" &`
+            sleep 1
+            
+            if [ -n "$noPermission" ]; then
+                echo "Unable to create directory $dest on $phone !" >> $testDetailLog
+				echo "Unable to create directory $dest on $phone !" >> $testErrorLog
+				echo "Unable to create directory $dest on $phone !" >> $testResultFile
+				echo "<p>Unable to create directory $dest on $phone !</p>" >> $testResultHtml
+				echo "Setup failed!" >> $testErrorLog
+                exit 7
+            fi
+        fi
+    done
+
+    if [ -d "$binaryDir" ]; then
+    	for file in "${requiredFiles[@]}" 
+            do
+			    #adb command is not stable, always use as background to prevent block
+                noFile=`ls -l $binaryDir/$file`
+                if [ -z "$noFile" ]; then
+                    echo "Release binary $binaryDir/$file not exist on build machine !!" >> $testDetailLog
+					echo "Release binary $binaryDir/$file not exist on build machine !!" >> $testErrorLog
+					echo "Release binary $binaryDir/$file not exist on build machine !!" >> $testResultFile
+					echo "<p>Release binary $binaryDir/$file not exist on build machine!!</p>" >> $testResultHtml
+					echo "Setup failed!" >> $testErrorLog
+                    exit 7
+                fi
+
+                # Push file to each device
+                for phone in $devices; do
+                    $verbose && echo "Pushing $file to $phone..." >> $testDetailLog
+                    # The '{' and '}' allow supressing output from Bash's job control facility.
+                    { $ADB -s $phone push $binaryDir/$file $dest & } >& /dev/null
+                done
+                # Wait for the push operation to all phones to complete for this file before
+                # sending the next file.
+                { wait; } >& /dev/null    
+        done
+    else
+        echo "Release directory $binaryDir not exist on build machine !!" >> $testDetailLog
+		echo "Release directory $binaryDir not exist on build machine !!" >> $testErrorLog
+		echo "Release directory $binaryDir not exist on build machine !!" >> $testResultFile
+		echo "<p>Release directory $binaryDir not exist on build machine !!</p>" >> $testResultHtml
+		echo "Setup failed!" >> $testErrorLog
+        exit 7
+    fi
+}
+
+# Function name: pushDebugFiles
+# Description: 
+#	To test debug build binaries
+#	adb push debug build binaries from build machine to devices 
+# Parameter: none
+# Return: 
+#   7 - push failed
+function pushDebugFiles() { 
+    $verbose && echo "Pushing debug binbaries from $dbgBinaryDir to phone" >> $testDetailLog
+
+    if [ -d "$dbgBinaryDir" ]; then
+    	for file in "${dbgFiles[@]}" 
+            do
+			    #adb command is not stable, always use as background to prevent block
+                noFile=`ls -l $dbgBinaryDir/$file`
+                if [ -z "$noFile" ]; then
+                    echo "Debug binary $dbgBinaryDir/$file not exist on build machine !!" >> $testDetailLog
+					echo "Debug binary $dbgBinaryDir/$file not exist on build machine !!" >> $testErrorLog
+					echo "Setup failed!" >> $testErrorLog
+                    exit 7
+                fi
+
+                # Push file to each device
+                for phone in $devices; do
+                    $verbose && echo "Pushing $file to $phone..." >> $testDetailLog
+                    # The '{' and '}' allow supressing output from Bash's job control facility.
+                    { $ADB -s $phone push $dbgBinaryDir/$file $dest & } >& /dev/null
+                done
+                # Wait for the push operation to all phones to complete for this file before
+                # sending the next file.
+                { wait; } >& /dev/null    
+        done
+    else
+        echo "Debug directory $dbgBinaryDir not exist on build machine !!" >> $testDetailLog
+		echo "Debug directory $dbgBinaryDir not exist on build machine !!" >> $testErrorLog
+		echo "Setup failed!" >> $testErrorLog
+        exit 7
+    fi
+}
+
+# Function name: installSetups
+# Description: install Wifi enablers/disablers
+# Parameter: none
+# Return: 
+#	7 - install failed
+function installSetups() {
+	local setupStatus=0
+
+	# Install setup applications
+    if [ -d "$apkDir" ]; then
+    	for file in "${apkFiles[@]}" 
+            do
+			    #adb command is not stable, always use as background to prevent block
+                noFile=`ls -l $apkDir/$file`
+			    # 1 second should be enough
+			    sleep 1
+                if [ -z "$noFile" ]; then
+                    echo "Setup $apkDir/$file not exist on build machine !!" >> $testDetailLog
+					echo "Setup $apkDir/$file not exist on build machine !!" >> $testErrorLog
+					echo "Setup $apkDir/$file not exist on build machine !!" >> $testResultFile
+					echo "<p>Setup $apkDir/$file not exist on build machine !!</p>" >> $testResultHtml
+					echo "Setup failed!" >> $testErrorLog
+                    cleanupAndExit 7
+                fi
+
+                # Install apk to each device
+                for phone in $devices; do
+                    $verbose && echo "Installing $file to $phone..." >> $testDetailLog
+
+					# use timeout to prevent adb install hanging sometimes 
+					if [ "$timeOutSupported" -eq 1 ]; then
+						# install setup apk
+						timeout 30 $ADB -s $phone install -r $apkDir/$file 2>>$testDetailLog 1>&2 </dev/null
+						setupStatus=$?
+						$verbose && echo "Installing status $installStatus" >> $testDetailLog
+
+						# 124 means timeout
+						if [ "$setupStatus" -eq 124 ]; then
+                        	echo "Installing $file to $phone timeout !" >> $testErrorLog
+                        	echo "Installing $file to $phone timeout !" >> $testResultFile
+                        	echo "<p>Installing $file to $phone timeout !</p>" >> $testResultHtml
+							echo "Setup failed!" >> $testErrorLog
+							cleanupAndExit 7
+							exit 7
+						elif [ "$setupStatus" -ne 0 ]; then
+							echo "Installing $file to $phone failed !" >> $testErrorLog
+							echo "Installing $file to $phone failed !" >> $testResultFile
+							echo "<p>Installing $file to $phone failed !</p>" >> $testResultHtml
+							echo "Setup failed!" >> $testErrorLog
+							cleanupAndExit 7
+							exit 7
+						else
+							$verbose && echo "Installing $file to $phone succeed" >> $testDetailLog
+						fi
+					else
+						# timeout not supported
+	                    # The '{' and '}' allow supressing output from Bash's job control facility.
+    	                { $ADB -s $phone install -r $apkDir/$file & } >& /dev/null
+					fi
+                done
+
+				if [ "$timeOutSupported" -ne 1 ]; then
+	                # Wait for the install operation to all phones to complete for this file before
+    	            # sending the next file.
+    	            { wait; } >& /dev/null    
+				fi
+        done
+    else
+        echo "Setup $apkDir not exist on build machine !!" >> $testDetailLog
+		echo "Setup $apkDir not exist on build machine !!" >> $testErrorLog
+		echo "Setup $apkDir not exist on build machine !!" >> $testResultFile
+		echo "<p>Setup $apkDir not exist on build machine !!</p>" >> $testResultHtml
+		echo "Setup failed!" >> $testErrorLog
+        exit 7
+    fi
+}
+
+# Function name: uninstallSetups
+# Description: uninstall Wifi, airline mode enablers/disablers, 
+# Parameter: none
+# Return: none
+function uninstallSetups() {
+	$verbose && echo "uninstall setup apps on device..."
+	
+	local uninstallLog="${scriptName}_uninstall.txt"
+
+    # uninstall setup apk on each device
+    for phone in $devices; do
+		$verbose && echo "Uninstalling setups on $phone..." >> $testDetailLog
+
+		if [ "$timeOutSupported" -eq 1 ]; then
+			# uninstall enableWifi
+			timeout 30 $ADB -s $phone uninstall org.alljoyn.bus.tests.wifion 2>>$uninstallLog 1>&2 </dev/null
+
+			# uninstall screenon
+			timeout 30 $ADB -s $phone uninstall org.alljoyn.bus.tests.screenon 2>>$uninstallLog 1>&2 </dev/null
+		else
+			$ADB -s $phone uninstall org.alljoyn.bus.tests.wifion 2>>$uninstallLog 1>&2 </dev/null
+			$ADB -s $phone uninstall org.alljoyn.bus.tests.screenon 2>>$uninstallLog 1>&2 </dev/null
+		fi
+
+	done
+}
+
+# Function name: cleanupAndExit
+# Description: stop alljoyn process, remove all setup apks, alljoyn binaries and exit
+# Parameter:
+#	exitCode - exit code
+# Return: 
+#	exitCode
+# Important notes: should be called before normal or error exit
+function cleanupAndExit()
+{ 
+	local exitCode=$1
+	$verbose && echo "Restoring devices and exit ..."
+	echo "Restoring devices and exit ..." >> $testDetailLog
+
+	# uninstall setup apks
+	uninstallSetups
+
+	# delete alljoyn binaries
+	deleteAlljoynBinaries
+
+	exit $exitCode
+
+}
+# Function name: setupServerClient
+# Description: 
+#	Setup single server and client role
+# Parameter: none
+# Return: none
+# Notes: SERVER and CLIENT are set
+function setupServerClient() {
+	$verbose && echo "Assigning one server and one client ..."  >> $testDetailLog
+	
+	SERVER=""
+	CLIENT=""
+
+	# Setup one server and one client
+	local index=0
+	for phone in $devices; do
+		# one server
+        if [ "$index" -eq 0 ]; then
+            SERVER=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+        # one client 
+        elif [ "$index" -eq 1 ]; then
+            CLIENT=$phone
+            $verbose && echo "Client is $phone " >> $testDetailLog
+		else
+			break;        
+		fi
+        index=`expr $index + 1`
+    done
+	
+	$verbose && echo "Server is $SERVER and client is $CLIENT"  >> $testDetailLog
+}
+
+# Function name: setupTest1SC
+# Description: test1 one bbservice and all remote bbclient roles
+#	For two devices: service on device1, client on device2  s1(d1) <--- c1(d2)
+# Parameter: none
+# Return: none
+function setupTest1SC() {
+    $verbose && echo "Assigning test1 server and client roles..."  >> $testDetailLog
+
+    local index=0
+
+	# Initialize array
+	unset SERVERS
+	unset CLIENTS
+
+    for phone in $devices; do
+        if [ "$index" -eq 0 ]; then
+            SERVERS[index]=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+
+        # multiple clients 
+        else 
+            CLIENTS[index]=$phone
+            $verbose && echo "Client is ${CLIENTS[index]} " >> $testDetailLog
+        fi
+        index=`expr $index + 1`
+    done
+
+    # 
+	serverCount=1
+    clientCount=`expr $deviceCount - 1`
+    
+}
+
+# Function name: setupTest3SC
+# Description: test2 one bbservice, one bbclient on each device (include one local client)
+#	For two devices: service and client on device1, client on device2  s1/c1(d1) <--- c2(d2)
+# Parameter: none
+# Return: none
+function setupTest3SC() {
+    $verbose && echo "Assigning test2 server and client roles..."  >> $testDetailLog
+
+    local index=0
+
+	# Initialize array
+	unset SERVERS
+	unset CLIENTS
+
+    for phone in $devices; do
+        if [ "$index" -eq 0 ]; then
+            SERVERS[index]=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+		fi
+
+        CLIENTS[index]=$phone
+        $verbose && echo "Client is ${CLIENTS[index]} " >> $testDetailLog
+        index=`expr $index + 1`
+    done
+
+	serverCount=1
+    # Clients eqaul device numbers
+    clientCount=$deviceCount
+}
+
+# Function name: setupTest4SC
+# Description: test3 one bbservice and one bbclient on each device
+#	For two devices: s1/c2(d1) <---> s2/c1(d2)
+# Parameter: none
+# Return: none
+function setupTest4SC() {
+    $verbose && echo "Assigning test3 server and client roles..."  >> $testDetailLog
+
+    local index=0
+
+	# Initialize array
+	unset SERVERS
+	unset CLIENTS
+
+    for phone in $devices; do
+		SERVERS[index]=$phone
+		$verbose && echo "Server is $phone "  >> $testDetailLog
+
+        CLIENTS[index]=$phone
+        $verbose && echo "Client is ${CLIENTS[index]} " >> $testDetailLog
+ 
+        index=`expr $index + 1`
+    done
+
+    # Servers and client
+	serverCount=$deviceCount
+    clientCount=$deviceCount
+}
+
+# Function name: checkFiles
+# Description: check required folder and files(bbclient/bbservice) exist for each device
+# Parameter: none
+# Return: 
+#   3 - some file does not exist
+function checkFiles() {
+    $verbose && echo "checking device files..." >> $testDetailLog  
+    
+
+    for phone in $devices; do   
+        for file in "${requiredFiles[@]}" 
+        do
+			#adb command is not stable, always use as background to prevent block
+            noFile=`$ADB -s $phone shell "ls -l $dest/$file" | grep "$fileNotExistMsg" &`
+			# 1 second should be enough
+			sleep 1
+
+            if [ -n "$noFile" ]; then
+                echo "Test binary $dest/$file not exist on $phone !!" >> $testDetailLog
+				echo "Test binary $dest/$file not exist on $phone !!" >> $testErrorLog
+				echo "Test binary $dest/$file not exist on $phone !!" >> $testResultFile
+				echo "<p>Test binary $dest/$file not exist on $phone !!</p>" >> $testResultHtml
+				echo "Setup failed!" >> $testErrorLog
+                cleanupAndExit 3
+            fi
+        done
+    done
+        
+    $verbose && echo "All required files exist" >> $testDetailLog            
+
+}
+# Function name: checkDebugBinaries
+# Description: check required folder and files(bbclient/bbservice) exist for each device
+# Parameter: none
+# Return: 
+#   3 - some file does not exist
+function checkDebugBinaries() {
+    $verbose && echo "checking device debug binaries..." >> $testDetailLog  
+    
+
+    for phone in $devices; do   
+        for file in "${dbgFiles[@]}" 
+        do
+			#adb command is not stable, always use as background to prevent block
+            noFile=`$ADB -s $phone shell "ls -l $dest/$file" | grep "$fileNotExistMsg" &`
+			# 1 second should be enough
+			sleep 1
+
+            if [ -n "$noFile" ]; then
+                echo "Test binary $dest/$file not exist on $phone !!" >> $testDetailLog
+				echo "Test binary $dest/$file not exist on $phone !!" >> $testErrorLog
+				echo "Setup failed!" >> $testErrorLog
+                cleanupAndExit 3
+            fi
+        done
+    done
+        
+    $verbose && echo "All required binaries exist" >> $testDetailLog            
+
+}
+# Function name: deleteAlljoynBinaries
+# Description: 
+#	Delete unused alljoyn binaries to save space for debug binaries
+# Parameter: none
+# Return: none
+function deleteAlljoynBinaries() {
+    $verbose && echo "deleting unused alljoyn binaries..." >> $testDetailLog  
+    
+
+    for phone in $devices; do   
+		$ADB -s $phone shell "rm -r $dest/*" &
+		
+		# 3 seconds should be enough
+		sleep 3
+
+    done
+        
+    $verbose && echo "All alljoyn binaries removed" >> $testDetailLog            
+
+}
+
+
+# Function name: getDevicePids
+# Description: Get device process ids with given name
+# Parameter: 
+#   1. phone       - which device
+#	2. processName - process name
+# Return: 
+#	pids has process ids
+function getDevicePids() {
+	local phone=$1
+	local processName=$2
+	local pidFile="test${totalTests}_${phone}_${processName}.log"
+
+	# adb command is not stable, run as background to prevent block
+	$ADB -s $phone shell ps > $pidFile &
+	local bgPid=$!
+	
+	sleep 2
+
+	# Make sure previous adb command is complete
+	local bgComplete=`ps -p $bgPid | grep "$bgPid"`
+	
+	pids=`awk -F" +" -v pN="$processName" '$0 ~ pN {print $2}' $pidFile`
+
+	if [ -n "$bgComplete" ]; then
+		$verbose && echo "adb -s $phone shell ps $processName  failed!"
+		$verbose && echo "adb -s $phone shell ps $processName  failed!" >> $testDetailLog
+	fi
+
+	rm -rf $pidFile
+	
+}
+
+# Function name: checkProcessExist
+# Description: check process exist on target device
+# Parameter: 
+#   1. processName - bbClient or bbService
+#   2. phone       - which device
+#	3. expectedCount		- how many processes exist
+# Return: processExist flag is set to 0, 1 or actual process count
+function checkProcessExist() {
+    local processName=$1
+    local phone=$2
+	local expectedCount=$3
+
+    $verbose && echo "checking $expectedCount $processName exist on $phone..." >> $testDetailLog
+
+    # Initialize flag 
+    processExist=1
+
+	# adb command is not stable, run as background to prevent block
+	getDevicePids $phone $processName
+
+	local actualCount=`echo $pids | wc -w`
+	
+	if [ -z "$pids" ]; then
+		$verbose && echo "$processName NOT running on $phone" >> $testDetailLog
+		processExist=0
+	elif [ "$actualCount" -ne "$expectedCount" ]; then
+		$verbose && echo "$actualCount $processName running on $phone" >> $testDetailLog
+		processExist=$actualCount
+	else
+		$verbose && echo "$processName running on $phone" >> $testDetailLog
+	fi
+}
+
+# Function name: killProcess
+# Description: kill all bbservice and bbclient processes on target device
+# Parameter: 
+#   1. processName - bbClient, bbService or bbsig
+#   2. phone       - which device
+# Return: processKill flag is set to 0 or 1
+function killProcess() {
+    local processName=$1
+    local phone=$2
+
+    $verbose && echo "Stopping all $processName on $phone..." >> $testDetailLog
+
+    # kill running alljoyn-daemon process on device 
+    processKill=1
+
+    $verbose && echo " $phone kill $processName..." >> $testDetailLog
+
+	# adb command not stable, run as background to prevent     
+    getDevicePids $phone $processName
+
+    processCount=`echo $pids | wc -w`
+        
+    $verbose && echo " $processCount $processName find on $phone" >> $testDetailLog
+
+    if [ "$processCount" -ge 1 ]; then 
+        for pid in $pids; do
+            $verbose && echo "Old $processName process id is $pid " >> $testDetailLog
+
+            $ADB -s $phone shell "kill -9 $pid" &
+
+			sleep 1
+        done   
+
+		# timeout if process not terminated
+		sleep 2
+    fi
+
+    # confirm bbclient or bbservice is killed 
+    getDevicePids $phone $processName
+	processCount=`echo $pids | wc -w`
+
+    if [ "$processCount" -ge 1 ]; then
+        $verbose && echo "Stop $processName failed for $phone !" >> $testDetailLog
+        processKill=0
+	else
+		$verbose && echo "All $processName stopped" >> $testDetailLog
+    fi
+}
+
+# Function name: checkTimeOut
+# Description: Check if coreutils timeout is supported
+# Parameter: none
+# Return: 
+#	timeOutSupported = 1  if timeout is installed
+#	timeOutSupported = 0  if timeout is NOT installed
+function checkTimeOut() {
+	$verbose && echo "checking if timeout command is supported..."
+    echo "checking if timeout command is supported..." >> $testDetailLog  
+
+	#run timeout command
+	timeout 1 pwd
+
+	if [ "$?" -eq 0 ]; then
+		$verbose && echo "timeout command is supported"
+		echo "timeout command is supported" >> $testDetailLog  
+
+		timeOutSupported=1
+	else
+		$verbose && echo "timeout command is NOT supported!"
+		echo "timeout command is NOT supported!" >> $testDetailLog  
+
+		timeOutSupported=0
+	fi
+}
+# Function name: launchProcess
+# Description: Launch process on target device with timeout
+# Parameter: 
+#   1. processName - alljoyn-daemon, bbClient, bbService or bbsig
+#   2. phone       - which device
+#	3. logName	   - log name
+#   4. mode        - super user, regular user or unit test mode
+#	5. name		   - Well known name for bbservice and bbclient
+#	6. timer	   - timeout in seconds; set to 0 if no timeout
+# Return: none
+function launchProcess() {
+    local processName=$1
+    local phone=$2
+	local logName=$3
+    local mode=$4
+	local name=$5
+	local timer=$6
+
+    $verbose && echo "Launching $processName on $phone..." >> $testDetailLog
+	
+	local arg1=""
+	local arg2=""
+	local arg3=""
+	local arg=""
+
+    if [ "$processName" == "bbservice" ] || [ "$processName" == "rawservice" ] || [ "$processName" == "rawclient" ]; then
+		if [ "$processName" == "bbservice" ]; then 
+			arg1="-i 1 "
+			if [ "$mode" -eq "$THINMODE" ]; then
+                # local is default transport for bbservice tc tests
+				arg2=""
+			else
+				# tcp is default transport for bbservice sc tests
+				arg2="-t "
+			fi
+		else
+			# rawservice and rawclient use tcp transport
+			arg2="-t "
+		fi
+		if [ -n "$name" ]; then
+	        arg3="-n $name "
+		fi
+		arg=$arg1$arg2$arg3
+		$verbose && echo "$processName $arg"
+    elif [ "$processName" == "alljoyn-daemon" ]; then
+		if [ "$mode" -eq "$THINMODE" ]; then
+			# For thin client service or client to connect
+			arg="--config-file=${dest}/$daemonConfigFile --verbosity=7"
+		fi
+		$verbose && echo "alljoyn-daemon $arg"
+    elif [ "$processName" == "bbclient" ]; then
+		arg1="-d -n "
+		arg2=$name
+        if [ "$stressMode" -eq 1 ]; then
+            #arg="-d -n org.xxx -c 10000"
+			arg3=" -c 10000"
+        elif [ "$mode" -eq "$BDMODE" ]; then
+			# Just one method call for bundled bbclient
+			$verbose && echo "Only one method call for bundled bbclient"
+			arg3=""
+		elif [ "$mode" -eq "$SRPMODE" ]; then
+			arg3=" -c 2 -ek SRP"
+		elif [ "$mode" -eq "$LOGONMODE" ]; then
+			arg3=" -c 2 -ek LOGON happy"
+		else
+            arg3=" -c 10"
+        fi
+		arg=$arg1$arg2$arg3
+		$verbose && echo "bbclient $arg"
+	elif [ "$processName" == "bbsig" ]; then
+		arg1="-d -n "
+		arg2=$name
+        if [ "$stressMode" -eq 1 ]; then
+            #arg="-d -n org.xxx -c 10000"
+			arg3=" -c 10000 -i 100"
+		elif [ "$mode" -eq "$SRPMODE" ]; then
+            arg3=" -c 1000 -i 1 -ek SRP"
+		elif [ "$mode" -eq "$LOGONMODE" ]; then
+            arg3=" -c 1000 -i 1 -ek LOGON happy"
+		else
+			arg3=" -c 1000 -i 1"
+        fi
+		arg=$arg1$arg2$arg3
+	# Unit test
+    else
+        # unit tests
+        echo "launch unit test $processName"
+		echo "launch unit test $processName" >> $testDetailLog
+		echo "launch unit test $processName" >> $testErrorLog
+    fi
+
+
+	if [ "$mode" -eq "$REGMODE" -o "$mode" -eq "$SUMODE" -o "$mode" -eq "$BDMODE" ]; then
+			# If timeout command is supported, run cmd with timeout
+		if [ "$timeOutSupported" -eq 1 -a "$timer" -gt 0 ]; then
+			timeout $timer $ADB -s $phone shell "$dest/$processName $arg" 2>>$logName 1>&2 </dev/null
+		else
+			$ADB -s $phone shell "$dest/$processName $arg" 2>>$logName 1>&2 </dev/null &
+			if [ "$timer" -gt 0 ]; then
+				sleep $timer
+			fi
+		fi
+	# thin client need to connect to daemon explicitly
+    elif [ "$mode" -eq "$THINMODE" ]; then
+       if [ "$timeOutSupported" -eq 1 -a "$timer" -gt 0 ]; then
+         if [ "$processName" == "bbclient" -o "$processName" == "bbservice" ]; then
+           timeout $timer $ADB -s $phone shell "BUS_ADDRESS=${daemon_local_transport} $dest/$processName $arg" 2>>$logName 1>&2 </dev/null
+         else
+           timeout $timer $ADB -s $phone shell "$dest/$processName $arg" 2>>$logName 1>&2 </dev/null
+         fi
+       else
+         if [ "$processName" == "bbclient" ]; then
+           $ADB -s $phone shell "BUS_ADDRESS=${daemon_local_transport} $dest/bbclient $arg" 2>>$logName 1>&2 </dev/null &
+		 elif [ "$processName" == "bbservice" ]; then
+			echo "launch bbservice with stdbuf"
+			#bbservice use printf, which requires stdbuf -o0 to flush output buffer
+			stdbuf -o0 $ADB -s $phone shell "BUS_ADDRESS=${daemon_local_transport} $dest/bbservice $arg" 2>>$logName 1>&2 </dev/null &
+         else
+           $ADB -s $phone shell "$dest/$processName $arg" 2>>$logName 1>&2 </dev/null &
+         fi
+
+         if [ "$timer" -gt 0 ]; then
+           sleep $timer
+         fi
+      fi
+	# Some tests require HOME variable to be set: srp/logon test
+	else
+		# If timeout command is supported, run cmd with timeout
+		if [ "$timeOutSupported" -eq 1 -a "$timer" -gt 0 ]; then
+			$verbose && echo "$timer timeout $processName $arg"
+			timeout $timer $ADB -s $phone shell "cd $dest ; HOME=$dest $dest/$processName $arg" 2>>$logName 1>&2 </dev/null
+		else
+			$verbose && echo "$timer sleep $processName $arg"
+			$ADB -s $phone shell "cd $dest ; HOME=$dest $dest/$processName $arg" 2>>$logName 1>&2 </dev/null &
+			if [ "$timer" -gt 0 ]; then
+				sleep $timer
+			fi
+		fi
+	fi
+}
+
+# Function name: stopAlljoynAllDevices
+# Description: Stop background daemon, bbservice,bbclient and bbsig on all devices
+# Parameter: none
+# Return: none
+function stopAlljoynAllDevices() {
+    $verbose && echo "Tear down bbservice and bbclient..." >> $testDetailLog
+
+	for phone in $devices; do
+		# Kill daemon
+		killProcess "alljoyn-daemon" $phone
+
+		# Kill services
+		killProcess "bbservice" $phone
+		killProcess "rawservice" $phone
+
+		# Kill clients
+        killProcess "bbclient" $phone
+		killProcess "rawClient" $phone
+
+		# Kill bbsig
+		killProcess "bbsig" $phone
+
+		# kill ajtest
+		killProcess "ajtest" $phone
+
+		# kill cmtest
+		killProcess "cmtest" $phone
+
+		# kill AboutService and aservice
+		killProcess "AboutService" $phone
+
+		killProcess "aservice" $phone
+
+    done
+    
+    $verbose && echo "Tear down complete" >> $testDetailLog
+}
+
+# Function name: cleanKeystore
+# Description: cleanup .alljoyn_keystore on all devices before security test
+# Parameter: none
+# Return: none
+function cleanKeystore() {
+    $verbose && echo "Remove keystore ..." >> $testDetailLog
+
+    for phone in $devices; do
+        $verbose && echo "on $phone ..." >> $testDetailLog
+        
+        timeout 5 $ADB -s $phone shell rm -r ${dest}/.alljoyn_keystore 2>>$testDetailLog 1>&2
+    done
+
+}
+
+# Function name: launchDaemonIfNeeded
+# Description: Launch one daemon process on each device
+# Parameter: 
+#	daemonsFlag - Launch stadnalone or bundled daemon for device: 1 for 1st time, 0 otherwise
+# Return: 
+#   daemonFailure will be set to 1 if daemon can't be launched
+#   daemonRelaunched will be set to 1 if at least one daemon is relaunched
+function launchDaemonIfNeeded() {
+    $verbose && echo "Launch daemon on all devices $1..." >> $testDetailLog   
+
+	daemonsFlag=$1
+    daemonRelaunched=0
+    daemonFailure=0
+	local index=0
+
+    for phone in $devices; do
+		# Extract the bit to decide whether launch stand-alone daemon for current device
+		local standAlone=${daemonsFlag:index:1}
+
+		echo "Stand alone daemon on $phone ? $standAlone"
+
+        # kill existing stand alone daemon
+        killProcess "alljoyn-daemon" $phone
+
+		# 1st time always restart daemon
+        if [ "$standAlone" -eq 1 ]; then
+			echo "Relaunch stand alone daemon on $phone..."
+
+			# Old daemon should be killed
+			if [ "$processKill" -eq 1 ]; then
+	            daemonLog="${scriptName}_${totalTests}_${phone}_daemon.log"
+    	        # Relaunch daemon as super user
+    	        launchProcess "alljoyn-daemon" $phone $daemonLog $SUMODE "" 0
+    
+    	        # sleep 1 second to make sure daemon is launched
+    	        sleep 1
+
+    	        # Confirm only one daemon is running
+    	        checkProcessExist "alljoyn-daemon" $phone 1
+        
+    	        if [ "$processExist" -eq 0 ]; then
+    	            # Something wrong with daemon launch
+    	            echo "Daemon fail to launch on $phone!!!"
+    	            daemonFailure=1
+    	            break;
+    	        fi
+            
+    	        daemonRelaunched=1
+			else
+				$verbose && echo "Fail to kill old daemon on $phone!!!" >> $testDetailLog
+				daemonFailure=1
+    	        break;
+			fi
+		else
+			# Use bundled daemon
+			echo "Use bundled daemon on $phone..."
+
+			# Old daemon should be killed
+			if [ "$processKill" -ne 1 ]; then
+				$verbose && echo "Fail to kill stand alone daemon on $phone!!"
+				daemonFailure=1
+    	        break;
+			fi
+        fi 
+		index=`expr $index + 1`
+    done
+    
+}
+
+# Function name: launchServiceIfNeeded
+# Description: Launch bbservice on all servers
+# Parameter: 
+#	restartFlag - if always restart bbservice, 1 for 1st time, 0 otherwise
+#	runIndex	- iteration index
+# Return: 
+#   serviceFailure will set to 1 if bbservice can't be launched
+#   serviceRelaunched will be set to 1 if bbservice is relaunched
+function launchServiceIfNeeded() {
+    $verbose && echo "Launch bbservice ..." >> $testDetailLog   
+
+	local restartFlag=$1
+	local runIndex=$2
+
+	local serverIndex=0
+	local namePostfix=0
+	local name=""
+
+    serviceFailure=0
+    serviceRelaunched=0
+
+    for myServer in "${SERVERS[@]}"
+    do        
+    	# Check if bbservice running on server
+    	checkProcessExist "bbservice" $myServer 1
+
+   	 	if [ "$restartFlag" -eq 1 -o "$processExist" -eq 0 ]; then
+        	# kill all bbservice, then launch
+        	killProcess "bbservice" $myServer
+
+			# Old bbservice should be killed
+			if [ "$processKill" -eq 1 ]; then
+
+				local serviceLog="${scriptName}_${totalTests}_service.log"
+        		# Assume 1 service, 1 test, 10 runs: org.xxx001->org.xxx002->...->org.xxx0010
+				namePostfix="${serverIndex}${totalTests}${runIndex}"
+				name=$namePrefix$namePostfix
+
+				$verbose && echo "Broadcast $name on $myServer"
+				$verbose && echo "Broadcast $name on $myServer" >> $testDetailLog
+
+        		launchProcess "bbservice" $myServer $serviceLog $REGMODE $name 0
+    
+        		# sleep 2 seconds to make sure bbservice is launched
+        		sleep 2
+
+        		# Confirm only one bbservice is running
+       	 		checkProcessExist "bbservice" $myServer 1
+        
+        		if [ "$processExist" -eq 0 ]; then
+           			# Something wrong with daemon launch
+            		echo "bbservice fail to launch on $myServer!!!"
+            		serviceFailure=1
+        		elif [ "$processExist" -eq 1 ]; then
+            		serviceRelaunched=1
+        		fi
+			else
+				$verbose && echo "Fail to kill old bbservice on $myServer!!!" >> $testDetailLog
+				serviceFailure=1
+			fi
+    	fi
+
+		serverIndex=`expr $serverIndex + 1`
+	done
+}
+
+# Function name: launchClients
+# Description: Launch bbclient on each client and wait for complete or interruption
+# Parameter: 
+#	runIndex - Current iteration index (start from 1)
+# Return: clientCompleted flag will be set
+function launchClients() {
+    $verbose && echo "Start bbclient on $clientCount devices..." >> $testDetailLog
+	local runIndex=$1
+
+    clientCompleted=0
+    
+	local clientIndex=`expr $clientCount - 1`
+
+	local namePostfix=0
+	local name=""
+
+	if [ "$runIndex" -lt 1 ]; then
+		echo "Invalid iteration index $runIndex !"
+	fi
+
+    for myClient in "${CLIENTS[@]}"
+    do        
+        $verbose && echo "Start bbclient on $myClient"
+
+        logName="${clientLogPrefix}${myClient}_${totalTests}.txt"
+
+        killProcess bbclient $myClient
+        # If old bbclient process is not killed, continue but record zombie bbclient
+        if [ "$processKill" -ne 1 ]; then
+			echo "Zombie bbclient on $myClient !"
+		fi
+
+		# If only one service launched, client all use same name
+        if [ "$serverCount" -eq 1 ]; then
+			echo "One bbservice"
+			name="${namePrefix}0${totalTests}${runIndex}"
+		else
+			# Assume one client: name start with org.xxx001->org.xxx002->...->org.xxx0010
+			namePostfix="${clientIndex}${totalTests}${runIndex}"
+			name=$namePrefix$namePostfix
+		fi
+
+		$verbose && echo "Search $name on $myClient"
+		$verbose && echo "Search $name on $myClient" >> $testDetailLog
+
+		# If only one bbclient, then timeout applies
+		if [ "$clientCount" -eq 1 ]; then
+			echo "Launch bbclient with timeout $timeOut"
+			launchProcess "bbclient" $myClient $logName $REGMODE $name $timeOut
+		else			
+	        # launch bbclient process without timeout: multiple bbclients can complete in any order
+	        launchProcess "bbclient" $myClient $logName $REGMODE $name 0
+	        # Sleep 1 second to make sure bbclient started
+    	    sleep 1
+		fi
+
+		clientIndex=`expr $clientIndex - 1`
+    done
+
+	if [ "$clientCount" -ne 1 ]; then
+		if [ "$stressMode" -eq 0 ]; then
+		    # wait for client complete 
+    		sleep $timeOut
+		else
+			# Stress test, interrupt random time after client starts
+			# $RANDOM will return a random number between 0 and 32767
+			sleepTime=$(($RANDOM % $timeOut))
+			$verbose && echo "Stress test interrupt $sleepTime seconds" >> $testDetailLog
+			sleep $sleepTime
+		fi
+	fi
+
+    for myClient in "${CLIENTS[@]}"
+    do
+            clientCompleted=1
+
+            # Check bbclient is completed, otherwise an error is reported
+			getDevicePids $myClient "bbclient"
+
+            if [ -z "$pids" ]; then
+                $verbose && echo "bbclient on $myClient completed" >> $testDetailLog
+            else
+				if [ "$stressMode" -eq 0 ]; then	
+                	$verbose && echo "bbclient $pids on $myClient not completed!!" >> $testDetailLog
+                	clientCompleted=0
+                	break;
+				else
+					# For stress test, interrupt client in random time
+					$verbose && echo "Interrupt bbclient pid $pids..." >> $testDetailLog
+
+					# 2 is SIGINT
+					$ADB -s $myClient shell "kill -2 $pids" &
+					
+					# make sure interrupt happens					
+					sleep 2
+
+					getDevicePids $myClient "bbclient"
+
+					if [ -z "$pids" ]; then
+						$verbose && echo "bbclient $pids on $myClient interrupted." >> $testDetailLog
+					else
+						$verbose && echo "bbclient $pids on $myClient NOT interrupted!!" >> $testDetailLog
+                		clientCompleted=0
+						break;
+					fi
+				fi
+				
+            fi
+    done
+
+}
+
+
+# Function name: tearDown
+# Description: Stop background bbservice,bbclient and bbsig on all devices
+# Parameter: none
+# Return: none
+function tearDown() {
+    $verbose && echo "Tear down bbservice and bbclient..." >> $testDetailLog
+
+    # Wait 5 seconds for service and client log to complete
+    sleep 5
+
+	for phone in $devices; do
+		# Kill services
+		killProcess bbservice $phone
+		# Kill clients
+        killProcess bbclient $phone
+		# Kill bbsig
+		killProcess bbsig $phone
+		# Kill rawservice
+		killProcess rawservice $phone
+		# Kill rawclient
+        killProcess rawclient $phone
+    done
+    
+    $verbose && echo "Tear down complete" >> $testDetailLog
+}
+
+# Function name: analyzeSingleLog
+# Description: decide how many tests passed/failed in one client log based on keyword
+# Parameter: 
+#   1. client log file name
+#   2. output log file name
+# Return: client log result file - one result per line 
+#   ex. 
+#       1 - 1st line 1 means 1st test pass 
+#       0 - 2nd line 0 means 2nd test fail
+#   use this file AND other client result file for final result
+function analyzeSingleLog() {
+    $verbose && echo "Analyzing log $logFile..." >> $testDetailLog
+
+    logFile=$1
+    outFile=$2
+
+    if [ -e "$logFile" ]; then
+            $verbose && echo "$logFile exist" >> $testDetailLog
+
+            # Use awk to parse client log, each test has multiple lines in log
+            awk -v start="$testStartString" -v passKey="$BBCLIENTOK" '
+            BEGIN {
+                RS=start
+                testIndex=0
+            }
+
+            {
+                # Last line of bbclient output
+                
+                if ($0 ~ passKey) {
+                    # Pass
+                    testResult[testIndex]=1
+                } else {
+                    #Fail
+                    testResult[testIndex]=0
+                }
+                testIndex++
+                
+            }
+            END {
+                x=1
+                while ( x<testIndex ) { 
+                    print testResult[x++]
+                }
+            }
+            ' $logFile > $outFile
+
+    fi
+                
+}
+
+# Function name: setTestTransport
+# Description: set test transport: local socket, Wifi test
+# Parameter: none
+# Return: testTransString and actualTrans may be set
+function setTestTransport()
+{ 
+    $verbose && echo "Set transport to $1 $2"
+    $verbose && echo "Set transport to $1 $2" >> $testDetailLog
+
+	testTransString=$1
+	actualTrans=$2
+}
+
+# Function name: analyzeClientLogs
+# Description: decide how many tests pass or fail based on all client logs
+# Parameter: none
+# Return: 
+# Files generated: 
+#   $mergeFile - all client result logs merged
+#   $analysisFile - detailed pass/fail log for each test
+function analyzeClientLogs()
+{ 
+    $verbose && echo "Analyzing client logs on host machine..."
+    $verbose && echo "Analyzing client logs on host machine..." >> $testDetailLog
+
+    local outIndex=1
+    for myClient in "${CLIENTS[@]}"
+	do
+		logName="${clientLogPrefix}${myClient}_${totalTests}.txt"
+		output="${scriptName}_out_${myClient}.log"
+		analyzeSingleLog $logName $output
+		allOutput[outIndex]=$output
+
+		outIndex=`expr $outIndex + 1`
+	done
+	
+    # Merge all intermediate files by columns
+    mergeResult="paste ${allOutput[@]} > $mergeFile"
+    eval "$mergeResult"
+    
+    # Decide test result by checking each line of mergeResults
+    # Pass - all 1s
+    # Fail - some 0s or missing numbers
+    awk -v clients=$clientCount -F"\t" '
+        BEGIN {
+            printf "client number is %d \n", clients
+        }
+
+        {
+            # if test pass: 1-pass; 0-fail; -1-invalid                
+            pass=1
+            #printf "Number of fields %d \n", NF
+            if (NF==clients) {
+                
+                for (f=1; f<=NF; f++)
+                {
+                    printf "...%d-th field is %d \n", f, $f
+                    # one client fail, whole test fail
+                    if ($f != 1)
+                    {
+                        pass=0;
+                        break;
+                    }
+                }
+            } else {
+                pass=0
+            }
+
+            if (pass==1) printf "Pass\n"
+            else printf "Fail\n"
+ 
+        }
+        ' $mergeFile > $analysisFile
+
+    $verbose && echo "Analysis of client logs complete on host machine" >> $testDetailLog
+}
+
+# Function name: analyzeTestResult
+# Description: decide pass or fail based on keywords in client log
+# Parameter: none
+# Return: none
+function analyzeTestResult() {
+    $verbose && echo "Summarizing test result..."
+    $verbose && echo "Summarizing test result..." >> $testDetailLog
+
+	#Overall test result init to fail	
+	testResult=1
+	local resultString=""
+
+	if [ "$daemonFailures" -eq 0 -a "$scanFailures" -eq 0 ]; then
+		if [ "$stressMode" -eq 0 ]; then
+		    analyzeClientLogs
+			passed=`grep Pass $analysisFile | wc -l`
+			failed=$(($actualTests - $passed))
+		else
+			# Stress fail because of service or daemon crash
+			failed=$(($serviceFailures + $daemonFailures - $jointFailures))
+			passed=$(($actualTests - $failed))
+		fi
+
+		# Calculate minimum iterations need to pass
+		local passThreshhold=$(((plannedTests*passLine+99)/100))
+
+		$verbose && echo "Passed $passed Total $plannedTests Thresh $passThreshhold"
+ 
+		if [ "$plannedTests" -eq "$actualTests" -a "$passed" -ge "$passThreshhold" ]; then
+			# Success
+			testResult=0
+		fi
+	elif [ "$scanFailures" -eq 0 ]; then
+		# Daemon crash always count as failure
+		testResult=2
+	else
+		# Scan service launch failure count as failure
+		testResult=3
+	fi
+
+	# Print transport type: local socket or Wifi test
+	echo "Transport type=$testTransString" >> $testResultFile
+    echo "<p>Transport type=$testTransString</p>" >> $testResultHtml
+    
+	if [ "$testResult" -eq 0 ]; then
+		resultString="Pass"
+	elif [ "$testResult" -eq 2 ]; then
+		resultString="Fail(daemon crash)"
+	elif [ "$testResult" -eq 3 ]; then
+		resultString="Fail(scan failure)"
+	else
+		resultString="Fail(${failed}/${plannedTests})"	
+	fi
+
+	echo "Test result=$resultString" >> $testResultFile
+    echo "<p>Test result=$resultString</p>" >> $testResultHtml
+    
+	#echo "Planned tests=$plannedTests" >> $testResultFile
+    #echo "Actual executed=$actualTests" >> $testResultFile 
+    
+    #local notRun=$(($plannedTests-$actualTests))
+
+    #echo "Test passed=$passed" >> $testResultFile
+   	#echo "Test failed=$failed" >> $testResultFile
+
+	#passRate=$(($passed * 100 / $plannedTests))
+	#echo "Pass rate=$passRate" >> $testResultFile
+
+    #if [ "$serviceFailures" -ge 1 ]; then
+        #echo "Service crash times=$serviceFailures" >> $testDetailLog
+    #fi
+
+    #if [ "$notRun" -ge 1 ]; then
+        #echo "Not executed tests=$notRun" >> $testResultFile
+
+     #   if [ "$daemonFailure" -eq 1 ]; then
+         #   echo "Daemon unrecoverable in test=yes" >> $testResultFile
+     #   fi
+
+     #   if [ "$serviceFailure" -eq 1 ]; then
+          #  echo "Service unrecoverable in test=yes" >> $testResultFile
+     #   fi
+    #fi
+
+}
+
+# Function name: arith_mean
+# Description: calculate average time and standard deviation for API
+# Parameter: 
+#    1 - input file name that include timing information
+#    2 - api name        
+# Return: none
+function arith_mean ()
+{
+    local fileName=$1
+    local apiName=$2
+
+    $verbose && echo "Calculating $apiName average and standard deviation on $fileName..." >> $testDetailLog
+
+    local fileName=$1
+    local apiName=$2
+
+    #echo "" >> $testResultFile
+
+    awk -v api="$apiName" -v transport="$testTransString" '{x[NR]=$0; s+=$0} \
+          END{a=s/NR; for (i in x){ss += (x[i]-a)^2} sd = sqrt(ss/NR); print api" "transport" AVG in ms="a; print api" "transport" SD="sd}' $fileName >> $testDetailLog
+
+}
+
+# Function name: getLongFile
+# Description: Seperate long discover time
+# Parameters: 
+#   1.  input file name
+#   2.  output file
+#	3.  threshhold
+# Return: 
+function getLongFile() {
+	inFile=$1
+	longFile=$2
+	threshhold=$3
+
+	awk -v limit="$threshhold" '{if ($0 >= limit) print $0}' $inFile > $longFile
+}
+
+# Function name: getNormalFile
+# Description: Seperate normal discover time
+# Parameters: 
+#   1.  input file name
+#   2.  output file
+#	3.  threshhold
+# Return: 
+function getNormalFile() {
+	inFile=$1
+	normalFile=$2
+	threshhold=$3
+
+	awk -v limit="$threshhold" '{if ($0 < limit) print $0}' $inFile > $normalFile
+}
+
+# Function name: analyzeTimeInfo
+# Description: parse client logs to get time information
+# Parameter: none
+# Return: none
+function analyzeTimeInfo() {
+    $verbose && echo "Analyzing API performance..."
+    $verbose && echo "Analyzing API performance..." >> $testDetailLog
+
+    echo "APIs measured=FindAdvertisedName/JoinSession" >> $testDetailLog
+
+    for myClient in "${CLIENTS[@]}"
+    do  
+		logName="${clientLogPrefix}${myClient}_${totalTests}.txt"
+
+        # FindAdvertiseName time info should be based on transport
+		# "FindAdvertiseName 0x2 takes xxx ms"
+        findAdvertisedName=`grep "FindAdvertisedName $actualTrans takes" $logName | awk -F" +" '{print $4}'`
+
+        $verbose && echo "$testTransString FindAdvertisedName time: $findAdvertisedName" >> $testDetailLog
+
+        if [ -n "$findAdvertisedName" ]; then
+            grep "FindAdvertisedName $actualTrans takes" $logName | awk -F" +" '{print $4}' >> $findFile
+		else
+			echo "FindAdvertisedName failed!" >> $testErrorLog
+        fi
+
+        # Find JoinSession time information: JoinSession 0x4 takes xxx ms
+        joinSession=`grep "JoinSession $actualTrans takes" $logName | awk -F" +" '{print $4}'`
+
+        $verbose && echo "$testTransString JoinSession time: $joinSession" >> $testDetailLog
+
+        if [ -n "$joinSession" ]; then
+            grep "JoinSession $actualTrans takes" $logName | awk -F" +" '{print $4}' >> $joinFile
+		else
+			echo "JoinSession failed!" >> $testErrorLog
+        fi
+
+    done
+
+	if [ -e "$findFile" -a -s "$findFile" ]; then
+		# Seperate FindAdvertisedName.log into 2 files:long and normal
+		getLongFile $findFile $longFile $longDiscoverLimit
+
+		getNormalFile $findFile $shortFile $longDiscoverLimit
+	fi
+
+    if [ -e "$longFile" -a -s "$longFile" ]; then
+        
+        # 1st call to FindAdvertisedName takes much longer than following calls
+        arith_mean $longFile 1stFindAdvertisedName
+
+    fi
+
+	if [ -e "$shortFile" -a -s "$shortFile" ]; then     
+		# Calculate normal(not 1st time) findAdvertisedName average and std 
+        arith_mean $shortFile FindAdvertisedName
+	fi
+
+    if [ -e $joinFile ]; then
+        arith_mean $joinFile JoinSession
+    fi
+
+}
+
+# Function name: savePerformance
+# Description: save timing data into mysql database performance table
+# Parameter: none
+# Return: none
+function savePerformance() {
+    $verbose && echo "Saving timing data to performance table..."
+    $verbose && echo "Saving timing data to performance table..." >> $testDetailLog
+
+	dbName="alljoyn_test"
+	tbName="performance"
+	dbUser="root"
+	dbPwd="mysql"
+
+	# Parsing result file to get time info
+	if [ -e "$testResultFile" -a -s "$testResultFile" ]; then
+		findAvg=`grep "FindAdvertisedName $testTransString AVG" $testResultFile | cut -d'=' -f2`
+		findSd=`grep "FindAdvertisedName $testTransString SD" $testResultFile | cut -d'=' -f2`
+		joinAvg=`grep "JoinSession $testTransString AVG" $testResultFile | cut -d'=' -f2`
+		joinSd=`grep "JoinSession $testTransString SD" $testResultFile | cut -d'=' -f2`
+	
+		# database name is a folder under /var/lib/mysql
+		if [ -d "/var/lib/mysql/$dbName" ]; then
+			# Insert into database table
+			echo "insert into $tbName values (\
+			'$testDate','$swVersion','$deviceCount','$testTransString',\
+			'$findAvg','$findSd','$joinAvg','$joinSd');" \
+			|mysql -u$dbUser -p$dbPwd $dbName
+		else
+			$verbose && echo "Database $dbName not exist!" >> $testDetailLog
+		fi
+	else
+		$verbose && echo "Test result file not exist!" >> $testDetailLog
+	fi
+
+}
+
+# Function name: saveResult
+# Description: save test result into mysql database testResults table
+# Parameter: none
+# Return: none
+function saveResult() {
+    $verbose && echo "Saving to database testResults table..."
+    $verbose && echo "Saving to database testResults table..." >> $testDetailLog
+
+	dbName="alljoyn_test"
+	tbName="testResults"
+	dbUser="root"
+	dbPwd="mysql"
+
+	# Parsing result file to get time info
+	if [ -e "$testResultFile" -a -s "$testResultFile" ]; then
+	
+		# database name is a folder under /var/lib/mysql
+		if [ -d "/var/lib/mysql/$dbName" ]; then
+			# Insert into database table
+			echo "insert into $tbName values (\
+			'$testDate','$swVersion','$deviceCount','$testType',\
+			'$totalTests','$passRate');" \
+			|mysql -u$dbUser -p$dbPwd $dbName
+		else
+			$verbose && echo "Database $dbName not exist!" >> $testDetailLog
+		fi
+	else
+		$verbose && echo "Test result file not exist!" >> $testDetailLog
+	fi
+
+}
+
+# Function name: setClientTimeout
+# Description: set client time out value based on transport
+# Parameter: 
+#	transport			- transport string (Wifi)
+# Return: none
+# Important notes: 
+#	none 
+function setClientTimeout() {	
+	transport=$1
+
+	if [ "$transport" == "Wifi" ]; then
+		timeOut=119
+	fi
+
+	echo "Set client timeout to $timeOut" >> $testDetailLog
+}
+
+# Function name: checkDaemonsExist
+# Description: Check if daemon each device exist
+# Parameter: 
+#	daemons - daemon status array for each device: 1- stand alone daemon
+# Return: 
+#	daemonsExist is set to 0 if all daemons exist; 0 otherwise
+function checkDaemonsExist() {
+	
+	daemonsExist=0
+	local daemons=$1
+	local phone=""
+	local phoneInx=0
+	local standAlone=0
+
+	echo "Check stand alone daemons $daemons"
+	for phone in $devices; do
+		# Retrieve bit flag whether phone should have stand alone daemon(1) or bundled daemon(0)
+		local standAlone=${daemons:phoneInx:1}
+
+		if [ "$standAlone" -eq 1 ]; then
+			checkProcessExist "alljoyn-daemon" $phone 1
+
+			if [ "$processExist" -eq 0 ]; then
+				echo "Daemon on $phone crashed!"
+				daemonsExist=1
+				break;
+			fi
+		fi
+		phoneInx=$(($phoneInx + 1))
+	done
+
+}
+
+# Function name: runTest
+# Description: Run test independent of transport type
+# Parameter: 
+#	isTimeNeeded	- is API timing information required? (0(No), 1(Yes))
+#	isDbNeeded		- is database saving required? (0(No), 1(Yes))
+# 	isServiceFirst	- is bbservice first started
+#	waitSec			- wait time in seconds between bbservice and bbclient
+#	runInterval		- wait time in seconds between iterations
+# 	daemons			- daemon bit for each device: 1-standalone daemon;0-bundled daemon
+# Return: 
+#	4				- Daemon launch failure on one device
+#	5				- Service launch failure
+function runTest() {
+
+	local isTimeNeeded=$1
+	local isDbNeeded=$2
+	local isServiceFirst=$3
+	local waitSec=$4
+	local runInterval=$5
+	local daemons=$6
+
+	actualTests=0
+	daemonFailures=0
+	serviceFailures=0
+	jointFailures=0 #Both daemon and service relaunched in same test
+	scanFail=0
+	scanFailures=0
+
+	testResult=0
+
+	# 1st test is innomral because findAdvertisedName takes very long
+	normalTest[actualTests]=0
+
+    # Launch daemon on each device
+    launchDaemonIfNeeded $daemons
+
+	if [ "$daemonFailure" -eq 1 ]; then
+		echo "Daemon failure"
+		echo "Daemon failure" >> $testDetailLog
+		daemonFailures=1
+		testResult=2
+	else
+			# Start test loop
+			for (( c=1; c<=$plannedTests; c++))
+			do
+				#$verbose && echo "Test run $c..."
+   		 		#$verbose && echo "Test run $c..." >> $testDetailLog
+
+    			# Launch bbservice with different name for each run
+    			launchServiceIfNeeded 1 $c
+
+				if [ "$serviceFailure" -eq 1 ]; then
+    		   	 	$verbose && echo "Service can't be relaunched! Exist test and collect logs!"
+    		    	$verbose && echo "Service can't be relaunched! Exist test and collect logs!" >> $testDetailLog
+	
+    		    	break;
+    			fi
+	
+				# checks service advertisement happens periodically
+				if [ "$waitSec" -gt 0 ]; then
+					$verbose && echo "Sleep $waitSec seconds between service and client..." >> $testDetailLog
+					sleep $waitSec
+				fi
+	
+    			# Relaunch bbclient on all devices
+    			launchClients $c
+	
+    			actualTests=`expr $actualTests + 1`
+
+				# Remove cache for well-known name
+				if [ "$runInterval" -gt 0 ]; then
+					$verbose && echo "Sleep $runInterval seconds between iteration..." >> $testDetailLog
+					sleep $runInterval
+				fi
+	
+				# Damon must run on each phone, otherwise there is daemon crash, test fail
+    			checkDaemonsExist $daemons
+	
+    			# If daemon can't relaunch, stop test and collect logs
+    			if [ "$daemonsExist" -ne 0 ]; then
+    	    		echo "Daemon failure during iteration $c"
+    	    		echo "Daemon failure during iteration $c" >> $testDetailLog
+
+    		    	daemonFailures=1
+					break;		
+    			fi
+	
+			done
+
+	# Tear down bbservice and bbclient
+	tearDown
+
+	fi
+
+	# Decide pass or fail based on log
+	analyzeTestResult
+
+	if [ "$isTimeNeeded" -eq 1 ]; then
+		# Collect and analyze time information for FindAdvertisedName and JoinSession
+		analyzeTimeInfo
+	fi
+
+	if [ "$testResult" -ne 0 ]; then
+		#Fail
+		echo "Test result is Fail"
+		echo "Test Fail!" >> $testErrorLog
+		testResults[totalTests]=6
+
+	else
+		#Success
+		echo "Test result is Pass"
+		echo "Test Pass" >> $testErrorLog
+		testResults[totalTests]=0
+
+		if [ "$isDbNeeded" -eq 1 ]; then
+			# Save test result to database
+			savePerformance
+		fi
+	fi
+}
+# Function name: convertToBinary
+# Description: 
+#	Convert decimal number to fixed width binary string 
+#	Example:
+#		1. 0 convert to 3 digit binary -->000
+#		2. 2 convert to 3 digit binary -->010
+# Parameter: 
+#	decInput - decimal input
+#	fixedLen - fixed binary string length
+# Return: 
+#	binIndex
+function convertToBinary() {
+	decInput=$1
+	fixedLen=$2
+
+	local binTmp="binary.tmp"
+	local binOut="binary.out"
+
+	echo "Convert $decInput to $fixedLen digit binary..."
+	binIndex=`echo "obase=2;$decInput" | bc | awk -v l=$fixedLen '
+	{
+		ll=length($0)
+		pre=l-ll
+		# Print preceding 0s
+		for (i=1; i<=pre; i++)
+		{
+			printf 0
+		}
+		print $0
+	}'`
+
+	echo "$binIndex completed"
+}
+
+
+# Function name: oneServiceMulClients
+# Description: one bbservice on one device,  1 bbclient on each other device
+# 	bbservice starts first, no additional waiting between bbservice and bbclient 
+# Parameter: 
+#	transport - Wifi
+#	type - 0x4 
+#	tests - How many daemon combination tests need to run
+# Return: none
+function oneServiceMulClients() {
+
+	local transport=$1
+	local type=$2
+	local tests=$3
+
+	local testCase=$(($totalTests + 1))
+	local maxCombs=1
+	local binIndex=1
+
+	for ((index=0; index<$tests; index++))
+	do 
+
+		echo "Test Case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..." >> $testErrorLog
+		echo "Test case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..."
+		echo "Test case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..." >> $testDetailLog
+		echo >> $testResultFile
+		echo "Test case=$testCase(SCLCTP-001-$binaryType bbservice/bbclient)">> $testResultFile
+		
+		echo "<br>" >> $testResultHtml
+		echo "<p>Test case=$testCase(SCLCTP-001-$binaryType bbservice/bbclient)</p>">> $testResultHtml
+
+		# If devices can NOT ping each other, test block
+		if [ "$devicesConnected" -eq 0 ]; then
+			echo "Test result is block"
+			echo "Test result=Block(Disconnected)" >> $testResultFile
+            echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+			testResults[totalTests]=5
+
+		else
+			# assign bbservice on one device, rest devices bbclient
+			setupTest1SC
+
+			# Wifi
+			setTestTransport $transport $type
+
+			# Clean up bbservice/bbclient on each device
+			tearDown
+
+			#1 iteration
+			plannedTests=1
+
+			# For Wifi, bundled daemon test app can start without standalone daemon
+			# There are 2^deviceCount of combinations of stand alone and bundled daemons
+			if [ $transport == "Wifi" -o $type == "0x4" ]; then
+
+				# Bundled daemon combination tests
+				if [ "$bundledMode" -eq 1 ]; then
+					# Convert to binary: 3-->11 means both devices need pre-installed daemon
+					convertToBinary $index $deviceCount
+				else
+					# Standalone daemon always
+					let "maxCombs=2**($deviceCount)-1"
+
+					convertToBinary $maxCombs $deviceCount
+				fi
+
+				echo "Wifi daemon array: $binIndex"
+						
+				# need API timing information (1), save to database (1)
+				# bbservice start first (1), no waiting between bbservice and bbclient
+				# 120 seconds waiting between iteration
+				runTest 1 1 1 0 120 "$binIndex"
+
+			fi
+				
+		fi
+		testCase=$(($testCase + 1))
+		totalTests=$(($totalTests + 1))
+	done
+}
+
+# Function name: runTest2
+# Description: one bbservice on one device,  1 bbclient on each other device
+# 	bbservice starts first, 10 min. waiting between bbservice and bbclient 
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+function runTest2() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase(10 min delay between $binaryType bbservice/bbclient)..." >> $testErrorLog
+	echo "Test case $testCase(10 min delay between $binaryType bbservice/bbclient)..."
+	echo "Test case $testCase(10 min delay between $binaryType bbservice/bbclient)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase(10 min delay between $binaryType bbservice/bbclient)">> $testResultFile
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# assign bbservice on one device, rest devices bbclient
+	setupTest1SC
+
+	# Test1 is Wifi
+	setTestTransport $transport $type
+
+	# Clean up bbservice/bbclient on each device
+	tearDown
+
+	# need API timing information (0), don't save to database (0)
+	# bbservice start first (1), 600 seconds waiting between bbservice and bbclient
+	# no waiting between iteration
+	runTest 0 0 1 600 0
+	
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runTest3
+# Description: one bbservice and one bbclient on one device, one bbclient on each other device
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+function runTest3() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase($binaryType local/remote bbclient)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType local/remote bbclient)..."
+	echo "Test case $testCase($binaryType local/remote bbclient)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType local/remote bbclient)">> $testResultFile
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# assign bbservice and bbclient on one device, bbclient on other devices
+	setupTest3SC
+
+	# Test3 is Mixed: one client use local socket, another use Wifi
+	setTestTransport "Mixed" 0x9
+
+	# Clean up bbservice/bbclient on each device
+	tearDown
+
+	# no need API timing information (0), don't save to database (0)
+	# bbservice start first (1), no additional waiting between bbservice and bbclient (0)
+	# no waiting between iteration
+	runTest 0 0 1 0 0
+	
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: ngnsClientDiscovery
+# Description: 
+#   NGNS discovery test
+#	Two devices(d1/d2):  one bbclient on d1, one bbservice on d2
+#	bbclient start first and wait 4 minutes
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+# Notes: this is a special test which only run on 2 devices
+function ngnsClientDiscovery() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase(ngns-$binaryType bbclient starts first)..." >> $testErrorLog
+	echo "Test case $testCase(ngns-$binaryType bbclient starts first)..."
+	echo "Test case $testCase(ngns-$binaryType bbclient starts first)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType bbclient starts first)">> $testResultFile
+	
+	echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType bbclient starts first)</p>">> $testResultHtml
+	
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+	# Setup one server and one client
+	local index=0
+	for phone in $devices; do
+		# one server
+        if [ "$index" -eq 0 ]; then
+            SERVER=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+        # one client 
+        elif [ "$index" -eq 1 ]; then
+            CLIENT=$phone
+            $verbose && echo "Client is $phone " >> $testDetailLog
+		else
+			break;        
+		fi
+        index=`expr $index + 1`
+    done
+
+	# 
+	setTestTransport $transport $type
+
+	# Clean up bbservice/bbclient on each device
+	tearDown
+
+	local daemons=1
+	let "daemons=2**($deviceCount)-1"
+	convertToBinary $daemons $deviceCount
+
+	echo "Launch stand alone daemon on each device: $binIndex "
+
+    # Launch stand alone daemon on each device
+    launchDaemonIfNeeded "$binIndex"
+
+	# Print transport type: local socket or Wifi test
+	echo "Transport type=$testTransString" >> $testResultFile
+
+	# Launch one bbclient on client
+	local clientLog="${scriptName}_${totalTests}_client.log"
+	local name="${namePrefix}${totalTests}"
+
+	$verbose && echo "Search $name on $CLIENT"
+	$verbose && echo "Search $name on $CLIENT" >> $testDetailLog
+
+	launchProcess "bbclient" $CLIENT $clientLog $REGMODE $name 0
+
+	# Wait 4 minutes to test ngns discovery happens periodically
+	echo "Client sleeping to test discover periodically..." >> $testDetailLog
+	sleep 240
+	echo "Client sleep complete" >> $testDetailLog
+	
+	#check bbservices are launched correctly
+	checkProcessExist "bbclient" $CLIENT 1
+
+	# Launch one bbservice on server
+	local serviceLog="${scriptName}_${totalTests}_service.log"
+
+	$verbose && echo "Broadcast $name on $SERVER"
+	$verbose && echo "Broadcast $name on $SERVER" >> $testDetailLog
+
+	launchProcess "bbservice" $SERVER $serviceLog $REGMODE $name 0
+
+	# Make sure bbservice is completely launched 	
+	sleep 2
+
+	#check bbservices are launched correctly
+	checkProcessExist "bbservice" $SERVER 1
+
+	# Init test result to Fail
+	testResults[totalTests]=6
+
+	if [ "$processExist" -eq 0 ]; then
+		echo "Service launch failure!"
+		echo "Service launch failure!" >> $testErrorLog
+		echo "Service launch failure!" >> $testDetailLog
+		echo "Test result=Fail(bbservice crash)" >> $testResultFile
+		echo "<p>Test result=Fail(bbservice crash)</p>" >> $testResultHtml
+	else
+		# wait for client to complete
+		sleep $timeOut
+
+		# Stop bbservices and bbclients
+		tearDown
+
+		# Analyze client logs
+		if [ -e "$clientLog" ]; then
+			local findAdvertisedName1=`grep "FindAdvertisedName $actualTrans takes" $clientLog`
+			# For NGNS, we only care discovery
+			if [ -z "$findAdvertisedName1" ]; then
+    			local clientError="${scriptName}_${totalTests}_client_error.txt"
+    			mv $clientLog $clientError
+    	    	echo "Discovery failed" >> $testErrorLog
+				# Test fail if one client logs fail
+				echo "One client discovery fail, test fail!" >> $testDetailLog
+				echo "Test result is Fail for discovery"
+				echo "Test result=Fail(discovery)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\$clientError\"">discovery</a>)</p>" >> $testResultHtml
+			else
+				echo "Test Pass" >> $testDetailLog
+				echo "Test result is Pass"
+				echo "Test result=Pass" >> $testResultFile
+				echo "<p>Test result=Pass</p>" >> $testResultHtml
+				testResults[totalTests]=0
+			fi
+		else
+			# Test fail if one client log miss
+			echo "Test Fail!" >> $testErrorLog
+			echo "Miss client log file, test fail!" >> $testDetailLog
+			echo "Test result is Fail"
+			echo "Test result=Fail(empty client log)" >> $testResultFile
+			echo "<p>Test result=Fail(empty client log)</p>" >> $testResultHtml
+		fi
+	fi
+	fi
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: twoServicesTwoClients
+# Description: Two devices(d1/d2): two bbservices on d1, two bbclients on d2
+#	bbservices start first, wait 10 minutes, then bbclients start
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+# Notes: this is a special test which only run on 2 devices
+function twoServicesTwoClients() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase($binaryType dev1 run 2 bbservices, dev2 run 2 bbclients)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType dev1 run 2 bbservices, dev2 run 2 bbclients)..."
+	echo "Test case $testCase($binaryType dev1 run 2 bbservices, dev2 run 2 bbclients)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType dev1 run 2 bbservices, dev2 run 2 bbclients)">> $testResultFile
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# Setup one server and one client
+	local index=0
+	for phone in $devices; do
+		# one server
+        if [ "$index" -eq 0 ]; then
+            SERVER=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+        # one client 
+        elif [ "$index" -eq 1 ]; then
+            CLIENT=$phone
+            $verbose && echo "Client is $phone " >> $testDetailLog
+		else
+			break;        
+		fi
+        index=`expr $index + 1`
+    done
+
+	# 
+	setTestTransport $transport $type
+
+	# Clean up bbservice/bbclient on each device
+	tearDown
+
+	# Print transport type: local socket or Wifi test
+	echo "Transport type=$testTransString" >> $testResultFile
+
+	# Launch daemon on both server and client
+	local serverDaemonLog="${scriptName}${SERVER}_daemonLog.txt"
+	local clientDaemonLog="${scriptName}${CLIENT}_daemonLog.txt"
+
+	checkProcessExist "alljoyn-daemon" $SERVER 1
+
+	# Assume that at most one daemon from previous test
+	if [ "$processExist" -eq 0 ]; then
+		launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+	fi
+
+	checkProcessExist "alljoyn-daemon" $CLIENT 1
+
+	if [ "$processExist" -eq 0 ]; then
+		launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+	fi
+
+	# Launch two bbservices on server
+	local name1="${namePrefix}0${totalTests}"
+	local name2="${namePrefix}1${totalTests}"
+	local serviceLog1="${scriptName}${SERVER}_service1.log"
+	local serviceLog2="${scriptName}${SERVER}_service2.log"
+	local clientLog1="${clientLogPrefix}${CLIENT}_${totalTests}_1.txt"
+	local clientLog2="${clientLogPrefix}${CLIENT}_${totalTests}_2.txt"
+
+	$verbose && echo "Broadcast $name1 on $SERVER"
+	$verbose && echo "Broadcast $name1 on $SERVER" >> $testDetailLog
+
+	launchProcess "bbservice" $SERVER $serviceLog1 $REGMODE $name1 0
+	# (89)Wait 1 second so 1st bbservice is fully up
+	sleep 1
+
+	$verbose && echo "Broadcast $name2 on $SERVER"
+	$verbose && echo "Broadcast $name2 on $SERVER" >> $testDetailLog
+
+	launchProcess "bbservice" $SERVER $serviceLog2 $REGMODE $name2 0
+	# (89)Wait 1 second so 2nd bbservice is fully up
+	sleep 1
+
+	#check bbservices are launched correctly
+	checkProcessExist "bbservice" $SERVER 2
+
+	# Init test result to Fail
+	testResults[totalTests]=6
+
+	if [ "$processExist" -eq 0 ]; then
+		echo "Service launch failure!"
+		echo "Service launch failure!" >> $testErrorLog
+		echo "Service launch failure!" >> $testDetailLog
+		echo "Test result=Fail" >> $testResultFile
+	else
+		# Wait 3 min 
+		sleep 180
+
+		$verbose && echo "Search $name1 on $CLIENT"
+		$verbose && echo "Search $name1 on $CLIENT" >> $testDetailLog
+
+		# Launch two bbclients on client
+		launchProcess "bbclient" $CLIENT $clientLog1 $REGMODE $name1 0
+		# Wait 1 second so 1st bbclient is fully up
+		sleep 1
+
+		$verbose && echo "Search $name2 on $CLIENT"
+		$verbose && echo "Search $name2 on $CLIENT" >> $testDetailLog
+
+		launchProcess "bbclient" $CLIENT $clientLog2 $REGMODE $name2 0
+
+		# Wait for client to complete
+		sleep $timeOut
+
+		# Stop bbservices and bbclients
+		tearDown
+
+		# Analyze client logs
+		if [ -e "$clientLog1" -a -e "$clientLog2" ]; then
+			client1Pass=`grep "$BBCLIENTOK" $clientLog1`
+			client2Pass=`grep "$BBCLIENTOK" $clientLog2`
+
+			if [ -n "$client1Pass" -a -n "$client2Pass" ]; then
+				# Test pass if both client logs pass
+				echo "Test Pass" >> $testDetailLog
+				echo "Test result is Pass"
+				echo "Test result=Pass" >> $testResultFile
+				testResults[totalTests]=0
+			else	
+				# Check whether FindAdvertisedName fail
+		        local findAdvertisedName1=`grep "FindAdvertisedName $actualTrans takes" $clientLog1`
+				local findAdvertisedName2=`grep "FindAdvertisedName $actualTrans takes" $clientLog2`
+
+		        if [ -z "$findAdvertisedName1" -o -z "$findAdvertisedName2" ]; then
+    	        	echo "FindAdvertisedName failed" >> $testErrorLog
+				else
+					# Check whether JoinSession fail
+    	    		local joinSession1=`grep "JoinSession $actualTrans takes" $clientLog1`
+					local joinSession2=`grep "JoinSession $actualTrans takes" $clientLog2`
+
+			        if [ -z "$joinSession1" -o -z "$joinSession2" ]; then
+						echo "JoinSession failed!" >> $testErrorLog
+    	    		fi
+    	    	fi
+
+				# Test fail if one client logs fail
+				echo "Test Fail!" >> $testErrorLog
+				echo "One client log fail, test fail!" >> $testDetailLog
+				echo "Test result is Fail"
+				echo "Test result=Fail" >> $testResultFile
+			fi
+		else
+			# Test fail if one client log miss
+			echo "Test Fail!" >> $testErrorLog
+			echo "Miss One client log file, test fail!" >> $testDetailLog
+			echo "Test result is Fail"
+			echo "Test result=Fail" >> $testResultFile
+		fi
+	fi	
+
+	fi
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runTest6
+# Description: one bbservice and one bbclient on each device, bbservice start first
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+function runTest6() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase($binaryType bbservice/bbclient on each device)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType bbservice/bbclient on each device)..."
+	echo "Test case $testCase($binaryType bbservice/bbclient on each device)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType bbservice/bbclient on each device)">> $testResultFile
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# Setup server and client roles
+	setupTest4SC
+
+	# Test3 is Wifi
+	setTestTransport $transport $type
+
+	# Clean up bbservice/bbclient on each device
+	tearDown
+
+	# need API timing information (0), don't save to database (0)
+	# bbservice start first (1), no additional waiting between bbservice and bbclient (0)
+	runTest 1 0 1 0 0
+
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runTest7
+# Description: Two devices(d1/d2): one bbservice on d1 and d2, one bbclient on d2, one bbsig on d1
+#	d1 bbservice start first, d2 bbclient start, d2 bbservice start, d1 bbsig start
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+# Notes: this is a special test which only run on 2 devices
+function runTest7() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType bbsig)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType bbsig)..."
+	echo "Test case $testCase($binaryType bbsig)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType bbsig)">> $testResultFile
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# Setup server and client roles
+	local index=0
+	for phone in $devices; do
+		# one server
+        if [ "$index" -eq 0 ]; then
+            SERVER1=$phone
+			CLIENT1=$phone
+            $verbose && echo "Server1 is $phone "  >> $testDetailLog
+        # one client 
+        elif [ "$index" -eq 1 ]; then
+			SERVER2=$phone
+            CLIENT2=$phone
+            $verbose && echo "Server2 is $phone " >> $testDetailLog
+		else
+			break;        
+		fi
+        index=`expr $index + 1`
+    done
+
+	# 
+	setTestTransport $transport $type
+
+	# Clean up bbservice/bbclient/bbsig on each device
+	tearDown
+
+	# Print transport type: local socket or Wifi test
+	echo "Transport type=$testTransString" >> $testResultFile
+
+	# Launch daemon on both server and client
+	local serverDaemonLog="${scriptName}${SERVER1}_daemonLog.txt"
+	local clientDaemonLog="${scriptName}${SERVER2}_daemonLog.txt"
+
+	checkProcessExist "alljoyn-daemon" $SERVER1 1
+
+	# Assume that at most one daemon from previous test
+	if [ "$processExist" -eq 0 ]; then
+		launchProcess "alljoyn-daemon" $SERVER1 $serverDaemonLog $SUMODE "" 0
+	fi
+
+	checkProcessExist "alljoyn-daemon" $SERVER2 1
+
+	if [ "$processExist" -eq 0 ]; then
+		launchProcess "alljoyn-daemon" $SERVER2 $clientDaemonLog $SUMODE "" 0
+	fi
+
+	# Launch two bbservices on server
+	local name1="${namePrefix}0${totalTests}"
+	local name2="${namePrefix}1${totalTests}"
+	local serviceLog1="${scriptName}${SERVER1}_service.log"
+	local serviceLog2="${scriptName}${SERVER2}_service.log"
+	local clientLog1="${clientLogPrefix}${CLIENT1}_${totalTests}.txt"
+	local clientLog2="${clientLogPrefix}${CLIENT2}_${totalTests}.txt"
+
+	$verbose && echo "Broadcast $name1 on $SERVER1"
+	$verbose && echo "Broadcast $name1 on $SERVER1" >> $testDetailLog
+
+	launchProcess "bbservice" $SERVER1 $serviceLog1 $REGMODE $name1 0
+
+	#check bbservices are launched correctly
+	checkProcessExist "bbservice" $SERVER1 1
+
+	# Init test result to Fail
+	testResults[totalTests]=6
+
+	if [ "$processExist" -eq 0 ]; then
+		echo "Service1 launch failure!"
+		echo "Service1 launch failure!" >> $testErrorLog
+		echo "Service1 launch failure!" >> $testDetailLog
+		echo "Test result=Fail" >> $testResultFile
+	else
+		$verbose && echo "Search $name1 on $CLIENT2"
+		$verbose && echo "Search $name1 on $CLIENT2" >> $testDetailLog
+
+		# Launch one bbclient on client2
+		launchProcess "bbclient" $CLIENT2 $clientLog2 $REGMODE $name1 0
+
+		$verbose && echo "Broadcast $name2 on $SERVER2"
+		$verbose && echo "Broadcast $name2 on $SERVER2" >> $testDetailLog
+
+		# Launch one bbservice on server2
+		launchProcess "bbservice" $SERVER2 $serviceLog2 $REGMODE $name2 0
+
+		$verbose && echo "Search $name2 on $CLIENT1"
+		$verbose && echo "Search $name2 on $CLIENT1" >> $testDetailLog
+
+		# Launch one bbsig on client1
+		launchProcess "bbsig" $CLIENT1 $clientLog1 $REGMODE $name2 0
+
+		# Wait for clients to complete
+		sleep $timeOut
+
+		# Stop bbservices, bbclients and bbsig
+		tearDown
+
+		# Analyze client logs
+		if [ -e "$clientLog1" -a -e "$clientLog2" ]; then
+			client1Pass=`grep "$BBSIGOK" $clientLog1`
+			client2Pass=`grep "$BBCLIENTOK" $clientLog2`
+
+			if [ -n "$client1Pass" -a -n "$client2Pass" ]; then
+				# Test pass if both client logs pass
+				echo "Test Pass" >> $testDetailLog
+				echo "Test result is Pass"
+				echo "Test result=Pass" >> $testResultFile
+				testResults[totalTests]=0
+			else	
+				# Test fail if one client logs fail
+				echo "Test Fail!" >> $testErrorLog
+				echo "One client log fail, test fail!" >> $testDetailLog
+				echo "Test result is Fail"
+				echo "Test result=Fail" >> $testResultFile
+			fi
+		else
+			# Test fail if one client log miss
+			echo "Test Fail!" >> $testErrorLog
+			echo "Miss One client log file, test fail!" >> $testDetailLog
+			echo "Test result is Fail"
+			echo "Test result=Fail" >> $testResultFile
+		fi
+	fi	
+	
+	fi
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runRawSocketTest
+# Description: 
+#	Two devices raw socket test:  
+#	rawservice on d1, rawclient on d2
+#	rawservice start first 
+# Parameter: transport - Wifi; type - 0x4
+# Return: none
+# Notes: this is a special test which only run on 2 devices
+function runRawSocketTest() {
+	local transport=$1
+	local type=$2
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType raw socket test)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType raw socket test)..."
+	echo "Test case $testCase($binaryType raw socket test)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase(SCLPTP-A043-$binaryType raw socket)">> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase(SCLPTP-A043-$binaryType raw socket)</p>">> $testResultHtml
+	
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+
+		# Launch daemon on both server and client for bundled daemon off build
+		if [ "$bundledMode" -eq 0 ]; then
+
+			local serverDaemonLog="${scriptName}_rawservice_daemonLog.txt"
+			local clientDaemonLog="${scriptName}_rawclient_daemonLog.txt"
+	
+			launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			sleep 2
+		fi
+
+		# 
+		setTestTransport $transport $type
+
+		# Print transport type: local socket or Wifi test
+		echo "Transport type=$testTransString" >> $testResultFile
+
+		# Launch one bbclient on client
+		local clientLog="${scriptName}_${totalTests}_rawclient.log"
+		local name="org.raw"
+
+		# Launch one bbservice on server
+		local serviceLog="${scriptName}_${totalTests}_rawservice.log"
+
+		$verbose && echo "Broadcast $name on $SERVER"
+		$verbose && echo "Broadcast $name on $SERVER" >> $testDetailLog
+	
+		launchProcess "rawservice" $SERVER $serviceLog $REGMODE $name 0
+
+		# Make sure rawservice is completely launched 	
+		sleep 2
+
+		$verbose && echo "Search $name on $CLIENT"
+		$verbose && echo "Search $name on $CLIENT" >> $testDetailLog
+
+		# 90 seconds should be enough for rawclient to complete
+		launchProcess "rawclient" $CLIENT $clientLog $REGMODE $name 90
+	
+		# Init test result to Fail
+		testResults[totalTests]=6
+	
+		# Check rawclient complete successfully
+		local rawClientOK=""
+		rawClientOK=`tail -n 1 $clientLog|grep "$RAWCLIENTOK"`
+
+		if [ -n "$rawClientOK" ]; then
+			echo "Test pass"
+			echo "Test result=Pass" >> $testResultFile
+			echo "<p>Test result=Pass</p>" >> $testResultHtml
+			testResults[totalTests]=0
+		else
+		    local clientError="${scriptName}_${totalTests}_rawclient_error.txt"
+		    mv $clientLog $clientError
+			echo "Test fail"
+			echo "Test result=Fail" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">client</a>)</p>" >> $testResultHtml
+		fi
+		
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runSecurityMethod
+# Description: 
+#	Two devices security method test:  
+#	bbservice on d1, bbclient on d2
+# Parameter: 
+#	transport - Wifi 
+#	type - 0x4
+#	secmode - srp, logon
+# Return: none
+# Notes: none
+function runSecurityMethod() {
+	local transport=$1
+	local type=$2
+	local secmode=$3
+	local testCase=$(($totalTests + 1))
+	local testTitle=""
+
+	if [ "$secmode" -eq "$SRPMODE" ]; then
+		testDesc="SRP"
+		testTitle="SCLCTP-007"
+	elif [ "$secmode" -eq "$LOGONMODE" ]; then
+		testDesc="LOGON"
+		testTitle="SCLCTP-009"
+	else
+		testDesc="regular"
+	fi
+
+	echo "Test Case $testCase($binaryType $testDesc bbclient test)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType $testDesc bbclient test)..."
+	echo "Test case $testCase($binaryType $testDesc bbclient test)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($testTitle $binaryType $testDesc bbclient test)">> $testResultFile
+    echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase($testTitle $binaryType $testDesc bbclient test)</p>">> $testResultHtml
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+
+        # Cleanup keystore for each device
+        cleanKeystore
+    
+		# Launch daemon on both server and client for bundled daemon off build
+		if [ "$bundledMode" -eq 0 ]; then
+
+			local serverDaemonLog="${scriptName}_${testDesc}_service_daemonLog.txt"
+			local clientDaemonLog="${scriptName}_${testDesc}_client_daemonLog.txt"
+	
+			launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			sleep 2
+		fi
+
+		# 
+		setTestTransport $transport $type
+
+		# Print transport type: local socket or Wifi test
+		echo "Transport type=$testTransString" >> $testResultFile
+
+		# Launch one bbclient on client
+		local clientLog="${scriptName}_${testDesc}_bbclient.log"
+		local name="org.${testDesc}"
+
+		# Launch one bbservice on server
+		local serviceLog="${scriptName}_${testDesc}_bbservice.log"
+
+		$verbose && echo "Broadcast $name on $SERVER"
+		$verbose && echo "Broadcast $name on $SERVER" >> $testDetailLog
+	
+		launchProcess "bbservice" $SERVER $serviceLog $secmode $name 0
+
+		# Make sure bbservice is completely launched 	
+		sleep 2
+
+		$verbose && echo "Search $name on $CLIENT"
+		$verbose && echo "Search $name on $CLIENT" >> $testDetailLog
+
+		# 120 seconds should be enough for bbclient to complete
+		launchProcess "bbclient" $CLIENT $clientLog $secmode $name 120
+	
+		# wait 3 seconds so bbclient log is complete
+		sleep 3
+
+		# Init test result to Fail
+		testResults[totalTests]=6
+	
+		# Check bbclient complete successfully
+		local clientComplete=""
+		clientComplete=`grep "$BBCLIENTOK" $clientLog`
+
+		local authOk=""
+		if [ -n "$clientComplete" ]; then
+			if [ "$secmode" -eq "$SRPMODE" ]; then
+				authOk=`grep "$SRPAUTHOK" $clientLog`
+			elif [ "$secmode" -eq "$LOGONMODE" ]; then
+				authOk=`grep "$LOGONAUTHOK" $clientLog`
+			fi
+			
+			if [ -n "$authOk" ]; then
+				echo "Test pass"
+				echo "Test result=Pass" >> $testResultFile
+				echo "<p>Test result=Pass</p>" >> $testResultHtml
+				testResults[totalTests]=0
+			else
+			    local clientError="${scriptName}_${testDesc}_bbclient_error.txt"
+			    mv $clientLog $clientError
+				echo "Test fail"
+				echo "Test result=Fail(Authentication)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">Authentication</a>)</p>" >> $testResultHtml
+			fi
+		else
+		    local clientError="${scriptName}_${testDesc}_bbclient_error.txt"
+		    mv $clientLog $clientError
+			echo "Test fail"
+			echo "Test result=Fail(Client error)" >> $testResultFile
+			echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">Client error</a>)</p>" >> $testResultHtml
+		fi
+		
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: checkBbsigResult
+# Description: 
+#	Check bbsig complete successful or not
+# Parameter: 
+#	bbsigLog - bbsig log name
+#	sigCount - number of signals to send
+#	authentication - ALLJOYN_SRP_KEYX / ALLJOYN_SRP_LOGON 
+# Return: 
+#	bbsigStatus is 0 if success; 1 if authentication fail; 
+#	2 if unsent signals; 3 if fail other others
+# Notes:
+#	Assume each signal sent is printed (-i 1)
+function checkBbsigResult() {
+	local bbsigLog=$1
+	local sigCount=$2
+	local authentication=$3
+	
+	$verbose && echo "Check if $bbsigLog succeed sending $sigCount signals with $authentication"
+
+	bbsigStatus=0
+
+	# authentication required
+	if [ -n "$authentication" ]; then			
+		local authSuccessKeys="Authentication $authentication succesful"
+		if ! grep -q "$authSuccessKeys" $bbsigLog
+		then
+			echo "bbsig fail as authentication $authentication failed!" >> $testErrorLog
+			bbsigStatus=1
+		else
+			$verbose && echo "Authentication $authentication ok"
+		fi
+	else
+		$verbose && echo "No authentication required"
+	fi
+
+	if [ "$bbsigStatus" -eq 0 ]; then
+		local signalSent=1
+		# Check all signals sent correctly
+		for(( signalSent=1; signalSent<=$sigCount; signalSent++))
+		do
+			local sendSignal="SendSignal: $signalSent"
+			#
+			if ! grep -q "$sendSignal" $bbsigLog
+			then
+				echo "bbsig fail as $sendSignal not found!" >> $testErrorLog
+				bbsigStatus=2
+				break;
+			fi
+		done
+	fi				
+
+	if [ "$bbsigStatus" -eq 0 ]; then
+		# bbsig exiting with 0
+		if grep -q "$BBSIGOK" $bbsigLog
+		then
+			$verbose && echo "bbsig exit with ER_OK"
+		else
+			echo "bbsig fail for unknown reason!" >> $testErrorLog
+			bbsigStatus=3
+		fi
+	fi
+}
+
+# Function name: runSignalTest
+# Description: 
+#	Two devices signal test:  
+#	bbservice on d1, bbsig on d2
+# Parameter: 
+#	transport - Wifi 
+#	type - 0x4
+#	mode - regular, srp, LOGON encrypted
+# Return: none
+# Notes: none
+function runSignalTest() {
+	local transport=$1
+	local type=$2
+	local sigmode=$3
+	local testCase=$(($totalTests + 1))
+
+	local testDesc=""
+	local authKeys=""
+
+	if [ "$sigmode" -eq "$SRPMODE" ]; then
+		testDesc="SRP"
+		authKeys="ALLJOYN_SRP_KEYX"
+	elif [ "$sigmode" -eq "$LOGONMODE" ]; then
+		testDesc="LOGON"
+		authKeys="ALLJOYN_SRP_LOGON"
+	else
+		testDesc="regular"
+		authKeys=""
+	fi
+		
+	echo "Test Case $testCase($binaryType $testDesc bbsig test)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType $testDesc bbsig test)..."
+	echo "Test case $testCase($binaryType $testDesc bbsig test)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType $testDesc bbsig test)">> $testResultFile
+    echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType $testDesc bbsig test)</p>">> $testResultHtml
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+        # Cleanup .alljoyn_keystore on each device
+        cleanKeystore
+        
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+
+		# Launch daemon on both server and client for bundled daemon off build
+		if [ "$bundledMode" -eq 0 ]; then
+
+			local serverDaemonLog="${scriptName}_sigservice_daemonLog.txt"
+			local clientDaemonLog="${scriptName}_sigclient_daemonLog.txt"
+	
+			launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			sleep 2
+		fi
+
+		# 
+		setTestTransport $transport $type
+
+		# Print transport type: local socket or Wifi test
+		echo "Transport type=$testTransString" >> $testResultFile
+
+		# Launch one bbsig on client
+		local clientLog="${scriptName}_${totalTests}_sigclient.log"
+	
+		# make sure each test use a different name	
+		local name="org.sig${sigmode}"
+
+		# Launch one bbservice on server
+		local serviceLog="${scriptName}_${totalTests}_sigservice.log"
+
+		$verbose && echo "Broadcast $name on $SERVER"
+		$verbose && echo "Broadcast $name on $SERVER" >> $testDetailLog
+	
+		launchProcess "bbservice" $SERVER $serviceLog $sigmode $name 0
+
+		# Make sure bbservice is completely launched 	
+		sleep 2
+
+		$verbose && echo "Search $name on $CLIENT"
+		$verbose && echo "Search $name on $CLIENT" >> $testDetailLog
+
+		# 150 seconds should be enough for bbsig to complete
+		launchProcess "bbsig" $CLIENT $clientLog $sigmode $name 150
+	
+		# Init test result to Fail
+		testResults[totalTests]=6
+	
+		# Check bbsig complete successfully 
+		checkBbsigResult $clientLog 1000 "$authKeys"
+
+		if [ "$bbsigStatus" -eq 0 ]; then
+			echo "Test pass"
+			echo "Test result=Pass" >> $testResultFile
+			echo "<p>Test result=Pass</p>" >> $testResultHtml
+			testResults[totalTests]=0
+		else
+		    local clientError="${scriptName}_${totalTests}_sigclient_error.txt"
+		    mv $clientLog $clientError
+			echo "Test fail"
+
+			if [ "$bbsigStatus" -eq 1 ]; then
+				echo "Test result=Fail(authentifcation)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">authentifcation</a>)</p>" >> $testResultHtml
+			elif [ "$bbsigStatus" -eq 2 ]; then
+				echo "Test result=Fail(unsent signal)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">unsent signal</a>)<p>" >> $testResultHtml
+			else
+				echo "Test result=Fail(other reason)" >> $testResultFile
+				echo "<p>Test result=Fail(<a class="error" href="\"$clientError\"">other reason</a>)</p>" >> $testResultHtml
+			fi
+		fi
+		
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runJniChatInWifi
+# Description: 
+#	Two devices jni chat test under wifi:  
+#	d1 starts and join new channel, d2 joins channel and send 1st message, d1 sends 2nd message
+# Parameter: none
+# Return: none
+function runJniChatInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType jni chat test under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType jni chat test under wifi)..."
+	echo "Test case $testCase($binaryType jni chat test under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(SCLPTP-A038-$binaryType jni chat under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase(SCLPTP-A038-$binaryType jni chat under wifi)</p>">> $testResultHtml
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+		# Remove old chat and test apk
+		removeJniChat $SERVER
+
+		# Install jni chat and test apk on server device
+		installJniChatTest $SERVER
+	    local serviceInstall=$installStatus
+	    
+		# Remove old raw client and test apk on client device
+		removeJniChat $CLIENT
+
+		# Install jni chat and test apk on client device
+		installJniChatTest $CLIENT
+        local clientInstall=$installStatus
+        
+        if [ "$serviceInstall" -ne 0 ]; then
+            echo "Test result is fail"
+		    echo "Test result=Fail(Service chat APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Service chat APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		elif [ "$clientInstall" -ne 0 ]; then
+		    echo "Test result is fail"
+		    echo "Test result=Fail(Client chat APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Client chat APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		else
+		
+		    # Stop alljoyn processes on all devices
+		    stopAlljoynAllDevices
+
+		    # Launch daemon on both server and client for bundled daemon off build
+		    if [ "$bundledMode" -eq 0 ]; then
+
+			    local serverDaemonLog="${scriptName}_chatservice_daemonLog.txt"
+			    local clientDaemonLog="${scriptName}_chatclient_daemonLog.txt"
+	
+			    launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			    launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			    sleep 2
+		    fi
+
+		    local serviceLog="${scriptName}${SERVER}_jnichatservice.txt"
+		    local clientLog="${scriptName}${CLIENT}_jnichatclient.txt"
+
+
+		    # Launch service chatTest on server device
+		    launchJniChatServiceTest $SERVER $serviceLog
+
+		    # Launch client chatClientTest on client device
+		    launchJniChatClientTest $CLIENT $clientLog
+
+		    # Wait 60 seconds so test complete
+		    sleep 60
+
+		    # Check service test result
+		    checkJunitResult $serviceLog
+
+		    local serviceTestResult=$junitPass
+
+		    # Check service test result
+		    checkJunitResult $clientLog
+
+		    local clientTestResult=$junitPass
+
+		    # Init test result to Fail
+		    testResults[totalTests]=6
+
+		    if [ "$serviceTestResult" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			    testResults[totalTests]=0
+			    echo "Test pass"
+			    echo "Test result=Pass" >> $testResultFile
+			    echo "<p>Test result=Pass</p>" >> $testResultHtml
+		    elif [ "$serviceTestResult" -ne 1 ]; then
+		        local serviceError="${scriptName}${SERVER}_jnichatservice_error.txt"
+		        mv $serviceLog $serviceError
+			    echo "Test fail"
+			    echo "Test result=Fail(Service log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$serviceError\"">Service log</a>)</p>" >> $testResultHtml
+			else
+			    local clientError="${scriptName}${CLIENT}_jnichatclient_error.txt"
+		        mv $clientLog $clientError
+			    echo "Test fail"
+			    echo "Test result=Fail(Client log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$clientError\"">Client log</a>)</p>" >> $testResultHtml
+		    fi
+        fi
+        
+		# Remove chat and test apk from server device
+		removeJniChat $SERVER
+	
+		# Remove chat and test apk from client device
+		removeJniChat $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runChatInWifi
+# Description: 
+#	Two devices chat test under wifi:  
+#	d1 starts and join new channel, d2 joins channel and send 1st message, d1 sends 2nd message
+# Parameter: none
+# Return: none
+function runChatInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType java chat test under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType java chat test under wifi)..."
+	echo "Test case $testCase($binaryType java chat test under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(SCLPTP-A042-$binaryType java chat under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase(SCLPTP-A042-$binaryType java chat under wifi)</p>">> $testResultHtml
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+	    # Remove old chat and test apk
+		removeChat $SERVER
+
+		# Install chat apk and service test apk on server device
+		installChatService $SERVER
+	    local serviceInstall=$installStatus
+	    
+		# Remove old raw client and test apk on client device
+		removeChat $CLIENT
+
+		# Install client apk and client test apk
+		installChatClient $CLIENT
+        local clientInstall=$installStatus
+        
+        if [ "$serviceInstall" -ne 0 ]; then
+            echo "Test result is fail"
+		    echo "Test result=Fail(Service chat APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Service chat APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		elif [ "$clientInstall" -ne 0 ]; then
+		    echo "Test result is fail"
+		    echo "Test result=Fail(Client chat APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Client chat APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		else
+		    # Stop alljoyn processes on all devices
+		    stopAlljoynAllDevices
+
+		    # Launch daemon on both server and client for bundled daemon off build
+		    if [ "$bundledMode" -eq 0 ]; then
+
+			    local serverDaemonLog="${scriptName}_chatservice_daemonLog.txt"
+			    local clientDaemonLog="${scriptName}_chatclient_daemonLog.txt"
+	
+			    launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			    launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			    sleep 2
+		    fi
+
+		    local serviceLog="${scriptName}${SERVER}_chatservice.txt"
+		    local clientLog="${scriptName}${CLIENT}_chatclient.txt"
+
+		    # Launch service chatTest on server device
+		    launchChatServiceTest $SERVER $serviceLog
+
+		    # Launch client chatClientTest on client device
+		    launchChatClientTest $CLIENT $clientLog
+
+		    # Wait 240 seconds so both tests are complete
+		    sleep 240
+
+		    # Check service test result
+		    checkJunitResult $serviceLog
+
+		    local serviceTestResult=$junitPass
+
+		    # Check service test result
+		    checkJunitResult $clientLog
+
+		    local clientTestResult=$junitPass
+
+		    # Init test result to Fail
+		    testResults[totalTests]=6
+
+		    if [ "$serviceTestResult" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			    testResults[totalTests]=0
+			    echo "Test pass"
+			    echo "Test result=Pass" >> $testResultFile
+			    echo "<p>Test result=Pass</p>" >> $testResultHtml
+			elif [ "$serviceTestResult" -ne 1 ]; then
+		        local serviceError="${scriptName}${SERVER}_chatservice_error.txt"
+		        mv $serviceLog $serviceError
+			    echo "Test fail"
+			    echo "Test result=Fail(Service log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$serviceError\"">Service log</a>)</p>" >> $testResultHtml
+			else
+			    local clientError="${scriptName}${CLIENT}_chatclient_error.txt"
+		        mv $clientLog $clientError
+			    echo "Test fail"
+			    echo "Test result=Fail(Client log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$clientError\"">Client log</a>)</p>" >> $testResultHtml
+		    fi
+        fi
+        
+		# Remove chat and test apk from server device
+		removeChat $SERVER
+	
+		# Remove chat and test apk from client device
+		removeChat $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runSessionlessInWifi
+# Description: 
+#	Two devices sessionless test under wifi:  
+#	d1 sessionless service, d2 sessionless client, d2 sends 2nd message
+# Parameter: none
+# Return: none
+function runSessionlessInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType sessionless test under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType sessionless test under wifi)..."
+	echo "Test case $testCase($binaryType sessionless test under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(SCLPTP-A047-$binaryType sessionless under wifi)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-A047-$binaryType sessionless under wifi)</p>">> $testResultHtml
+    
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+		# Remove old sessionless service and test apk
+		removeSlService $SERVER
+
+		# Install chat apk and service test apk on server device
+		installSlService $SERVER
+	    local serviceInstall=$installStatus
+	
+		# Remove old raw client and test apk on client device
+		removeSlClient $CLIENT
+
+		# Install client apk and client test apk
+		installSlClient $CLIENT
+        local clientInstall=$installStatus
+        
+        if [ "$serviceInstall" -ne 0 ]; then
+            echo "Test result is fail"
+		    echo "Test result=Fail(Service APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Service APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		elif [ "$clientInstall" -ne 0 ]; then
+		    echo "Test result is fail"
+		    echo "Test result=Fail(Client APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Client APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		else
+		    # Stop alljoyn processes on all devices
+		    stopAlljoynAllDevices
+	
+		    # Launch daemon on both server and client for bundled daemon off build
+		    if [ "$bundledMode" -eq 0 ]; then
+
+			    local serverDaemonLog="${scriptName}_slservice_daemonLog.txt"
+			    local clientDaemonLog="${scriptName}_slclient_daemonLog.txt"
+	
+			    launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			    launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			    sleep 2
+		    fi
+
+		    local serviceLog="${scriptName}${SERVER}_slservice.txt"
+		    local clientLog="${scriptName}${CLIENT}_slclient.txt"
+
+		    # Launch service chatTest on server device
+		    launchSlServiceTest $SERVER $serviceLog
+
+		    # Launch client chatClientTest on client device
+		    launchSlClientTest $CLIENT $clientLog
+
+		    # Wait 70 seconds so both tests are complete
+		    sleep 70
+
+		    # Check service test result
+		    checkJunitResult $serviceLog
+
+		    local serviceTestResult=$junitPass
+
+		    # Check service test result
+		    checkJunitResult $clientLog
+
+		    local clientTestResult=$junitPass
+
+		    # Init test result to Fail
+		    testResults[totalTests]=6
+
+		    if [ "$serviceTestResult" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			    testResults[totalTests]=0
+			    echo "Test pass"
+			    echo "Test result=Pass" >> $testResultFile
+			    echo "<p>Test result=Pass</p>" >> $testResultHtml
+		    elif [ "$serviceTestResult" -ne 1 ]; then
+		        local serviceError="${scriptName}${SERVER}_slservice_error.txt"
+		        mv $serviceLog $serviceError
+			    echo "Test fail"
+			    echo "Test result=Fail(Service log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$serviceError\"">Service log</a>)</p>" >> $testResultHtml
+			else
+			    local clientError="${scriptName}${CLIENT}_slclient_error.txt"
+		        mv $clientLog $clientError
+			    echo "Test fail"
+			    echo "Test result=Fail(Client log)" >> $testResultFile
+			    echo "<p>Test result=(<a class="error" href="\"$clientError\"">Client log</a>)</p>" >> $testResultHtml
+		    fi
+
+        fi
+        
+		# Remove chat and test apk from server device
+		removeSlService $SERVER
+	
+		# Remove chat and test apk from client device
+		removeSlClient $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runPropertyInWifi
+# Description: 
+#	Two devices property service/client test under wifi:  
+#	d1 starts property service, set color to green;
+#   d2 starts property client, hit get property button. Verify d2 gets green.
+#	d2 change text size to large and hit set property button.
+#	d1 verify that text size is large 
+# Parameter: none
+# Return: none
+function runPropertyInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType property service/client test under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType property service/client test under wifi)..."
+	echo "Test case $testCase($binaryType property service/client test under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase(SCLPTP-A081-$binaryType property service/client under wifi)">> $testResultFile
+    echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase(SCLPTP-A081-$binaryType property service/client under wifi)</p>">> $testResultHtml
+	
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+
+		# Launch daemon on both server and client for bundled daemon off build
+		if [ "$bundledMode" -eq 0 ]; then
+
+			local serverDaemonLog="${scriptName}_propservice_daemonLog.txt"
+			local clientDaemonLog="${scriptName}_propclient_daemonLog.txt"
+	
+			launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+
+			sleep 2
+		fi
+
+		local serviceLog="${scriptName}${SERVER}_propservice.txt"
+		local clientLog="${scriptName}${CLIENT}_propclient.txt"
+
+		# Remove old property service and test apk
+		removePropertyService $SERVER
+
+		# Install property service and test apk on server device
+		installPropertyService $SERVER
+	
+		# Remove old property client and test apk on client device
+		removePropertyClient $CLIENT
+
+		# Install property apk and client test apk
+		installPropertyClient $CLIENT
+
+		# Launch property service test on server device
+		launchPropertyServiceTest $SERVER $serviceLog
+
+		# Launch property client test on client device
+		launchPropertyClientTest $CLIENT $clientLog
+
+		# Wait 120 seconds so both tests are complete
+		sleep 120
+
+		# Check service test result
+		checkJunitResult $serviceLog
+
+		local serviceTestResult=$junitPass
+
+		# Check service test result
+		checkJunitResult $clientLog
+
+		local clientTestResult=$junitPass
+
+		# Init test result to Fail
+		testResults[totalTests]=6
+
+		if [ "$serviceTestResult" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			testResults[totalTests]=0
+			echo "Test pass"
+			echo "Test result=Pass" >> $testResultFile
+		elif [ "$serviceTestResult" -ne 1 ]; then
+		    local serviceError="${scriptName}${SERVER}_propservice_error.txt"
+		    mv $serviceLog $serviceError
+			echo "Test fail"
+			echo "Test result=Fail(Service log)" >> $testResultFile
+			echo "<p>Test result=(<a class="error" href="\"$serviceError\"">Service log</a>)</p>" >> $testResultHtml
+		else
+			local clientError="${scriptName}${CLIENT}_propclient_error.txt"
+		    mv $clientLog $clientError
+			echo "Test fail"
+			echo "Test result=Fail(Client log)" >> $testResultFile
+			echo "<p>Test result=(<a class="error" href="\"$clientError\"">Client log</a>)</p>" >> $testResultHtml
+		fi
+
+		# Remove property service and test apk from server device
+		removePropertyService $SERVER
+	
+		# Remove property client and test apk from client device
+		removePropertyClient $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+
+}
+
+# Function name: runAboutCertification
+# Description: 
+#	Two devices about certification suite under wifi:  
+#	d1 starts AboutService sample
+#   d2 starts About certification app to check announcement and about data
+# Parameter: none
+# Return: none
+function runAboutCertification() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase(About certification)..." >> $testErrorLog
+	echo "Test case $testCase(About certification)..."
+	echo "Test case $testCase(About certification)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(About certification)">> $testResultFile
+    echo "<p>Test case=$testCase(About certification)</p>">> $testResultHtml
+    
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+		echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+
+		testResults[totalTests]=5
+	else
+
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+
+		# Launch daemon on both server and client for bundled daemon off build
+		if [ "$bundledMode" -eq 0 ]; then
+
+			local serverDaemonLog="${scriptName}_aboutservice_daemonLog.txt"
+			local clientDaemonLog="${scriptName}_aboutcert_daemonLog.txt"
+	
+			launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+			
+			sleep 2
+		fi
+
+		local serviceLog="${scriptName}${SERVER}_aboutservice.txt"
+		local clientLog="${scriptName}${CLIENT}_aboutcert.txt"
+		
+		# Launch simple service on service device
+		launchAboutService $SERVER $serviceLog
+
+		# Launch about certification test on client device
+		launchAboutCertSuite $CLIENT $clientLog
+
+		# Wait 120 seconds so 11 tests complete
+		sleep 120
+
+		# Check AboutService process still run on server device
+		checkProcessExist "AboutService" $SERVER 1
+		local serviceLive=$processExist
+
+		# Check client passed junit
+		checkJunitResult $clientLog
+		local clientTestResult=$junitPass
+		
+		# Init test result to Fail
+		testResults[totalTests]=6
+
+		if [ "$serviceLive" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			testResults[totalTests]=0
+			echo "Test pass"
+			echo "Test result=Pass" >> $testResultFile
+			echo "<p>Test result=Pass</p>" >> $testResultHtml
+		elif [ "$serviceLive" -ne 1 ]; then
+			echo "Test fail"
+			echo "Test result=Fail(AboutService crash)" >> $testResultFile
+			echo "<p>Test result=Fail(AboutService crash)</p>" >> $testResultHtml
+		else
+		    local clientError="${scriptName}${CLIENT}_aboutcert_error.txt"
+		    mv $clientLog $clientError
+			echo "Test fail"
+			echo "Test result=Fail(check log)" >> $testResultFile
+			echo "Test result=Fail(<a class="error" href="\"$clientError\"">log</a>)" >> $testResultHtml
+		fi
+
+		# Stop alljoyn processes on all devices
+		stopAlljoynAllDevices
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runJniSimpleInWifi
+# Description: 
+#	Two devices jni simple service/client test under wifi:  
+#	d1 starts jni simple service. d2 starts jni simple client
+#   d2 sends a message, d1 check message received
+# Parameter: none
+# Return: none
+function runJniSimpleInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType jni simple service/client under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType jni simple service/client under wifi)..."
+	echo "Test case $testCase($binaryType jni simple service/client under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(SCLPTP-A039-$binaryType jni simple service/client under wifi)">> $testResultFile
+    echo "<p>Test case=$testCase(SCLPTP-A039-$binaryType jni simple service/client under wifi)</p>">> $testResultHtml
+    
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+        
+		testResults[totalTests]=5
+	else
+		# Remove old jni simple service apk
+		removeJniSimpleService $SERVER
+
+		# Install jni simple service and test apks on service device
+		installJniSimpleService $SERVER
+	    local serviceInstall=$installStatus
+	    
+		# Remove old jni simple client and test apk on client device
+		removeJniSimpleClient $CLIENT
+
+		# Install jni simple client and test apks
+		installJniSimpleClient $CLIENT
+        local clientInstall=$installStatus
+        
+        if [ "$serviceInstall" -ne 0 ]; then
+            echo "Test result is fail"
+		    echo "Test result=Fail(Service APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Service APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		elif [ "$clientInstall" -ne 0 ]; then
+		    echo "Test result is fail"
+		    echo "Test result=Fail(Client APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Client APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		else
+		
+		    # Stop alljoyn processes on all devices
+		    stopAlljoynAllDevices
+
+		    # Launch daemon on both server and client for bundled daemon off build
+		    if [ "$bundledMode" -eq 0 ]; then
+            
+			    local serverDaemonLog="${scriptName}_jni_simpleservice_daemonLog.txt"
+			    local clientDaemonLog="${scriptName}_jni_simpleclient_daemonLog.txt"
+	
+			    launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			    launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+			
+			    sleep 2
+		    fi
+
+		    local serviceLog="${scriptName}${SERVER}_jni_simpleservice.txt"
+		    local clientLog="${scriptName}${CLIENT}_jni_simpleclient.txt"
+
+
+		    # Launch simple service on service device
+		    launchJniSimpleServiceTest $SERVER $serviceLog
+
+		    # Launch simple client test on client device
+		    launchJniSimpleClientTest $CLIENT $clientLog
+
+		    # Wait 60 seconds so service receive message
+		    sleep 60
+
+		    # Check service test result:advertise/receive client msg
+		    checkJunitResult $serviceLog
+		    local serviceTestResult=$junitPass
+
+		    # Check client test result:discover/join/ping
+		    checkJunitResult $clientLog
+            local clientTestResult=$junitPass
+		
+		    # Init test result to Fail
+		    testResults[totalTests]=6
+
+		    if [ "$serviceTestResult" -eq 1 -a "$clientTestResult" -eq 1 ]; then
+			    testResults[totalTests]=0
+			    echo "Test pass"
+			    echo "Test result=Pass" >> $testResultFile
+			    echo "<p>Test result=Pass</p>" >> $testResultHtml
+		    elif [ "$serviceTestResult" -ne 1 ]; then
+    		    local serviceError="${scriptName}${SERVER}_jni_simpleservice_error.txt"
+    		    mv $serviceLog $serviceError
+			    echo "Test fail"
+			    echo "Test result=Fail(service)" >> $testResultFile
+			    echo "<p>Test result=Fail(<a class="error" href="\$serviceError\"">service</a>)</p>" >> $testResultHtml
+		    else
+		        local clientError="${scriptName}${CLIENT}_jni_simpleclient_error.txt"
+		        mv $clientLog $clientError
+			    echo "Test fail"
+			    echo "Test result=Fail(client)" >> $testResultFile
+			    echo "Test result=Fail(<a class="error" href="\$clientError\"">client</a>)" >> $testResultHtml
+		    fi
+
+        fi
+		# Remove simple service apk from service device
+		removeSimpleService $SERVER
+	
+		# Remove simple client and test apk from client device
+		removeSimpleClient $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: runSimpleInWifi
+# Description: 
+#	Two devices simple service/client test under wifi:  
+#	d1 starts simple service. d2 starts simple client, send 1st and 2nd message, wiat for reply back
+# Parameter: none
+# Return: none
+function runSimpleInWifi() {
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase($binaryType simple service/client under wifi)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType simple service/client under wifi)..."
+	echo "Test case $testCase($binaryType simple service/client under wifi)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(SCLPTP-A082-$binaryType simple service/client under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase(SCLPTP-A082-$binaryType simple service/client under wifi)</p>">> $testResultHtml
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+		# Remove old simple service apk
+		removeSimpleService $SERVER
+
+		# Install simple service apk on service device
+		installSimpleService $SERVER
+	    local serviceInstall=$installStatus
+	    
+		# Remove old simple client and test apk on client device
+		removeSimpleClient $CLIENT
+
+		# Install simple client test apk
+		installSimpleClient $CLIENT
+        local clientInstall=$installStatus
+        
+        if [ "$serviceInstall" -ne 0 ]; then
+            echo "Test result is fail"
+		    echo "Test result=Fail(Service APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Service APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		elif [ "$clientInstall" -ne 0 ]; then
+		    echo "Test result is fail"
+		    echo "Test result=Fail(Client APK not exist)" >> $testResultFile
+		    echo "<p>Test result=Fail(Client APK not exist)</p>" >> $testResultHtml
+		    testResults[totalTests]=6
+		else
+		
+		    # Stop alljoyn processes on all devices
+		    stopAlljoynAllDevices
+
+		    # Launch daemon on both server and client for bundled daemon off build
+		    if [ "$bundledMode" -eq 0 ]; then
+
+			    local serverDaemonLog="${scriptName}_simpleservice_daemonLog.txt"
+			    local clientDaemonLog="${scriptName}_simpleclient_daemonLog.txt"
+	
+			    launchProcess "alljoyn-daemon" $SERVER $serverDaemonLog $SUMODE "" 0
+
+			    launchProcess "alljoyn-daemon" $CLIENT $clientDaemonLog $SUMODE "" 0
+			
+			    sleep 2
+		    fi
+
+		    local clientLog="${scriptName}${CLIENT}_simpleclient.txt"
+
+		    # Launch simple service on service device
+		    launchSimpleService $SERVER $serviceLog
+
+		    # Launch simple client test on client device
+		    launchSimpleClientTest $CLIENT $clientLog
+
+		    # Wait 90 seconds so client test is complete
+		    sleep 90
+
+		    # Check service test result
+		    checkJunitResult $clientLog
+
+		    local clientTestResult=$junitPass
+
+		    # Init test result to Fail
+		    testResults[totalTests]=6
+
+		    if [ "$clientTestResult" -eq 1 ]; then
+			    testResults[totalTests]=0
+			    echo "Test pass"
+			    echo "Test result=Pass" >> $testResultFile
+			    echo "<p>Test result=Pass</p>" >> $testResultHtml
+		    else
+		        local clientError="${scriptName}${CLIENT}_simpleclient_error.txt"
+		        mv $clientLog $clientError
+			    echo "Test fail"
+			    echo "Test result=Fail" >> $testResultFile
+			    echo "<p>Test result=<a class="error" href="\"$clientError\"">Fail</a></p>" >> $testResultHtml
+		    fi
+        
+        fi
+        
+		# Remove simple service apk from service device
+		removeSimpleService $SERVER
+	
+		# Remove simple client and test apk from client device
+		removeSimpleClient $CLIENT
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: pickUTDevice
+# Description: pick one device to run unit test
+# Parameter: none
+# Return: 
+#	utDevice is set to device id
+function pickUTDevice() {
+	local index=0
+	utDevice=''
+
+	for phone in $devices; do
+		# 1st device is chosen for unit test
+        if [ "$index" -eq 0 ]; then
+            utDevice=$phone
+            echo "Unit test is on $phone "  >> $testDetailLog
+			break;        
+		fi   
+    done
+
+}
+
+# Function name: runUT
+# Description: run single unit test on device
+# Parameter: 
+#	program - name of unit test
+#	passkey - keyword in output log to pass test
+#	home	- Need to set HOME or not: 0/No, 1/Yes
+# Return: none
+function runUT() {
+	local program=$1
+	local passkey=$2
+	local home=$3
+	local timeOut=150
+	local testCase=$(($totalTests + 1))
+
+	echo "Test case $testCase($program)..." >> $testErrorLog
+	echo "Test case $testCase($program)..."
+	echo "Test case $testCase($program)..." >> $testDetailLog
+	echo >> $testResultFile
+	
+	if [ "$program" == "cmtest" ]; then
+		echo "Test case=$testCase(SCLPTP-A008-cmtest)">> $testResultFile
+		# cmtest takes long
+		timeOut=2100
+	elif [ "$program" == "ajtest" ]; then
+		echo "Test case=$testCase(SCLPTP-A007-ajtest)">> $testResultFile
+	else
+		echo "Test case=$testCase($program)">> $testResultFile
+	fi
+
+	# Init test result to fail
+	testResults[totalTests]=6
+
+	if [ -n "$utDevice" ]; then
+		local logFile="${program}_log.txt"
+
+		echo "Launch HOME=$dest $program with HOME set" >> $testDetailLog
+		launchProcess "$program" $utDevice $logFile $UTHOME "" $timeOut
+
+		# output file must exist to pass unit test
+		if [ -e "$logFile" ]; then
+			# Output file end may contain bundled daemon join info:
+			#	BundledDaemon::Join
+			# PassKey may contain multiple word pattern
+			# For example, remarshal release version prints MethodCall status:0x0000
+			# Debug version prints MethodCall status:ER_OK
+			utPass=`egrep "$passkey" $logFile`	
+			if [ -n "$utPass" ]; then
+				echo "Test result is Pass"
+				echo "Test Pass" >> $testDetailLog
+				echo "Test result=Pass" >> $testResultFile
+				testResults[totalTests]=0
+			else
+				echo "Test result is Fail($passkey miss from output)"
+				echo "$passkey not exist in output file, unit test fail!"  >> $testDetailLog
+				echo "Test result=Fail" >> $testResultFile
+			fi
+		else
+			echo "Test result is Fail(no output)"
+			echo "Output file $logFile not exist, unit test fail!"  >> $testDetailLog
+			echo "Test result=Fail" >> $testResultFile
+		fi
+	else
+		echo "Test result is Fail"
+		echo "Device not set, unit test fail!"  >> $testDetailLog
+		echo "Test result=Fail" >> $testResultFile
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+# Function name: pushNgns
+# Description: 
+#	copy ngns binary to android device if exist
+# Parameter: 
+#	deviceId - android device that runs ngns
+# Return: 
+#	ngnsReady is set to 0 if binary exist; 1 otherwise
+function pushNgns() {
+	local deviceId=$1
+
+	$verbose && echo "Does ngns unit test ${NGNS_BIN_NAME} exist?"
+	$verbose && echo "Does ngns unit test ${NGNS_BIN_NAME} exist?" >> $testDetailLog
+	
+	ngnsReady=1
+
+	if [ -d "${TOOLS_REL_DIR}" -a -x "${NGNS_REL_BIN}" ]; then
+		echo "NGNS unit test ${NGNS_REL_BIN} exist"
+
+		# timeout to prevent adb push hang sometimes
+		timeout 20 $ADB -s $deviceId push ${NGNS_REL_BIN} $dest 2>$testDetailLog 1>&2
+		local pushStatus=$?
+
+		if [ "$pushStatus" -eq 0 ]; then
+			ngnsReady=0
+		else
+			echo "adb push for ${NGNS_REL_BIN} fails!"
+		fi		
+	elif [ ! -d "${TOOLS_REL_DIR}" ]; then
+		echo "Test tools release directory ${TOOLS_REL_DIR} NOT exist!"
+		echo "Test tools release directory ${TOOLS_REL_DIR} NOT exist!" >> $testErrorLog
+	else
+		echo "NGNS binary ${NGNS_REL_BIN} NOT exist!"
+		echo "NGNS binary ${NGNS_REL_BIN} NOT exist!" >> $testErrorLog
+	fi
+}
+
+# Function name: runNgnsUnit
+# Description: run ngns unit test on one device
+# Parameter: none
+# Return: none
+function runNgnsUnit() {
+	local deviceId=$1
+
+	$verbose && echo "NGNS test on $deviceId"
+	$verbose && echo "NGNS test on $deviceId" >> $testDetailLog
+
+	local testCase=$(($totalTests + 1))
+
+	echo "Test Case $testCase(ngns ${NGNS_BIN_NAME})" >> $testErrorLog
+	echo "Test case $testCase(ngns ${NGNS_BIN_NAME})"
+	echo "Test case $testCase(ngns ${NGNS_BIN_NAME})" >> $testDetailLog
+	echo >> $testResultFile
+	echo "<br>" >> $testResultHtml
+	echo "Test case=$testCase(ngns ${NGNS_BIN_NAME})">> $testResultFile
+	echo "<p>Test case=$testCase(ngns ${NGNS_BIN_NAME})</p>">> $testResultHtml
+
+	# For pre-installed daemon binary, need to launch daemon
+	local daemonLog="daemon_ngns.log"
+	launchProcess "alljoyn-daemon" $deviceId $daemonLog $SUMODE "" 0
+    
+    # sleep 1 second to make sure daemon is launched
+    sleep 1
+	
+	# Launch ${NGNS_BIN_NAME}
+	local ngnsLog="${scriptName}_ngns.log"
+	
+	# 15 seconds timeout should be enough to complete test
+	launchProcess "${NGNS_BIN_NAME}" $deviceId $ngnsLog $SUMODE "" 30
+
+	# Init test result to Fail
+	testResults[totalTests]=6
+	
+	# Check ajr2rtest complete successfully
+	local NGNS_PASS_KEY="${NGNS_BIN_NAME} exiting with status 0"
+
+	local ngnsPass=`grep "${NGNS_PASS_KEY}" $ngnsLog |wc -l`
+
+	$verbose && echo "ngns pass flag is $ngnsPass"
+
+	# Confirm alljoyn-daemon is still alive
+	checkProcessExist "alljoyn-daemon" $deviceId 1	
+	local daemonLive=$processExist
+
+	if [ "$ngnsPass" -eq 1 -a "$daemonLive" -eq 1 ]; then
+		echo "Test pass"
+		echo "Test result=Pass" >> $testResultFile
+		echo "<p>Test result=Pass</p>" >> $testResultHtml
+		testResults[totalTests]=0
+	elif [ "$ngnsPass" -ne 1 ]; then
+	    local ngnsError="${scriptName}_ngns_error.txt"
+	    mv $ngnsLog $ngnsError
+		echo "Test fail because ${NGNS_BIN_NAME} not exit 0"
+		echo "Test result=Fail(exit error)" >> $testResultFile
+		echo "<p>Test result=Fail(<a class="error" href="\"$ngnsError\"">exit error</a>)</p>" >> $testResultHtml
+	else
+		echo "Test fail because daemon count $daemonLive indicates crash"
+		echo "Test result=Fail(daemon crash)" >> $testResultFile
+		echo "<p>Test result=Fail(daemon crash)</p>" >> $testResultHtml
+	fi
+		
+	# Stop alljoyn processes on all devices
+	stopAlljoynAllDevices
+
+	totalTests=$(($totalTests + 1))
+	
+}
+
+# Function name: runUnitTestSuite
+# Description: run unit tests on one device
+# Parameter: none
+# Return: none
+function runUnitTestSuite() {
+
+	$verbose && echo "Unit test suite..."
+	$verbose && echo "Unit test suite..." >> $testDetailLog
+
+	# Pick one device to run unit test
+	pickUTDevice
+
+	# Stop existing alljoyn processes
+	stopAlljoynAllDevices
+
+	# Check NGNS binary ajr2rtest
+	pushNgns $utDevice
+
+	if [ "$ngnsReady" -eq 0 ]; then
+		runNgnsUnit $utDevice
+	else
+		echo "Skip NGNS unit test"
+	fi
+	
+	# For pre-installed daemon binary, need to launch daemon
+	#if [ "$bundledMode" -eq 0 ]; then
+	#	local daemonLog="daemon_ajtest.log"
+	#	launchProcess "alljoyn-daemon" $utDevice $daemonLog $SUMODE "" 0
+    
+    	# sleep 1 second to make sure daemon is launched
+    #	sleep 1
+	#fi
+	
+	# 1 - ajtest, keywords exiting with status 0 is required to pass test, set HOME
+	#runUT ajtest "exiting with status 0 " 1
+
+	# 2 - cmtest, keywords exiting with status 0 is required to pass test, set HOME
+	#runUT cmtest "exiting with status 0 " 1
+
+}
+
+# Function name: launchBundledService
+# Description: 
+#	launch bundled service app
+# Parameter: 
+#	deviceId - device id to launch
+# Return: none
+# Notes: none
+function launchBundledService() {
+	local deviceId=$1
+	$verbose && echo "Launch bundled service on $deviceId..."
+
+	$ADB -s $deviceId shell am start -a android.intent.action.MAIN -n org.alljoyn.bus.tests.bundledservice/.Service >> $testDetailLog &
+
+}
+
+# Function name: testBundleClient
+# Description: 
+#	Test bundled client app
+# Parameter:
+#	deviceId - device id to launch
+# Return: 
+#	bundlePass is set to 1 if bundled app pass; 0 otherwise
+# Notes: none
+function testBundleClient() {
+	local deviceId=$1
+	$verbose && echo "Check if bundled client pass $deviceId..."
+
+	bundlePass=0
+
+	# Launch client junit test
+	$ADB -s $deviceId shell am instrument -w org.alljoyn.bus.tests.clientbundle.test/android.test.InstrumentationTestRunner 2>$bundleLog 1>&2 &
+	
+	# Wait 35 seconds
+	sleep 35
+
+	# Check client test result
+	if [ -e "$bundleLog" -a -s "$bundleLog" ]; then
+		local passFlag=`grep '^OK (1 test)' $bundleLog|wc -w`
+		
+		if [ "$passFlag" -gt 0 ]; then
+			$verbose && echo "bundled client passed"
+			bundlePass=1
+		else
+			$verbose && echo "bundled client failed"
+		fi
+	fi
+	
+}
+
+# Function name: runTest11
+# Description: 
+#	Two devices(d1/d2): d1 run ServiceBundle, d2 run ClientBunde
+# Parameter: none
+# Return: none
+# Notes: none
+function runTest11() {
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase($binaryType bundled daemon on 2 devices)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType bundled daemon on 2 devices)..."
+	echo "Test case $testCase($binaryType bundled daemon on 2 devices)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType bundled daemon on 2 devices)">> $testResultFile
+
+	# Initialize test result to fail
+	testResults[totalTests]=6
+
+	# Setup one server and one client
+	local index=0
+	for phone in $devices; do
+		# one server
+        if [ "$index" -eq 0 ]; then
+            SERVER=$phone
+            $verbose && echo "Server is $phone "  >> $testDetailLog
+        # one client 
+        elif [ "$index" -eq 1 ]; then
+            CLIENT=$phone
+            $verbose && echo "Client is $phone " >> $testDetailLog
+		else
+			break;        
+		fi
+        index=`expr $index + 1`
+    done
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+
+		testResults[totalTests]=5
+	else
+
+	# launch bundled service app
+	launchBundledService $SERVER
+
+	# Wait 5 seconds for service to be ready
+	sleep 5
+
+	# Launch client and verify screen has correct result
+	testBundleClient $CLIENT
+
+	if [ "$bundlePass" -eq 1 ]; then
+		echo "Test result is Pass"
+		echo "Test Pass" >> $testDetailLog
+		echo "Test result=Pass" >> $testResultFile
+		testResults[totalTests]=0
+	else
+		echo "Test result is Fail"
+		echo "Test result is Fail(check $bundleLog for detail)"  >> $testDetailLog
+		echo "Test result=Fail" >> $testResultFile
+	fi
+	
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: decideResultByKey
+# Description: Check if last line of test log include pass key
+# Parameter:
+#	logName
+#	passKey
+# Return: 
+#	testResult will be set to 0 if pass; 6 if fail
+function decideResultByKey() {
+	local logName=$1
+	local passKey=$2
+
+	local actualTimes=0
+	local discoveryOk=0
+	local joinSessionOk=0
+
+	$verbose && echo "Deciding test result in $logName with $passKey..." >> $testDetailLog
+
+	clientComplete=6
+
+	if [ -n "$logName" -a -n "$passKey" ]; then
+		if [ -e "$logName" -a -s "$logName" ]; then
+			methodCallOk=`grep "$passKey" $logName|wc -l`
+			
+			# Is discover with tcp ok?
+			discoveryOk=`grep "FindAdvertisedName $actualTrans takes" $logName | wc -l`
+			# Is joinSession with tcp ok?
+			joinSessionOk=`grep "JoinSession $actualTrans takes" $logName | wc -l`
+
+			if [ "$methodCallOk" -eq 1 -a "$discoveryOk" -ge 1 -a "$joinSessionOk" -ge 1 ]; then
+				echo "Test result=Pass"
+				echo "Test result=Pass" >> $testResultFile
+				echo "<p>Test result=Pass</p>" >> $testResultHtml
+				clientComplete=0
+			else
+				# Test fail
+				local clientError="${scriptName}_bbclient_${totalTests}_error.txt"
+				mv $logName $clientError
+				
+				if [ "$discoveryOk" -lt 1 ]; then
+					echo "Test result=Fail (Discovery)"
+					echo "Test result=Fail (Discovery)" >> $testResultFile
+					echo "<p>Test result=Fail (<a class="error" href="\"$clientError\"">Discovery</a>)</p>" >> $testResultHtml
+				elif [ "$joinSessionOk" -lt 1 ]; then
+					echo "Test result=Fail (JoinSession)"
+					echo "Test result=Fail (JoinSession)" >> $testResultFile
+					echo "<p>Test result=Fail (<a class="error" href="\"$clientError\"">JoinSession</a>)</p>" >> $testResultHtml
+				else
+					echo "Test result=Fail (MethodCall)"
+					echo "Test result=Fail (MethodCall)" >> $testResultFile
+					echo "<p>Test result=Fail (<a class="error" href="\"$clientError\"">MethodCall</a>)</p>" >> $testResultHtml
+				fi
+			fi
+		else
+			echo "Empty or non-exist file $logName, test Fail!" >> $testDetailLog
+			echo "Test result=Fail(client log empty)" >> $testResultFile
+			echo "<p>Test result=Fail(client log empty)</p>" >> $testResultHtml
+		fi
+	else
+		echo "File $logName or key $passKey is null, test Fail!" >> $testDetailLog
+		echo "Test result=Fail(key empty)" >> $testResultFile
+		echo "<p>Test result=Fail(key empty)</p>" >> $testResultHtml
+	fi
+}
+
+# Function name: runTwoDaemonsTest
+# Description: run two bundled daemons test on same device
+# Parameter: none
+# Return: 
+#	testResult is 0 if pass; 6 fail
+function runTwoDaemonsTest() {
+	local testCase=$(($totalTests + 1))
+		
+	echo "Test Case $testCase($binaryType two bundled daemons test)..." >> $testErrorLog
+	echo "Test case $testCase($binaryType two bundled daemons test)..."
+	echo "Test case $testCase($binaryType two bundled daemons test)..." >> $testDetailLog
+	echo >> $testResultFile
+	echo "Test case=$testCase($binaryType two bundled daemons test)">> $testResultFile
+	
+	echo "<br>" >> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType two bundled daemons test)</p>">> $testResultHtml
+
+	# Initialize test result to fail
+	testResults[totalTests]=6
+
+	# If devices can NOT ping each other, test block
+	if [ "$devicesConnected" -eq 0 ]; then
+		echo "Test result is block"
+		echo "Test result=Block(Disconnected)" >> $testResultFile
+        echo "<p>Test result=Block(Disconnected)</p>" >> $testResultHtml
+		testResults[totalTests]=5
+	else
+
+	# Should use Wifi
+	setTestTransport "Wifi" 0x4
+
+	# Choose one device to run
+	pickUTDevice
+
+	local serviceLog="${scriptName}_bbservice_${totalTests}.log"
+	local clientLog="${scriptName}_bbclient_${totalTests}.log"
+
+	# Stop existing pre-installed daemon, bbservice and bbclient running
+	killProcess "alljoyn-daemon" $utDevice
+
+	killProcess "bbservice" $utDevice
+
+	killProcess "bbclient" $utDevice
+
+	# Launch bbservice with BUS_ADDRESS=""
+	launchProcess "bbservice" $utDevice $serviceLog $BDMODE "gov.d" 0
+
+	# Wait 5 seconds
+	sleep 5
+
+	# Confirm only one process is launched
+	checkProcessExist "bbservice" $utDevice 1	
+
+	# Exactly one bbservice process should be launched
+	if [ "$processExist" -eq 1 ]; then
+		# Launch bbclient with BUS_ADDRESS=""
+		launchProcess "bbclient" $utDevice $clientLog $BDMODE "gov.d" 0
+
+		# Wait 30 seconds for client to discover, joinSession, 100 calls complete
+		sleep 30
+
+		# Check bbclient log to decide Pass/Fail
+		decideResultByKey $clientLog "$BBCLIENTOK"
+
+		if [ "$clientComplete" -eq 0 ]; then
+			testResults[totalTests]=0
+		fi
+	else
+    	local serviceError="${scriptName}_bbservice_${totalTests}_error.txt"
+    	mv $serviceLog $serviceError
+		# Fail for bbservice
+		echo "Test result=Fail"
+		echo "Test result=Fail (bbservice)" >> $testResultFile
+		echo "<p>Test result=Fail (<a class="error" href="\"$serviceError\""bbservice</a>)</p>" >> $testResultHtml
+	fi
+
+	# Cleanup
+	killProcess "bbservice" $utDevice
+
+	killProcess "bbclient" $utDevice
+
+	sleep 2
+
+	fi
+
+	totalTests=$(($totalTests + 1))
+}
+
+# Function name: twoDevicesConnected
+# Description: whether two ips are connected to same access point
+# Parameter: 
+#	dev1 - device id of device1
+#	dev2 - device id of device2
+# Return: 
+#   isConnected is set to 1 if connected; 0 otherwise
+function twoDevicesConnected() {
+
+	local dev1=$1
+	local dev2=$2
+	$verbose && echo "Is $dev1 connected to $dev2 ?" >> $testDetailLog
+	
+	local ip1=""
+	local ip2=""
+	# Ping result from device1 to device2 and vice versa
+	local ip1_ip2="${scriptName}_ip1_ping_ip2"
+	local ip2_ip1="${scriptName}_ip2_ping_ip1"
+
+	isConnected=0
+
+	# Both ips should be valid
+	if [ -n "$dev1" -a -n "$dev2" -a -s "$ipTable" ]; then
+		ip1=`awk -F" " -v id1="$dev1" '$1 ~ id1 {print $2}' $ipTable`
+		ip2=`awk -F" " -v id1="$dev2" '$1 ~ id1 {print $2}' $ipTable`
+
+		$verbose && echo "$dev1 ip $ip1 $dev2 ip $ip2"
+		# Two devices should reach other from ping if connected to same ap
+		if [ -n "$ip1" -a -n "$ip2" ]; then
+			if [ "$timeOutSupported" -eq 1 ]; then
+				timeout 10 $ADB -s $dev1 shell ping $ip2 2>$ip1_ip2 1>&2
+				timeout 10 $ADB -s $dev2 shell ping $ip1 2>$ip2_ip1 1>&2
+			else
+				$ADB -s $dev1 shell ping $ip2 > $ip1_ip2 &
+				local pid1=$!
+	
+				sleep 1
+				$ADB -s $dev2 shell ping $ip1 > $ip2_ip1 &
+				local pid2=$!
+
+				sleep 10
+				
+				# Now kill both bg processes
+				kill -9 $pid1 >/dev/null
+
+				kill -9 $pid2 >/dev/null
+			fi
+
+			if [ -e "$ip1_ip2" -a -s "$ip1_ip2" -a -e "$ip2_ip1" -a -s "$ip2_ip1" ]; then
+				#Check if last 2 lines contain string "64 bytes from"
+				local ip2Reachable=`tail -3 $ip1_ip2 | grep "$pingReach"`
+				local ip1Reachable=`tail -3 $ip2_ip1 | grep "$pingReach"`
+
+				if [ -n "$ip2Reachable" -a -n "$ip1Reachable" ]; then
+					$verbose && echo "$dev1 can ping $dev2 "
+					isConnected=1	
+				else
+					$verbose && echo "$dev1 unable to ping $dev2 "
+				fi
+			fi
+		else
+			$verbose && echo "$dev1 or $dev2 has no IP!"
+		fi
+	fi
+
+	#rm -rf $ip1_ip2 $ip2_ip1
+}
+# Function name: checkDevicesAp
+# Description: Check if every device is connected to ap and ping to each other
+# Parameter: none
+# Return: 
+#	devicesConnected flag is set to 1 if ok; 0 otherwise
+function checkDevicesAp() {
+	devicesConnected=1
+	local phone=""
+	local prevDevs=""
+	local prevDev=""
+	local currentDev=""
+	local index=0
+
+	# Check device are connected with previous device
+	for phone in $devices; do
+		currentDev=$phone
+		$verbose && echo "Checking if $prevDevs and $currentDev connected..."
+		if [ -n "$prevDevs" -a -n "$currentDev" ]; then
+			for prevDev in $prevDevs; do
+				# Check if server and client connected
+				twoDevicesConnected $prevDev $currentDev
+
+				if [ "$isConnected" -eq 0 ]; then
+					$verbose && echo "$prevDev and $currentDev are NOT connected!"
+					devicesConnected=0
+
+					break;
+				else
+					$verbose && echo "$prevDev and $currentDev are connected"
+				fi
+			done
+		fi
+		if [ "$devicesConnected" -eq 0 ]; then
+			break;
+		fi
+		#prevDev=$phone
+		prevDevs+="$phone "
+    done
+	
+}
+
+# Function name: setWifi
+# Description: 
+#	setup regular wifi test: all devices connect to qrd-test
+# Parameter: none
+# Return: none
+function setWifi() {
+	$verbose && echo "Regular Wifi setup..."
+	$verbose && echo "Regular Wifi setup..." >> $testDetailLog
+	local phone=""
+
+	# All devices are connected to perf-test in screen room
+	for phone in $devices; do
+		echo "Connect wifi ap on each device..."	
+		#connectApOneDevice "perf-test" $phone
+	done
+
+	# Wait wifi scan is complete and connected to ap 
+	#sleep 120
+
+	# Create device id/ip table, so we can look up later
+	for phone in $devices; do
+        getIPAddr $phone
+
+		addDevIdIpPair $phone $myIp
+	done
+}
+
+# Function name: runWifiSuite
+# Description: run Wifi related tests include bundled daemon
+# Parameter: none
+# Return: none
+function runWifiSuite() {
+
+	$verbose && echo "Wifi setup..."
+	$verbose && echo "Wifi setup..." >> $testDetailLog
+
+	devicesConnected=1
+
+	# Screen to never timeout
+	screenON
+
+	# enable Wifi
+	setWifi
+
+	# Device need to ping each other
+	checkDevicesAp
+
+	setClientTimeout "Wifi"
+
+	# Assign server and client device
+	setupServerClient
+
+	#Run about certification test
+	installAboutService $SERVER
+
+    # Check if validation apk is installed on device
+    #checkValidationApk $CLIENT
+    
+	if [ "$aboutReady" -eq 0 -a "$validationInstalled" -eq 0 ]; then
+		#runAboutCertification
+		# Certification test is now on windows
+		echo "About certication test deprecated"
+	elif [ "$aboutReady" -ne 0 ]; then
+	    echo "Skip about certication test because AboutService is missing on $SERVER !" >> $testErrorLog
+	else
+	    echo "Skip about certication test because validation is missing on $CLIENT !" >> $testErrorLog
+	fi
+
+	# Run jni simple service and client test
+	runJniSimpleInWifi
+
+	# Jni chat between two devices
+	runJniChatInWifi
+
+	# Sessionless service and client test
+	runSessionlessInWifi
+
+	# Property service and client test
+	# AJTEST-451: test fail occasionally
+	# runPropertyInWifi
+
+	# Run java simple service and client test
+	runSimpleInWifi
+
+	# java java chat test between two devices
+	# FIXME: ASACORE-1975 uses DONE to replace ENTER in softkeyboard
+	#runChatInWifi
+
+	#bbService on one device, bbclients on other devices
+	#bbservice starts first, bbclients start right after bbservice
+	#Try stand-alone and bundled daemon  on each device
+	oneServiceMulClients "Wifi" 0x4 1
+
+	#bbService on one device, bbclients on other devices
+	#bbservice starts first,bbclient start after 10 min
+	#This test covers topology test2 
+	#runTest2 "Wifi" 0x4
+
+	#bbService on one device, bbclient on all devices, bbservice start first
+	#runTest3 "Wifi" 0x4
+
+	# bbclient on one device, bbservice on another device, bbclient start first
+	ngnsClientDiscovery "Wifi" 0x4
+	
+	#two bbservices on one device, two bbclients on another device, bbservice start 1st
+	#twoServicesTwoClients "Wifi" 0x4
+
+	#NOT STABLE: bbService on each device, bbclient on each device, bbservices start first
+	##runTest6 "Wifi" 0x4
+
+	#NOT STABLE: bbservice on each device, bbclient on one device, bbsig on another device
+	##runTest7 "Wifi" 0x4
+
+	#bundled daemon applition UI test
+	#runTest11
+
+	# two bundled daemons on same device
+	if [ "$bundledMode" -eq 1 ]; then
+		runTwoDaemonsTest
+	fi
+
+	# rawservice/rawclient test
+	runRawSocketTest "Wifi" 0x4
+
+	# Run security SRP test
+	runSecurityMethod "Wifi" 0x4 $SRPMODE
+
+	# Run security LOGON test
+	runSecurityMethod "Wifi" 0x4 $LOGONMODE
+
+	# Run bbsig test
+	runSignalTest "Wifi" 0x4 $REGMODE
+
+	# Run bbsig srp encryption test
+	runSignalTest "Wifi" 0x4 $SRPMODE
+
+	# Run bbsig logon encryption test
+	runSignalTest "Wifi" 0x4 $LOGONMODE
+
+}
+
+# Function name: setBinaryType
+# Description: 
+#	set binary type to debug
+# Parameter: 
+#	binaryType - Release or Debug
+# Return: none
+function setBinaryType() {
+	binaryType=$1
+	$verbose && echo "Set binary type to $binaryType"
+	$verbose && echo "Set binary type to $binaryType" >> $testDetailLog
+
+}
+
+# Function name: runDebugSuite
+# Description: 
+#	run Wifi debug build tests
+# Parameter: none
+# Return: none
+function runDebugSuite() {
+
+	$verbose && echo "Debug binary test..."
+	$verbose && echo "Debug binary test..." >> $testDetailLog
+
+	# Set binary type to debug to print in result
+	setBinaryType "Debug"
+
+	# Debug binary is very big(etc alljoyn-daemon 20M) 
+	# Always run last and remove extra files to save space before push
+	deleteAlljoynBinaries
+
+	# Push debug build binaries
+	pushDebugFiles
+
+	# Check debug binaries pushed correctly
+	checkDebugBinaries
+
+	devicesConnected=1
+
+	setClientTimeout "Wifi"
+
+	#bbService on one device, bbclients on other devices
+	#bbservice starts first, bbclients start right after bbservice
+	#only one test
+	oneServiceMulClients "Wifi" 0x4 1
+
+
+}
+
+#Main program
+
+#Clean up old log collection
+rm -rf *.html *.txt *.log
+
+#parse input argument
+parseCmdArgs $*
+
+SetUpGlobalVariables
+
+startTime=`date`
+echo "Test started on $startTime"
+echo "Setting up devices..." > $testDetailLog
+
+# Check if timeout command is setup
+checkTimeOut
+
+#Print test report summary common to all tests
+testDate=`eval date +%Y%m%d`
+echo "Test date=$testDate" > $testResultFile
+
+# Html format
+echo "<html> <style> a.info {color:green} a.error {color:red} </style>" > $testResultHtml
+echo "<body>" >> $testResultHtml
+echo "<h3>Test date=$testDate </h3>" >> $testResultHtml
+
+# Get core and tc commit id ref from sdk manifest.txt
+getCommitIds
+
+if [ "$scCommitId" != "${UNKNOWN_ID}" ]; then
+    createCommitIdUrl ${SC_COMMIT_TYPE} "$scCommitId"
+    echo "Android SDK commit id=$scCommitId" >> $testResultFile
+	echo "<p>Android SDK commit id=<a class="info" href="\"$commitUrl\"">$scCommitId</a></p>" >> $testResultHtml
+fi
+
+# Make sure at least two devices are connected
+checkDevices
+
+# Use release binaries first
+setBinaryType "Release"
+
+# Push required files
+pushFiles
+
+# Install Wifi setup apks
+installSetups
+
+# check required files exist on device
+checkFiles
+
+echo "Device number=$deviceCount" >> $testResultFile	
+echo "Test type=$testType" >> $testResultFile
+echo "......" >> $testResultFile
+
+# Html format
+echo "<p>Device number=$deviceCount</p>" >> $testResultHtml	
+echo "<p>Test type=$testType</p>" >> $testResultHtml
+echo "<p>......</p>" >> $testResultHtml
+
+totalTests=0
+
+# Run unit tests only on bundled on build
+if [ "$bundledMode" -eq 1 ]; then
+   runUnitTestSuite
+fi
+	
+# Only master or release branch
+checkBuildType $gbPath
+
+# Wifi test suite
+runWifiSuite
+
+# Debug build test only in bundled daemon off build
+if [ "$bundledMode" -ne 1 ]; then
+	runDebugSuite
+fi
+
+echo "......" >> $testResultFile
+echo "<p>......</p>" >> $testResultHtml
+
+passedTest=0
+failedTest=0
+blockedTest=0
+
+echo "Total tests=$totalTests" >> $testResultFile
+echo "<p>Total tests=$totalTests</p>" >> $testResultHtml
+
+for (( testCase=0; testCase<$totalTests; testCase++))
+do
+	currentResult=${testResults[testCase]}
+
+	if [ "$currentResult" -eq 0 ]; then
+		passedTest=`expr $passedTest + 1`
+	elif [ "$currentResult" -eq 6 ]; then
+		failedTest=`expr $failedTest + 1`
+	else
+		blockedTest=`expr $blockedTest + 1`
+	fi
+done
+
+passRate=$(($passedTest * 100 / $totalTests))
+
+echo "Test passed=$passedTest" >> $testResultFile
+echo "Test failed=$failedTest" >> $testResultFile
+echo "Test blocked=$blockedTest" >> $testResultFile
+echo "Pass rate=$passRate" >> $testResultFile
+
+echo "<p>Test passed=$passedTest</p>" >> $testResultHtml
+echo "<p>Test failed=$failedTest</p>" >> $testResultHtml
+echo "<p>Test blocked=$blockedTest</p>" >> $testResultHtml
+echo "<p>Pass rate=$passRate</p>" >> $testResultHtml
+echo "</body>" >> $testResultHtml
+echo "</html>" >> $testResultHtml
+
+echo "Test complete, check $testResultFile"
+echo "Test complete, check $testResultFile" >> $testDetailLog
+
+# Kill all background adb processes
+killall -I adb 
+
+# Save test summary into database
+saveResult
+
+endTime=`date`
+echo "Test ended on $endTime"
+
+if [ "$failedTest" -ge 1 ]; then
+	# At least one test case fail
+	cleanupAndExit 6
+elif [ "$blockedTest" -ge 1 ]; then
+	# At least one test blocked
+	cleanupAndExit 9
+else
+	cleanupAndExit 0
+fi
+

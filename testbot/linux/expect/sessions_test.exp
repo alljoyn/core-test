@@ -1,0 +1,1260 @@
+#!/usr/bin/expect -f
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+set binPath [lindex $argv 0]
+set testToRun [lindex $argv 1]
+
+set timeout 15
+
+set bindPort 10
+
+puts "sessions path $binPath \n"
+puts "Test to run $testToRun :1-p2p;2-mp \n"
+
+## procedure to generate random name 
+proc randomName {} {
+     ## Try and get a string unique to this host.
+     set str [info hostname]$::tcl_platform(machine)$::tcl_platform(os)
+     binary scan $str h* hex
+
+     set    rName gov[format %2.2x [clock seconds]]
+     append rName .a[string range [format %2.2x [clock clicks]] 0 3]
+     append rName .b[string range [format %2.2x [clock clicks]] 2 5]
+     append rName .c[string range [format %2.2x [clock clicks]] 4 end]
+     append rName .d[string range $hex 0 11]
+
+     puts "Random id is $rName \n"
+     
+     return $rName
+}
+
+## procedure to close sessions and exit
+## parameters:
+##  exitVal - exit value
+##  msg     - exit message
+##  dev1    - device1 sessions spawn_id
+##  dev2    - device2 sessions spawn_id
+##  dev3    - device3 sessions spawn_id
+##  dev4    - optional device4 sessions spawn_id
+##  dev5    - optional device5 sessions spawn_id
+proc closeSessionsAndExit {exitVal msg dev1 dev2 dev3 {dev4 "optional"} {dev5 "optional"}} {
+    puts "$msg"
+    
+	## 1st sessions advertise
+	close $dev1
+	close $dev2
+	close $dev3
+	
+	if { $dev4 ne "optional" } {
+	    close $dev4
+	}
+	
+	if { $dev5 ne "optional" } {
+	    close $dev5
+	}
+	
+	exit $exitVal
+}
+
+## procedure to launch sessions; result spawn_id if OK, -1 otherwise
+proc launchSession {programName path} {
+	## 1st sessions advertise
+	set program $path/$programName
+	spawn $program
+	puts "$programName spawn id: $spawn_id \n"	
+	return $spawn_id
+}
+
+## procedure to advertise; result 0 if OK, 1 otherwise
+proc advertise {spawnId wkname} {
+	set spawn_id $spawnId
+	puts "Advertise on spawn id: $spawnId \n"
+
+	##expect ""
+	send "requestname $wkname\r"
+	expect {
+		"NameOwnerChanged: name=$wkname" {
+			puts "requestName OK\n"
+			send "advertise $wkname\r"
+			return 0
+		}
+	}
+	
+	return 1
+}
+
+## procedure to attempt discovery; result 0 if OK, 1 otherwise
+proc discovery {spawnId wkname} {
+    set spawn_id $spawnId
+	puts "Discover on spawn id: $spawn_id \n"
+
+	##expect ""
+	send "find $wkname\r"
+	expect { 
+		"FoundAdvertisedName name=$wkname" {
+			puts "discoveryOK\n"
+			return 0
+		}
+	}
+
+	## something wrong
+	return 1
+}
+
+## procedure to bind session port; result 0 if OK, 1 otherwise
+proc bind {spawnId port isMp} {
+    set spawn_id $spawnId
+	puts "Bind on session with port: $spawn_id $port \n"
+	
+	send "bind $port $isMp\r"
+	return 0
+}
+
+## procedure to unbind session port; result 0 if OK, 1 otherwise
+proc unbind {spawnId port} {
+    set spawn_id $spawnId
+	puts "Unbind on session with port: $spawn_id $port \n"
+	
+	send "unbind $port\r"
+	return 0
+}
+
+## procedure to joinSession; result sessionId if OK, 0 otherwise
+proc join {spawnId advName port isMp} {
+    set spawn_id $spawnId
+	puts "Join on spawn id: $spawn_id \n"
+
+	send "join $advName $port $isMp\r"
+	expect {
+		    -re "JoinSession.*succeeded with id = (\[0-9\]*)" {
+		    set sessionId $expect_out(1,string)
+			puts "joinSession OK $sessionId \n"
+			return $sessionId
+		}
+		    -re "JoinSession.*failed with.*" {
+			puts "joinSession failed \n"
+			return 0
+		}
+	}
+	puts "joinSession fail\n"
+
+	## joinSession fail
+	return 0
+}
+
+## procedure to verify member added signal; result 0 if OK, -1 otherwise
+proc checkMemberAdded {spawnId sessionId} {
+    set spawn_id $spawnId
+	puts "Check member added from : $spawn_id $sessionId \n"
+
+	expect {
+		"*was added to session $sessionId" {
+			puts "Member added signal OK\n"
+			return 0
+		}
+	}
+	puts "Member added signal not received\n"
+
+	## SL fail
+	return -1
+}
+## procedure to send compressed chat message; result 0 if OK, -1 otherwise
+proc chat {spawnId sessionId message} {
+    set spawn_id $spawnId
+	puts "Chat on session id: $sessionId \n"
+
+	send "chat $sessionId $message\r"
+	expect {
+		    "Sent chat signal" {
+
+			return 0
+		}
+	}
+	puts "chat fail on session id: $sessionId \n"
+
+	## chat fail
+	return -1
+}
+
+## procedure to verify session lost signal; result 0 if OK, -1 otherwise
+proc checkChatArrived {spawnId sessionId message} {
+    set spawn_id $spawnId
+	puts "Check chat message arrived at session: $spawn_id $sessionId \n"
+
+	expect {
+		"RX chat from*$sessionId*$message" {
+			puts "chat $message arrived\n"
+			return 0
+		}
+	}
+	puts "Chat $message missed on $spawnId \n"
+
+	## Chat fail
+	return -1
+}
+
+## procedure to leaveSession; result 0 if OK, 1 otherwise
+proc leaveSession {spawnId sessionId} {
+    set spawn_id $spawnId
+	puts "Leave on spawn id: $spawn_id $sessionId \n"
+
+	send "leave $sessionId\r"
+
+	## leaveSession pass
+	return 0
+}
+
+## procedure to verify member left signal; result 0 if OK, -1 otherwise
+proc checkMemberLeft {spawnId sessionId} {
+    set spawn_id $spawnId
+	puts "Check member left from : $spawn_id $sessionId \n"
+
+	expect {
+		"*was removed from session $sessionId" {
+			puts "Member left signal OK\n"
+			return 0
+		}
+	}
+	puts "Member left signal not received\n"
+
+	## SL fail
+	return -1
+}
+
+## procedure to verify session lost signal; result sessionId if OK, 1 otherwise
+proc checkSessionLost {spawnId sessionId} {
+    set spawn_id $spawnId
+	puts "Check session lost spawn id: $spawn_id $sessionId \n"
+
+	expect {
+		"Session $sessionId is lost" {
+			puts "Session lost signal OK\n"
+			return 0
+		}
+	}
+	puts "Session lost fail\n"
+
+	## SL fail
+	return 1
+}
+
+## point to point 3 sessions join and leave session; result 0 if OK, 1 otherwise
+proc p2pJoinLeaveTest {} {
+    global binPath
+    global advName
+    global bindPort
+    
+    set device1 [launchSession sessions $binPath]
+    set device2 [launchSession sessions $binPath]
+    set device3 [launchSession sessions $binPath]   
+
+    set advName [randomName]
+
+    puts "Step1 - requestname, advertise and bind from device1...\n"
+    
+    set advresult [advertise $device1 $advName]
+
+    if { $advresult != 0 } {
+        [closeSessionsAndExit 1 "Step1 fail - requestname $advName fail\n" $device1 $device2 $device3]
+    }
+    
+    puts "Advertise pass\n"
+
+    set bindresult [bind $device1 $bindPort false]
+    
+    puts "Step2 - discover and join p2p session from device2/3...\n"
+    sleep 1    
+    set disresult1 [discovery $device2 $advName]
+
+    set disresult2 [discovery $device3 $advName]
+    
+    if { $disresult1 != 0 } {
+        ## Exit 2 with error message
+	    [closeSessionsAndExit 2 "Step2 fail - device2 discover fail\n" $device1 $device2 $device3]
+    } elseif { $disresult2 != 0 } {
+	    ## Exit 2 with error message
+	    [closeSessionsAndExit 2 "Step2 fail - device3 discover fail\n" $device1 $device2 $device3]
+    } else {
+        puts "DiscoveryTest pass\n"
+    }
+        
+    set sessionId1 [join $device2 $advName $bindPort false]
+    set sessionId2 [join $device3 $advName $bindPort false]
+            
+    if { $sessionId1 == 0 } {
+		[closeSessionsAndExit 2 "Step2 fail - device2 joinSession fail\n" $device1 $device2 $device3]
+	} elseif { $sessionId2 == 0 }  {
+		[closeSessionsAndExit 2 "Step2 fail - device3 joinSession fail\n" $device1 $device2 $device3]
+	} elseif { $sessionId1 == $sessionId2 } {
+        [closeSessionsAndExit 2 "Step2 fail - device2 and device3 have same session id\n" $device1 $device2 $device3]
+	} else {
+	    puts "Step2 - passed\n"
+	}
+
+    puts "Step3 - leave p2p session from device2...\n"
+		        
+    set leaveResult1 [leaveSession $device2 $sessionId1]
+    sleep 2
+    set slResult1 [checkSessionLost $device1 $sessionId1]
+		        
+    if { $slResult1 != 0 } {
+        [closeSessionsAndExit 3 "Step3 fail - SL missed on device1 when device2 leave p2p session\n" $device1 $device2 $device3]
+    } else {
+        puts "Step3 - passed\n"
+    }
+    
+    puts "Step4 - leave p2p session from device1...\n"
+		        
+    set leaveResult2 [leaveSession $device1 $sessionId2]
+    sleep 2
+    set slResult2 [checkSessionLost $device3 $sessionId2]
+		        
+    if { $slResult2 != 0 } {
+	    [closeSessionsAndExit 4 "Step4 fail - SL missed on device3 when device1 leave p2p session\n" $device1 $device2 $device3]
+	} else {
+	    puts "Step4 - passed\n"
+	}
+	             
+    puts "Step5 - Rejoin p2p sessions from device2/3...\n"
+		            
+    set sessionId3 [join $device2 $advName $bindPort false]
+    set sessionId4 [join $device3 $advName $bindPort false]
+		
+    if { $sessionId3 == 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail - device2 joinSession again fail\n" $device1 $device2 $device3]
+    } elseif { $sessionId4 == 0 }  {
+
+        [closeSessionsAndExit 5 "Step5 fail - device3 joinSession again fail\n" $device1 $device2 $device3]
+    } elseif { $sessionId3 == $sessionId4 } {
+
+        [closeSessionsAndExit 5 "Step5 fail - device2 and device3 have same session id\n" $device1 $device2 $device3]
+    } else {
+        puts "Step5 - passed\n"
+    }
+    
+    puts "Cleanup - leave mp session from device2/3/1...\n"
+    
+    set sl1 [leaveSession $device2 $sessionId1]
+    sleep 1
+    
+    set sl2 [leaveSession $device2 $sessionId3]
+    sleep 1
+    
+    set sl3 [leaveSession $device3 $sessionId4]
+    sleep 1
+    
+    [closeSessionsAndExit 0 "Current p2p test passed\n" $device1 $device2 $device3]
+
+}
+
+## multipoint session unbind test; result 0 if OK, 1 otherwise
+proc mpUnbindTest {} {
+    global binPath
+    global bindPort
+    
+    set device1  [launchSession sessions $binPath]
+    set device2  [launchSession sessions $binPath]
+    set device3  [launchSession sessions $binPath]
+    set device4  [launchSession sessions $binPath]
+    
+    puts "Step1 - requestname, advertise and bind on device1...\n"
+    set advName1 [randomName]
+    
+    set advresult1 [advertise $device1 $advName1]
+
+    ## bind multi-point session port on device1
+    set bindresult1 [bind $device1 $bindPort true]
+    
+    if { $advresult1 != 0 } {                                   
+
+	    [closeSessionsAndExit 1 "Step1 fail - device1 requestname fail\n" $device1 $device2 $device3 $device4]
+    } elseif { $bindresult1 != 0 } {
+
+        [closeSessionsAndExit 1 "Step1 fail - device1 bind fail\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step1 - passed\n"
+    }
+	 
+    puts "Step2 - discover and joinSession on device2/3...\n"
+    sleep 1    
+    ## findAdvertisedName from on device2
+    set disresult2 [discovery $device2 $advName1]
+        
+    if { $disresult2 != 0 } {
+        [closeSessionsAndExit 2 "Step2 fail - device2 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+	
+    ## joinSession from device2
+    puts "Join multipoint sessions from device2...\n"
+    sleep 1        
+    set sessionId1 [join $device2 $advName1 $bindPort true]        
+	        
+    if { $sessionId1 == 0 } {
+    
+        [closeSessionsAndExit 2 "Step2 fail - device2 joinSession fail\n" $device1 $device2 $device3 $device4]
+    }
+          
+    puts "discover and joinSession on device3...\n"
+		        
+    set disresult3 [discovery $device3 $advName1]
+                
+    if { $disresult3 != 0 } {
+        [closeSessionsAndExit 2 "Step2 fail - device3 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+	      
+    sleep 1
+    ## joinSession from device3
+    set sessionId2 [join $device3 $advName1 $bindPort true]
+		        
+    ## Device 3 should join the same session as device2
+    
+    if { $sessionId2 != $sessionId1 } {
+        [closeSessionsAndExit 2 "Step2 fail - device3 joined different session from device2\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step2 passed - device2/3 joinSession ok\n"
+	}	                
+
+    puts "Step3 - unbind on device1...\n"
+		                
+    ## unbind multi-point session port on device1
+    set unbindresult1 [unbind $device1 $bindPort]
+                   
+    if { $unbindresult1 != 0 } {
+
+        [closeSessionsAndExit 3 "Step3 fail - device1 unbind fail\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step3 passed - device1 unbind ok\n"
+    }
+    
+    # unbind may take a second to complete
+    sleep 1
+             
+    puts "Step4 - discover and joinSession on device4...\n"
+                            
+    ## findAdvertisedName from on device4
+    set disresult4 [discovery $device4 $advName1]
+        
+    if { $disresult4 != 0 } {
+        [closeSessionsAndExit 4 "Step4 fail - device4 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+    ## joinSession from device4
+    puts "Join multipoint sessions from device4 should fail...\n"
+            
+    set sessionId4 [join $device4 $advName1 $bindPort true]        
+    ## Should fail to joinSession since port is unbinded on device1
+    if { $sessionId4 != 0 } {
+        [closeSessionsAndExit 4 "Step4 fail - device4 unexpected joinSession success when port undebinded\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step4 pass\n"
+    }
+    
+    puts "Step5 - bind port again on device1...\n"
+		                            
+    ## bind multi-point session port on device1
+    set bindresult2 [bind $device1 $bindPort true]
+                                    
+    if { $bindresult2 != 0 } {
+        [closeSessionsAndExit 5 "Step5 fail - device1 rebind fail\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step5 pass\n"
+    }
+    
+    puts "Step6 - joinSession on device4 should succeed...\n"
+    set sessionId5 [join $device4 $advName1 $bindPort true]        
+	## Should succeed to joinSession since port is binded on device1
+	if { $sessionId5 == 0 } {
+        [closeSessionsAndExit 6 "Step6 fail - device4 failed to joinSession\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step6 pass\n"
+    } 
+
+    puts "Cleanup - leave mp session from device2/3/4...\n"
+    	        
+    set sl1 [leaveSession $device2 $sessionId1]
+    sleep 1
+    set sl2 [leaveSession $device3 $sessionId2]
+    sleep 1
+    set sl3 [leaveSession $device4 $sessionId5]
+    
+    ## exit 0 to mark success
+    [closeSessionsAndExit 0 "Current mp unbind test passed\n" $device1 $device2 $device3 $device4]
+
+}
+		
+## multipoint session creator leaves session test; result 0 if OK, 1 otherwise
+proc mpCreatorLeaveTest {} {
+    global binPath
+    global bindPort
+    
+    set device1  [launchSession sessions $binPath]
+    set device2  [launchSession sessions $binPath]
+    set device3  [launchSession sessions $binPath]
+    set device4  [launchSession sessions $binPath]
+    
+    puts "Step1 - requestname, advertise and bind on device1...\n"
+    set advName1 [randomName]
+    
+    set advresult1 [advertise $device1 $advName1]
+
+    ## bind multi-point session port on device1
+    set bindresult1 [bind $device1 $bindPort true]
+    
+    if { $advresult1 != 0 } {                                   
+
+	    [closeSessionsAndExit 1 "Step1 fail - device1 requestname fail\n" $device1 $device2 $device3 $device4]
+    } elseif { $bindresult1 != 0 } {
+
+        [closeSessionsAndExit 1 "Step1 fail - device1 bind fail\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step1 - passed\n"
+    }
+	 
+    puts "Step2 - discover and joinSession on device2...\n"
+    sleep 1    
+    ## findAdvertisedName from on device2
+    set disresult2 [discovery $device2 $advName1]
+        
+    if { $disresult2 != 0 } {
+        [closeSessionsAndExit 2 "Step2 fail - device2 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+	
+    ## joinSession from device2
+    puts "Join multipoint sessions from device2...\n"
+    sleep 1        
+    set sessionId1 [join $device2 $advName1 $bindPort true]        
+	        
+    if { $sessionId1 == 0 } {
+    
+        [closeSessionsAndExit 2 "Step2 fail - device2 joinSession fail\n" $device1 $device2 $device3 $device4]
+    }
+          
+    puts "Step3 - discover and joinSession on device3...\n"
+		        
+    set disresult3 [discovery $device3 $advName1]
+                
+    if { $disresult3 != 0 } {
+        [closeSessionsAndExit 2 "Step4 fail - device3 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+	      
+    sleep 1
+    ## joinSession from device3
+    set sessionId2 [join $device3 $advName1 $bindPort true]
+		        
+    ## Device 3 should join the same session as device2
+    
+    if { $sessionId2 != $sessionId1 } {
+        [closeSessionsAndExit 2 "Step2 fail - device3 joined different session from device2\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step3 passed - device3 joinSession ok\n"
+	}	                
+
+    puts "Step4 - discover and joinSession on device4...\n"
+		        
+    set disresult4 [discovery $device4 $advName1]
+                
+    if { $disresult4 != 0 } {
+        [closeSessionsAndExit 2 "Step4 fail - device4 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+	      
+    sleep 1
+    ## joinSession from device4
+    set sessionId3 [join $device4 $advName1 $bindPort true]
+		        
+    ## Device 4 should join the same session as device2
+    
+    if { $sessionId3 != $sessionId1 } {
+        [closeSessionsAndExit 2 "Step4 fail - device4 joined different session from device2\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step4 passed - device4 joinSession ok\n"
+	}
+	
+	puts "Step5 - chat on session123...\n"
+		            
+    ## send 1st round of chat messages on device1/2/3
+    set msg1 "device1_session123"
+    set msg2 "device2_session123"
+    set msg3 "device3_session123"
+	set msg4 "device4_session123"
+	        
+    ## send chat msg4 from device4/session123
+    set chat4 [chat $device4 $sessionId1 $msg4]
+		            
+    ## Check msg4 arrived at device1, device2 and device3
+    set msg4OnDevice1 [checkChatArrived $device1 $sessionId1 $msg4]
+    set msg4OnDevice2 [checkChatArrived $device2 $sessionId1 $msg4]
+    set msg4OnDevice3 [checkChatArrived $device3 $sessionId1 $msg4]
+		            
+    if { $msg4OnDevice1 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device1\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg4OnDevice2 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg4OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg4 arrived at device1, device2 and device3\n"
+	}
+		                
+    ## send chat msg3 from device3/session123
+    set chat3 [chat $device3 $sessionId1 $msg3]
+		            
+    ## Check msg3 arrived at device1,device2 and device4
+    set msg3OnDevice1 [checkChatArrived $device1 $sessionId1 $msg3]
+    set msg3OnDevice2 [checkChatArrived $device2 $sessionId1 $msg3]
+    set msg3OnDevice4 [checkChatArrived $device4 $sessionId1 $msg3]
+		                
+	if { $msg3OnDevice1 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device1\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg3OnDevice2 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg3OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg3 arrived at device1, device2 and device4\n"
+	}
+	    	            
+    ## send chat msg2 from device2/session123
+    set chat2 [chat $device2 $sessionId1 $msg2]
+		            
+    ## Check msg2 arrived at device1,device3 and device4
+    set msg2OnDevice1 [checkChatArrived $device1 $sessionId1 $msg2]
+    set msg2OnDevice3 [checkChatArrived $device2 $sessionId1 $msg2]
+    set msg2OnDevice4 [checkChatArrived $device4 $sessionId1 $msg2]
+		                
+	if { $msg2OnDevice1 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg2 NOT arrive device1\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg2OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg2 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg2OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg2 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg2 arrived at device1, device3 and device4\n"
+	}
+	
+	## send chat msg1 from device1/session123
+    set chat1 [chat $device1 $sessionId1 $msg1]
+		            
+    ## Check msg1 arrived at device2,device3 and device4
+    set msg1OnDevice2 [checkChatArrived $device2 $sessionId1 $msg1]
+    set msg1OnDevice3 [checkChatArrived $device3 $sessionId1 $msg1]
+    set msg1OnDevice4 [checkChatArrived $device4 $sessionId1 $msg1]
+		                
+	if { $msg1OnDevice2 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg1 NOT arrive device2\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg2OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg1 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg2OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg1 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg1 arrived at device2, device3 and device4\n"
+	}
+	
+    puts "Step6 - leave session on device1...\n"
+		             
+	set sl1 [leaveSession $device1 $sessionId1]
+    sleep 1   
+        
+    set mlOnDevice2 [checkMemberLeft $device2 $sessionId1]
+    set mlOnDevice3 [checkMemberLeft $device3 $sessionId1]
+	set mlOnDevice4 [checkMemberLeft $device4 $sessionId1]   
+	         
+    if { $mlOnDevice2 != 0 } {
+        [closeSessionsAndExit 6 "Step6 fail - Member left signal NOT received on device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $mlOnDevice3 != 0 } {
+	    [closeSessionsAndExit 6 "Step6 fail - Member left signal NOT received on device3\n" $device1 $device2 $device3 $device4]
+	} elseif { $mlOnDevice4 != 0 } {
+	    [closeSessionsAndExit 6 "Step6 fail - Member left signal NOT received on device4\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step6 pass - member left signal received on device2/3/4\n"
+    }
+             
+    puts "Step7 - chat between device2/3/4...\n"
+    
+    ## start 2nd round of chat  
+    set msg22 "t2_session123"
+    set msg23 "t3_session123"
+	set msg24 "t4_session123"
+	        
+    ## send chat msg24 from device4/session123
+    set chat24 [chat $device4 $sessionId1 $msg24]
+		            
+    ## Check msg24 arrived at device2 and device3
+    set msg24OnDevice2 [checkChatArrived $device2 $sessionId1 $msg24]
+    set msg24OnDevice3 [checkChatArrived $device3 $sessionId1 $msg24]
+		            
+    if { $msg4OnDevice1 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device1\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg4OnDevice2 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg4OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg4 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg4 arrived at device1, device2 and device3\n"
+	}
+		                
+    ## send chat msg3 from device3/session123
+    set chat3 [chat $device3 $sessionId1 $msg3]
+		            
+    ## Check msg3 arrived at device1,device2 and device4
+    set msg3OnDevice1 [checkChatArrived $device1 $sessionId1 $msg3]
+    set msg3OnDevice2 [checkChatArrived $device2 $sessionId1 $msg3]
+    set msg3OnDevice4 [checkChatArrived $device4 $sessionId1 $msg3]
+		                
+	if { $msg3OnDevice1 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device1\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg3OnDevice2 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg3OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5 fail- $msg3 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg3 arrived at device1, device2 and device4\n"
+	}  
+    puts "Step7 - discover and joinSession on device4...\n"
+                            
+    ## findAdvertisedName from on device4
+    set disresult4 [discovery $device4 $advName1]
+        
+    if { $disresult4 != 0 } {
+        [closeSessionsAndExit 4 "Step4 fail - device4 discover fail\n" $device1 $device2 $device3 $device4]
+	}
+    ## joinSession from device4
+    puts "Join multipoint sessions from device4 should fail...\n"
+            
+    set sessionId4 [join $device4 $advName1 $bindPort true]        
+    ## Should fail to joinSession since port is unbinded on device1
+    if { $sessionId4 != 0 } {
+        [closeSessionsAndExit 4 "Step4 fail - device4 unexpected joinSession success when port undebinded\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step4 pass\n"
+    }
+    
+    puts "Step5 - bind port again on device1...\n"
+		                            
+    ## bind multi-point session port on device1
+    set bindresult2 [bind $device1 $bindPort true]
+                                    
+    if { $bindresult2 != 0 } {
+        [closeSessionsAndExit 5 "Step5 fail - device1 rebind fail\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step5 pass\n"
+    }
+    
+    puts "Step6 - joinSession on device4 should succeed...\n"
+    set sessionId5 [join $device4 $advName1 $bindPort true]        
+	## Should succeed to joinSession since port is binded on device1
+	if { $sessionId5 == 0 } {
+        [closeSessionsAndExit 6 "Step6 fail - device4 failed to joinSession\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step6 pass\n"
+    } 
+
+    puts "Cleanup - leave mp session from device2/3/4...\n"
+    	        
+    set sl1 [leaveSession $device2 $sessionId1]
+    sleep 1
+    set sl2 [leaveSession $device3 $sessionId2]
+    sleep 1
+    set sl3 [leaveSession $device4 $sessionId5]
+    
+    ## exit 0 to mark success
+    [closeSessionsAndExit 0 "Current mp unbind test passed\n" $device1 $device2 $device3 $device4]
+
+}               
+
+## multipoint 4 sessions join and leave session; result 0 if OK, 1 otherwise
+proc mpSessionsTest {} {
+    global binPath
+    global bindPort
+    
+    set result 0
+    
+    set device1  [launchSession sessions $binPath]
+    set device2  [launchSession sessions $binPath]
+    set device3  [launchSession sessions $binPath]
+    set device4  [launchSession sessions $binPath]
+    
+    set advName1 [randomName]
+    set advName2 b[randomName]
+    
+    puts "Step1 - requestname, advertise and bind on device1...\n"
+    set advresult1 [advertise $device1 $advName1]
+
+    ## bind multi-point session on device1
+    set bindresult1 [bind $device1 $bindPort true]
+        
+    puts "Step2 - requestname, advertise and bind on device4...\n"
+    set advresult2 [advertise $device4 $advName2]
+    
+    ## bind multi-point session on device4
+    set bindresult2 [bind $device4 $bindPort true]
+     
+    if { $advresult1 != 0 } {
+		[closeSessionsAndExit 1 "Step1 fail - device1 requestname $advName1\n" $device1 $device2 $device3 $device4]
+    } elseif { $advresult2 != 0 } {
+		[closeSessionsAndExit 2 "Step2 fail - device4 requestname $advName2\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step1/2 passed\n"
+    }
+        
+    puts "Step3 - discover and joinSession on device2...\n"
+    sleep 1
+        
+    ## findAdvertisedName from 2 client sessions
+    set disresult1 [discovery $device2 $advName1]
+    set disresult2 [discovery $device2 $advName2]
+        
+    if { $disresult1 != 0 } {
+        [closeSessionsAndExit 3 "Step3 fail- device2 NOT discover $advName1\n" $device1 $device2 $device3 $device4]    
+    } elseif { $disresult2 != 0 } {
+        [closeSessionsAndExit 3 "Step3 fail- device2 NOT discover $advName2\n" $device1 $device2 $device3 $device4]
+	} else {
+        ## joinSession from device2
+        puts "Join multipoint sessions from device2...\n"
+    }        
+    set sessionId1 [join $device2 $advName1 $bindPort true]
+    set sessionId2 [join $device2 $advName2 $bindPort true]
+	        
+    if { $sessionId1 == 0 } {
+        [closeSessionsAndExit 3 "step3 fail- device2 NOT joined multipoint on device1\n" $device1 $device2 $device3 $device4]
+    } elseif { $sessionId2 == 0 } {
+        [closeSessionsAndExit 3 "step3 fail- device2 NOT joined multipoint on device4\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step3 pass\n"
+    }
+		        
+	puts "Step4 - discover and joinSession on device3...\n"
+		        
+    set disresult3 [discovery $device3 $advName1]
+    set disresult4 [discovery $device3 $advName2]
+        
+    if { $disresult3 != 0 } {
+        [closeSessionsAndExit 4 "step4 fail- device3 NOT discover $advName1\n" $device1 $device2 $device3 $device4]
+    } elseif { $disresult4 != 0 } {
+        [closeSessionsAndExit 4 "step4 fail- device3 NOT discover $advName2\n" $device1 $device2 $device3 $device4]
+    } 
+
+    ## joinSession from device3
+    set sessionId3 [join $device3 $advName1 $bindPort true]
+    set sessionId4 [join $device3 $advName2 $bindPort true]
+		        
+    ## Device 3 should join the same sessions from device2
+    if { $sessionId3 != $sessionId1 } {
+        [closeSessionsAndExit 4 "step4 fail- device3 NOT joined multipoint on device1\n" $device1 $device2 $device3 $device4]
+    } elseif { $sessionId4 != $sessionId2 } {
+
+        [closeSessionsAndExit 4 "step4 fail- device3 NOT joined multipoint on device4\n" $device1 $device2 $device3 $device4]
+    } else {
+        puts "Step4 passed - device3 joinSession ok\n"
+	}
+	          
+    puts "Step5 - chat...\n"
+		            
+    ## send 1st round of chat messages on device1/2/3
+    set msg1 "device1_session123"
+    set msg2 "device2_session123"
+    set msg3 "device3_session123"
+		            
+    ## send chat msg1 from device1/session123
+    set chat1 [chat $device1 $sessionId1 $msg1]
+		            
+    ## Check msg1 arrived at device2 and device3
+    set msg1OnDevice2 [checkChatArrived $device2 $sessionId1 $msg1]
+    set msg1OnDevice3 [checkChatArrived $device3 $sessionId1 $msg1]
+		            
+    if { $msg1OnDevice2 != 0 } {
+
+        [closeSessionsAndExit 5 "Step5A fail- $msg1 NOT arrive device2\n" $device1 $device2 $device3 $device4]                
+	} elseif { $msg1OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5A fail- $msg1 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} else {
+		puts "$msg1 arrived at both device2 and device3\n"
+	}
+		                
+    ## send chat msg2 from device2/session123
+    set chat2 [chat $device2 $sessionId1 $msg2]
+		            
+    ## Check msg2 arrived at device1 and device3
+    set msg2OnDevice1 [checkChatArrived $device1 $sessionId1 $msg2]
+    set msg2OnDevice3 [checkChatArrived $device3 $sessionId1 $msg2]
+		                
+	if { $msg2OnDevice1 != 0 } {
+
+	    [closeSessionsAndExit 5 "Step5A fail- $msg2 NOT arrive device1\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg2OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5A fail- $msg2 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} else {
+	    puts "$msg2 arrived at both device1 and device3\n"
+	}
+	    	            
+    ## send chat msg3 from device3/session123   
+    set chat3 [chat $device3 $sessionId1 $msg3]
+		            
+    ## Check msg3 arrived at device1 and 2
+    set msg3OnDevice1 [checkChatArrived $device1 $sessionId1 $msg3]
+    set msg3OnDevice2 [checkChatArrived $device2 $sessionId1 $msg3]
+		   
+    if { $msg3OnDevice1 != 0 } {
+
+	    [closeSessionsAndExit 5 "Step5A fail- $msg3 NOT arrive device1\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg3OnDevice2 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5A fail- $msg3 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} else {
+	    puts "$msg3 arrived at both device1 and device2\n"
+	}         
+
+    ## send chat msg4 from device2/session456 
+    ## send 2nd round of chat messages on device2/3/4
+    set msg4 "device2_session456"
+		            
+    set chat4 [chat $device2 $sessionId2 $msg4]
+		            
+    ## Check msg4 arrived at device3/4
+    set msg4OnDevice3 [checkChatArrived $device3 $sessionId2 $msg4]
+    set msg4OnDevice4 [checkChatArrived $device4 $sessionId2 $msg4]
+		 
+	if { $msg4OnDevice3 != 0 } {
+
+	    [closeSessionsAndExit 5 "Step5B fail- $msg4 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg4OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5B fail- $msg4 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+	    puts "$msg4 arrived at both device3 and device4\n"
+	}                    
+		                
+    ## send chat msg5 from device3/session456 
+    set msg5 "device3_session456"
+    set chat5 [chat $device3 $sessionId2 $msg5]
+		            
+    ## Check msg5 arrived at device2/4
+    set msg5OnDevice2 [checkChatArrived $device2 $sessionId2 $msg5]
+    set msg5OnDevice4 [checkChatArrived $device4 $sessionId2 $msg5]
+		 
+    if { $msg5OnDevice2 != 0 } {
+
+	    [closeSessionsAndExit 5 "Step5B fail- $msg5 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg5OnDevice4 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5B fail- $msg5 NOT arrive device4\n" $device1 $device2 $device3 $device4]
+	} else {
+	    puts "$msg5 arrived at both device2 and device4\n"
+	}                
+	    	            
+    ## send chat msg6 from device4/session456 
+    set msg6 "device4_session456"
+    set chat6 [chat $device4 $sessionId2 $msg6]
+		            
+    ## Check msg6 arrived at device2/3
+    set msg6OnDevice2 [checkChatArrived $device2 $sessionId2 $msg6]
+    set msg6OnDevice3 [checkChatArrived $device3 $sessionId2 $msg6]
+		  
+    if { $msg6OnDevice2 != 0 } {
+
+	    [closeSessionsAndExit 5 "Step5B fail- $msg6 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	} elseif { $msg6OnDevice3 != 0 } {
+
+		[closeSessionsAndExit 5 "Step5B fail- $msg6 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+	} else {
+	    puts "Step5 passed $msg6 arrived at both device2 and device3\n"
+	}          
+ 
+    ## Step6 : Leave session1 from device2
+    puts "Step6 - leave Session123 from device2...\n"
+		            
+    set leaveS1FromD2 [leaveSession $device2 $sessionId1]
+    sleep 1
+    set mlOnDevice1 [checkMemberLeft $device1 $sessionId1]
+    set mlOnDevice3 [checkMemberLeft $device3 $sessionId1]
+		            
+    if { $mlOnDevice1 != 0 } {
+        [closeSessionsAndExit 6 "Step6 fail - Member left signal NOT received on device1\n" $device1 $device2 $device3 $device4]
+	} elseif { $mlOnDevice3 != 0 } {
+	    [closeSessionsAndExit 6 "Step6 fail - Member left signal NOT received on device3\n" $device1 $device2 $device3 $device4]
+	} else {
+        puts "Step6 pass - member left signal received on device1/3\n"
+    }
+		                    
+    ## Step7 : Join session123 from device2
+    puts "Step7 - joinSession from device2...\n"
+		            
+    set sessionId5 [join $device2 $advName1 $bindPort true]
+		            
+    ## Should be the same sessionId as 1
+    if { $sessionId5 != $sessionId1 } {
+
+        [closeSessionsAndExit 7 "Step7 fail - device2 wrong session id, expected: $sessionId1 actual: $sessionId5\n" $device1 $device2 $device3 $device4]
+    }
+    	         
+    ## Check member added signal on device1 and device3
+    set maOnDevice1 [checkMemberAdded $device1 $sessionId1]
+    set maOnDevice3 [checkMemberAdded $device3 $sessionId1]
+		                
+    if { $maOnDevice1 != 0 } {
+
+		[closeSessionsAndExit 7 "Step7 fail - member added signal NOT received on device1\n" $device1 $device2 $device3 $device4]
+    }
+    
+    if { $maOnDevice3 != 0 } {
+        [closeSessionsAndExit 7 "Step7 fail - member added signal NOT received on device3\n" $device1 $device2 $device3 $device4]
+    }
+         
+    puts "Step7 pass - member added signal received on device1/3\n"
+		                    
+	puts "Step8 - device2 join session again should fail...\n"
+		                        
+    set sessionId6 [join $device2 $advName1 $bindPort true]
+	
+	puts "Make sure device1 is not getting member added signal...\n"
+    set maOnDevice12 [checkMemberAdded $device1 $sessionId1]
+		                    
+    puts "Make sure device3 is not getting member added signal...\n"
+    set maOnDevice32 [checkMemberAdded $device3 $sessionId1]
+		                    
+    puts "Make sure device1 is not getting member left signal...\n"
+    set mlOnDevice12 [checkMemberLeft $device1 $sessionId1]
+		                    
+    puts "Make sure device3 is not getting member left signal...\n"
+    set mlOnDevice32 [checkMemberLeft $device3 $sessionId1]
+    	  
+	if { $sessionId6 != 0 } {
+        [closeSessionsAndExit 8 "Step 8 - fail since device2 joined session again!\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $maOnDevice12 == 0 } {
+
+        [closeSessionsAndExit 8 "Step 8 - fail since device1 get member added signal!\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $maOnDevice32 == 0 } {
+
+        [closeSessionsAndExit 8 "Step 8 - fail since device3 get member added signal!\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $mlOnDevice12 == 0 } {
+        puts "Step 8 - fail since device1 get member left signal! \n"
+        set result 8
+        [closeSessionsAndExit 8 "Step 8 - fail since device1 get member left signal!\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $mlOnDevice32 == 0 } {
+        puts "Step 8 - fail since device3 get member left signal! \n"
+		[closeSessionsAndExit 8 "Step 8 - fail since device3 get member left signal!\n" $device1 $device2 $device3 $device4]
+	}
+
+    puts "Step8 passed \n"
+		                        
+    puts "Step9 - device2 leave session123...\n"
+		                            
+    set leaveS1FromD2 [leaveSession $device2 $sessionId1]
+    sleep 1
+    set mlOnDevice1 [checkMemberLeft $device1 $sessionId1]
+    set mlOnDevice3 [checkMemberLeft $device3 $sessionId1]
+		       
+    if { $mlOnDevice1 != 0 } {
+	    [closeSessionsAndExit 9 "Step9 fail - Member left signal NOT received on device1\n" $device1 $device2 $device3 $device4] 
+	}
+	       	                              
+    if { $mlOnDevice3 != 0 } {
+        [closeSessionsAndExit 9 "Step9 fail - Member left signal NOT received on device3\n" $device1 $device2 $device3 $device4]
+	}
+
+	puts "Step9 pass - member left signal received on device1/3\n"
+		                                
+	## Step10 : Join session1 from device2
+    puts "Step10 - joinSession from device2...\n"
+		            
+    set sessionId10 [join $device2 $advName1 $bindPort true]
+		            
+    ## Should be the same sessionId as 1
+    if { $sessionId10 != $sessionId1 } {
+    	[closeSessionsAndExit 10 "Step10 fail - device2 join session fail!\n" $device1 $device2 $device3 $device4]
+    }        
+    ## Check member added signal on device1 and device3
+    set maOnDevice13 [checkMemberAdded $device1 $sessionId1]
+    set maOnDevice33 [checkMemberAdded $device3 $sessionId1]
+		                
+    if { $maOnDevice13 != 0 } {
+        [closeSessionsAndExit 10 "Step10 fail - Member added signal NOT received on device1\n" $device1 $device2 $device3 $device4]
+    }
+    
+	if { $maOnDevice33 != 0 } {
+        [closeSessionsAndExit 10 "Step10 fail - Member added signal NOT received on device3\n" $device1 $device2 $device3 $device4]
+    }
+    
+    puts "Step10 pass - member added signal received on device1/3\n"
+		                                    
+    ## Step11 : Leave session1 from device3
+    puts "Step11 - leaveSession from device3...\n"
+		                                        
+    set leaveS1FromD3 [leaveSession $device3 $sessionId1]
+    sleep 1
+    set mlOnDevice1 [checkMemberLeft $device1 $sessionId1]
+    set mlOnDevice2 [checkMemberLeft $device2 $sessionId1]
+		                                    
+    if { $mlOnDevice1 != 0 } {
+        [closeSessionsAndExit 11 "Step11 fail - member left signal not received on device1\n" $device1 $device2 $device3 $device4]
+    } elseif { $mlOnDevice2 != 0 } {
+        [closeSessionsAndExit 11 "Step11 fail - member left signal not received on device2\n" $device1 $device2 $device3 $device4]
+    }
+    
+    puts "Step11 pass - member left signal received on device1/2\n"
+		                                        
+    ## Step12 : chat on session123
+    puts "Step12 - chat on session $sessionId1...\n"
+		                                        
+    set msg7 "device12_session123"
+    set chat7 [chat $device1 $sessionId1 $msg7]
+	sleep 1
+    ## Check msg7 arrived at device2
+    set msg7OnDevice2 [checkChatArrived $device2 $sessionId1 $msg7]
+		                    
+    if { $msg7OnDevice2 != 0 } {		                    
+        [closeSessionsAndExit 12 "Step12 fail- $msg7 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+    }
+    		            
+    set msg8 "device22_session123"
+    set chat8 [chat $device2 $sessionId1 $msg8]
+    sleep 1
+    ## Check msg8 arrived at device1
+    set msg8OnDevice1 [checkChatArrived $device1 $sessionId1 $msg8]
+		                
+    if { $msg8OnDevice1 != 0 } {
+        [closeSessionsAndExit 12 "Step12 fail- $msg8 NOT arrive device1\n" $device1 $device2 $device3 $device4]
+    }
+                                
+	puts "Step12 pass- $msg8 arrived at device1\n"
+		                                                
+	## Step13 : device4 leave session2
+	puts "Step13 - device4 leave session $sessionId2 ...\n"
+		                                            
+	set leaveS2FromD4 [leaveSession $device4 $sessionId2]
+	sleep 1
+	set mlOnDevice2 [checkMemberLeft $device2 $sessionId2]
+	set mlOnDevice3 [checkMemberLeft $device3 $sessionId2]
+		                                                    
+    if { $mlOnDevice2 != 0 } {
+        [closeSessionsAndExit 13 "Step13 fail - member left signal not received on device2\n" $device1 $device2 $device3 $device4]
+    } 
+    
+    if { $mlOnDevice3 != 0 } {
+        [closeSessionsAndExit 13 "Step13 fail - member left signal not received on device3\n" $device1 $device2 $device3 $device4]
+    }
+
+	puts "Step13 pass - member left signal received on device2/3\n"
+		                                             
+	## Step14 : chat on session456
+	puts "Step14 - chat on session $sessionId2 ...\n"
+		                                        
+	set msg9 "device22_session456"
+	set chat9 [chat $device2 $sessionId2 $msg9]
+	sleep 1
+	## Check msg9 arrived at device3
+	set msg9OnDevice3 [checkChatArrived $device3 $sessionId2 $msg9]
+		                
+    if { $msg9OnDevice3 != 0 } {
+        [closeSessionsAndExit 14 "Step14 fail- $msg9 NOT arrive device3\n" $device1 $device2 $device3 $device4]
+    }
+    		            
+    set msg10 "device32_session456"
+	set chat10 [chat $device3 $sessionId2 $msg10]
+	sleep 1
+	## Check msg10 arrived at device2
+	set msg10OnDevice2 [checkChatArrived $device2 $sessionId2 $msg10]
+		                
+    if { $msg10OnDevice2 != 0 } {
+        [closeSessionsAndExit 14 "Step14 fail- $msg10 NOT arrive device2\n" $device1 $device2 $device3 $device4]
+	}
+                  
+    puts "Step14 pass- $msg10 arrived at device2\n"
+		                                                        
+    ## Step15 : device2 leave session2
+    puts "Step15 - device2 leave session $sessionId2 ...\n"
+		                                            
+    set leaveS2FromD2 [leaveSession $device2 $sessionId2]
+    sleep 1
+		                                                        
+    ## Check ML(Member Left) and SL(Session Lost) on device3
+    set mlOnDevice3 [checkMemberLeft $device3 $sessionId2]
+    set slResult3 [checkSessionLost $device3 $sessionId2]
+		                                                    
+    if { $mlOnDevice3 != 0 } {
+        puts "Step15 fail- ML NOT arrive at device3\n"
+		[closeSessionsAndExit 15 "Step15 fail- ML NOT arrive at device3\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $slResult3 != 0 } {
+        [closeSessionsAndExit 15 "Step15 fail- SL NOT arrive at device3\n" $device1 $device2 $device3 $device4]
+	}
+		                                                                
+    puts "Step15 pass- ML and SL arrived at device3\n"
+		                                                        
+	## Step16 : device1 leave session1
+	puts "Step16 - device1 leave session $sessionId1 ...\n"
+		                                            
+	set leaveS1FromD1 [leaveSession $device1 $sessionId1]
+	sleep 1
+		                                                    
+	## Check ML(Member Left) and SL(Session Lost) on device2
+	set mlOnDevice2 [checkMemberLeft $device2 $sessionId1]
+	set slResult2 [checkSessionLost $device2 $sessionId1]
+		                                                        
+	if { $mlOnDevice2 != 0 } {
+		[closeSessionsAndExit 16 "Step16 fail- ML NOT arrive at device2\n" $device1 $device2 $device3 $device4]
+	} 
+	
+	if { $slResult2 != 0 } {
+		[closeSessionsAndExit 16 "Step16 fail- SL NOT arrive at device2\n" $device1 $device2 $device3 $device4]
+	}
+		                                                        
+    puts "Step16 pass- ML and SL arrived at device2\n"
+    
+    ## exit 0 to mark success
+    [closeSessionsAndExit 0 "Current mp chat test passed\n" $device1 $device2 $device3 $device4]
+
+}
+
+if { $testToRun eq "p2p" } {
+    [p2pJoinLeaveTest]
+} elseif { $testToRun eq "mp" } {
+    [mpSessionsTest]
+} elseif { $testToRun eq "mp_unbind" } {
+    [mpUnbindTest]
+} else {
+    puts "Invalid test case $testToRun : p2p/mp \n"
+    exit 99
+}
+
+exit 0

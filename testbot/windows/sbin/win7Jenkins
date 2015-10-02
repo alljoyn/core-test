@@ -1,0 +1,511 @@
+#!/bin/bash
+
+# Copyright AllSeen Alliance. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# Purpose:
+# wrapper for win7Testbot under jenkins
+
+# Return:
+# 0 - Success
+# 1 - Fail because of test failure
+# 2 - wget missing
+# 3 - Required windows SDK download failure
+# 4 - Required windows thin client sdk download failure
+# 5 - rename to legacy path fail
+# 5 - wrong arguments
+# 6 - Workspace local path not exist
+# 8 - Test script path not exist
+
+# Function name: usage
+# Description: display command parameter
+# Parameter: none
+# Return: none
+function usage() {
+   echo 'Usage: win7Jenkins -h -r [windows_sdk_url] -s [thin_release_url] -t [thin_debug_url] -a [android_release_url] -w [workspace_path] -s [tools_rel_url]'
+   echo ' -h help (optional)
+          -r windows sdk url with br_on pd_on 
+          -t thin client debug sdk url
+          -a android release sdk url
+          -w workspace path
+          -s windows sc release test tools url'
+}
+
+# Function name: parseArgs
+# Description: Parse command arguments
+# Parameter: none
+# Return:
+#   2 - invalid command
+function parseArgs() {
+
+    echo "Parsing arguments..."
+
+    args=`getopt hr:a:t:w: $*`
+
+    if [ $? != 0 ]; then
+        usage
+        exit 5
+    fi
+
+    set -- $args
+
+    # windows br=on pd=on SDK url, default url is for master. It includes both release and debug
+    winSdkUrl=""
+    winSdk="alljoyn-0.0.0-win7x64vs2013-sdk"
+    winRelSdk="alljoyn-0.0.0-win7x64vs2013-sdk-rel"
+    winDbgSdk="alljoyn-0.0.0-win7x64vs2013-sdk-dbg"
+    
+    # Thin client debug SDK url, default url is for master
+    # Currently jenkins download server has no ajtcl release sdk
+    tcDbgUrl=""
+    tcDbgSdk="ajtcl-0.0.0-w2012-dbg"
+    
+    # Android release sdk url
+    androidRelUrl=""
+    androidRel="alljoyn-0.0.0-android-sdk-rel"
+    
+    # Local workspace path
+    workspacePath=""
+ 
+    # SC release test tools url
+    toolsRelUrl=""
+    toolsRel="alljoyn-0.0.0-win7x64vs2013-tools-rel"
+    
+    # Android adb binary location
+    adbDir=""
+    
+    for i
+    do
+        case "$i" in
+             -h) shift;usage;exit 0;;
+             -r) shift;winSdkUrl=$1;echo "windows sdk url $winSdkUrl";shift;;
+             -a) shift;androidRelUrl=$1;echo "android distribution release url $androidRelUrl";shift;;
+             -t) shift;tcDbgUrl=$1;echo "windows thin client debug url $tcDbgUrl";shift;;
+             -w) shift;workspacePath=$1;echo "workspace path $workspacePath";shift;;
+             -s) shift;toolsRelUrl=$1;echo "windows test tools release url $toolsRelUrl";shift;;
+             -b) shift;adbDir=$1;echo "android adb path $adbDir";shift;;
+        esac
+    done
+
+    # Both release and debug url should be valid because both release and debug binaries are tested
+	if [ -n "$winSdkUrl" ]; then
+		echo "windows sdk url $winSdkUrl"
+	else
+	    echo "Empty windows sdk url $winSdkUrl !"
+		exit 3
+	fi
+	
+	# thin client debug sdk url is required
+	if [ -n "$tcDbgUrl" ]; then
+		echo "Thin client debug url $tcDbgUrl"
+	else
+	    echo "Empty thin client debug url $tcDbgUrl !"
+		exit 4
+	fi
+	
+    # workspace path should exist
+    if [ -n "$workspacePath" -a -d "$workspacePath" ]; then
+		wsPath="$workspacePath"
+		lastChr=${workspacePath#${workspacePath%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			wsPath=`echo "${workspacePath%?}"`
+		fi
+	else
+		echo "Invalid workspace local path $workspacePath"
+		exit 5
+	fi
+	
+	# Local root path to store all downloaded SDKs
+    localPath="${wsPath}"
+    
+ 	windowsLegacyPath="${localPath}/buildbot"
+ 	
+ 	tcLegacyPath="${localPath}/buildbot_ajtcl"
+ 	
+ 	androidLegacyPath="${localPath}/buildbot_android"
+	  
+    toolsLegacyPath="${windowsLegacyPath}/test_tools-rel"
+    
+	# win7Testbot path
+	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptName="${testScriptPath}/win7Testbot"
+	
+	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
+        echo "Good test script $testScriptName"
+	else
+		echo "Invalid test script $testScriptName"
+		exit 6
+	fi
+	
+	# adb path should exist
+    if [ -n "$adbDir" -a -d "$adbDir" ]; then
+		adbPath="$adbDir"
+		lastChr=${adbDir#${adbDir%?}}
+		# Remove trailing /
+		if [ "$lastChr" == "/" ]; then
+			adbPath=`echo "${adbDir%?}"`
+		fi
+	else
+		echo "Invalid adb path $adbDir"
+	fi
+	
+	# Default wget path
+	WGET="/usr/bin/wget"
+	
+	# Require br=on pd=off SC sdks
+	#   debug only thin client sdk
+	requiredSdks=(${winSdkUrl} ${tcDbgUrl})
+	
+	# Android and test-tools sdks are optional
+	optionalSdks=(${androidRelUrl} ${toolsRelUrl})
+}
+
+# Function name: getWgetPath
+# Description: 
+#   Get wget path
+# Parameter: none
+# Return: 
+#   wgetReady is 0 if wget exists; 1 otherwise
+function getWgetPath() {
+    echo "Get wget path ..."
+    
+    WGET=`which wget`
+    wgetReady=$?
+    
+    if [ "$wgetReady" -eq 0 ]; then
+        echo "${WGET} exists"
+    else
+        echo "${WGET} NOT exists !"
+    fi
+}
+
+# Function name: getSdk
+# Description: 
+#   Get sdk using wget
+# Parameter: 
+#   sdkUrl          - sdk download url
+#   sdkName         - sdk name
+#   checkManifest   - should this SDK contain manifest.txt?
+#                       windows BR=on and thin client SDKs contain manifest
+#   localDir        - local host directory where sdk should be unzipped
+#   manifestDir     - manifest.txt directory
+# Return: 
+#   sdkReady is set to 0 if SDK downloaded successfully and manifest.txt exist(optional)
+#   sdkReady is set to 1 if fail
+function getSdk() {
+	local sdkUrl=$1
+	local sdkName=$2
+	local checkManifest=$3
+	local localDir=$4
+	local manifestDir=$5
+	
+	echo "Get $sdkName from $sdkUrl into $localDir ..."
+	
+	sdkReady=0
+	
+	# Create local directory if NOT exist
+	if [ ! -d "$localDir" ]; then
+	    mkdir $localDir
+	fi
+	
+(cd ${localDir}
+${WGET} ${sdkUrl} --no-check-certificate
+unzip ${sdkName}.zip
+)
+    local downloadStatus=$?
+    
+    # If download successful
+    if [ "${downloadStatus}" -eq 0 ]; then 
+        # Only required SDKs need manifest
+        if [ "$checkManifest" -eq 1 ]; then  
+            local manifest="${manifestDir}/manifest.txt"
+    
+            # Check if downloaded is successfully unzipped and manifest file exist
+            if [ -e "${manifest}" ]; then
+                echo "SDK download succeed and manifest available"
+            else
+                echo "SDK invalid because manifest.txt missing!"
+                sdkReady=1
+            fi
+        else
+            echo "SDK download succeed"
+        fi
+    else
+        echo "SDK download fail!"
+        sdkReady=1
+    fi  
+}
+
+# Function name: legacyRename
+# Description: 
+#   Rename folder to be legacy testbot compatible
+# Parameter: 
+#   currentDir  - current sdk path   
+#   legacyDir   - legacy sdk path  
+# Return: 
+#   renameStatus is 0 if success
+function legacyRename() {
+    local currentDir=$1
+    local legacyDir=$2
+    
+	echo "Rename  ${currentDir} to ${legacyDir} ..."
+ 
+    renameStatus=0
+	
+	cp -r ${currentDir} ${legacyDir}
+	cpStatus=$?
+	
+	if [ "$cpStatus" -eq 0 -a -d "${legacyDir}" ]; then
+        echo "Rename  successful"
+        renameStatus=0
+        # Remove original folder
+        rm -rf ${currentDir}
+    else
+        echo "Rename  fail!"
+        renameStatus=1
+	fi
+}
+
+# Function name: getRequiredSdks
+# Description: 
+#   Download required sdks and rename to be legacy compatible:
+#       windows BR=on/PD=off release sdk
+#       windows BR=on/PD=off debug sdk
+#       TC BR=on/PD=off debug sdk
+# Parameter: none
+# Return: 
+#   exit 3 if download failed; exit 4 if rename failed
+function getRequiredSdks() {
+    local relReady=1
+    local dbgReady=1
+    local tcDbgReady=1
+    
+    # Download windows sdk
+    getSdk "${winSdkUrl}" "${winSdk}" 1 "${localPath}" "${localPath}/${winSdk}/${winRelSdk}"
+    relReady=${sdkReady}
+
+    if [ "$relReady" -eq 0 ]; then
+        echo "windows sdk ready"
+    
+        getSdk "${tcDbgUrl}" "${tcDbgSdk}" 1 "${tcLegacyPath}" "${tcLegacyPath}/${tcDbgSdk}"
+        tcDbgReady=${sdkReady}
+            
+        if [ "$tcDbgReady" -eq 0 ]; then
+            echo "windows thin client debug sdk ready"
+        else
+            echo "windows thin client debug sdk download failed!"
+            exit 3
+        fi
+    else
+        echo "windows sdk download failed!"
+        exit 3
+    fi
+
+    local relRename=1
+    local dbgRename=1
+    local tcDbgRename=1
+    
+    # Rename sdk path to match legacy testbot
+    legacyRename "${localPath}/${winSdk}" "${windowsLegacyPath}"
+    rootRename=$renameStatus
+    
+    # Move alljoyn-0.0.1-rel up one level to map testbot directory structure
+    mv ${windowsLegacyPath}/${winSdk}/* ${windowsLegacyPath}
+    rm -rf ${windowsLegacyPath}/${winSdk}
+    
+    legacyRename "${windowsLegacyPath}/${winRelSdk}" "${windowsLegacyPath}/sdk-rel"
+    relRename=$renameStatus
+
+    legacyRename "${windowsLegacyPath}/${winDbgSdk}" "${windowsLegacyPath}/sdk-dbg"
+    dbgRename=$renameStatus
+
+    chmod 777 ${tcLegacyPath}
+    chmod 777 ${tcLegacyPath}/*
+    
+    legacyRename "${tcLegacyPath}/${tcDbgSdk}" "${tcLegacyPath}/scons"
+    tcDbgRename=$renameStatus
+
+    if [ "${rootRename}" -ne 0 ]; then
+        echo "Rename ${rootRename} failed!"
+        exit 4
+    fi
+    
+    if [ "${relRename}" -ne 0 ]; then
+        echo "Rename ${relRename} failed!"
+        exit 4
+    fi
+    
+    if [ "${dbgRename}" -ne 0 ]; then
+        echo "Rename ${dbgRename} failed!"
+        exit 4
+    fi
+
+    if [ "${tcDbgRename}" -ne 0 ]; then
+        echo "Rename ${tcDbgRename} failed!"
+        exit 4
+    fi
+}
+
+# Function name: getOptionalSdks
+# Description: 
+#   Download optional sdks and rename to be legacy compatible:
+#       android release sdk
+#       tool release sdk
+# Parameter: none
+# Return: 
+#   androidDownload is set to 0 if download and rename pass; 1 otherwise
+#   toolsDownload is set to 0 if download and rename pass; 1 otherwise
+function getOptionalSdks() {
+    local androidRelReady=1
+    local androidRename=1
+    local relRename=1
+    
+    androidDownload=1
+    toolsDownload=1
+    
+    # Download android release sdk
+    if [ -n "$androidRelUrl" ]; then
+        getSdk "${androidRelUrl}" "${androidRel}" 1 "${localPath}" "${localPath}/alljoyn-android/core/alljoyn-0.0.1-rel"
+        androidRelReady=${sdkReady}
+
+        if [ "$androidRelReady" -eq 0 ]; then
+            echo "Android sdk download ok"
+            
+            # Move alljoyn-0.0.1-rel up one level to map testbot directory structure
+            mv ${localPath}/alljoyn-android/core/* ${localPath}/alljoyn-android
+            rm -rf ${localPath}/alljoyn-android/core
+            
+            # Rename sdk path to match legacy testbot
+            legacyRename "${localPath}/alljoyn-android" "${androidLegacyPath}"
+            androidRename=$renameStatus
+ 
+            # Remove alljoyn-android to map testbot directory structure
+            mv ${androidLegacyPath}/alljoyn-android/* ${androidLegacyPath}
+            rm -rf ${androidLegacyPath}/alljoyn-android
+               
+            legacyRename "${androidLegacyPath}/alljoyn-0.0.1-rel" "${androidLegacyPath}/sdk-rel"
+            relRename=$renameStatus
+    
+            if [ "$androidRename" -eq 0 -a "$relRename" -eq 0 ]; then
+                androidDownload=0
+                echo "Android sdk download and rename ok"
+            else
+                echo "Android sdk rename fail"
+            fi
+        else
+            echo "Android release sdk download failed!"
+        fi
+    else
+        echo "Android release url empty"
+    fi
+
+    # Download tools release sdk
+    if [ -n "$toolsRelUrl" ]; then
+        getSdk "${toolsRelUrl}" "${toolsRel}" 1 "${localPath}" "${localPath}/${toolsRel}"
+        toolsRelReady=${sdkReady}
+
+        if [ "$toolsRelReady" -eq 0 ]; then
+            echo "Tools release sdk download ok"
+    
+            # Rename sdk path to match legacy testbot
+            legacyRename "${localPath}/${toolsRel}" "${toolsLegacyPath}"
+            toolsRename=$renameStatus
+    
+            if [ "$toolsRename" -eq 0 ]; then
+                toolsDownload=0
+                echo "Test tools download and rename ok"
+            else
+                echo "Test tools rename fail"
+            fi
+        else
+            echo "Test tools release download failed!"
+        fi
+    else
+        echo "Test tools release url empty"
+    fi
+}
+
+# Function name: runTest
+# Description: 
+#   run windows android interaction test
+# Parameter: none
+# Return: 
+#   testStatus is 0 if test pass; 1 otherwise
+function runTest() {
+	echo "Run test ..."
+
+    testStatus=1
+
+(cd ${wsPath}
+${testScriptName} -r ${windowsLegacyPath} -a ${androidLegacyPath}
+)
+
+    testStatus=$?
+    
+    if [ "${testStatus}" -eq 0 ]; then
+        echo "All test passed"
+    else
+        echo "Some test failed!"
+    fi
+}
+
+#parse input argument
+parseArgs $*
+
+# Clean up old logs
+rm -rf ${localPath}/*.html ${localPath}/*.log ${localPath}/*.txt ${localPath}/alljoyn* 2>/dev/null 1>&2
+
+# wget must be available to continue
+getWgetPath
+
+if [ "$wgetReady" -ne 0 ]; then
+    echo "wget is NOT available!"
+    exit 2
+fi
+
+
+# Cleanup SC legacy download directory
+rm -rf $windowsLegacyPath
+	
+# Recreate SC legacy download directory
+mkdir $windowsLegacyPath
+
+# Cleanup TC legacy download directory
+rm -rf $tcLegacyPath
+	
+# Recreate TC legacy download directory
+mkdir $tcLegacyPath
+
+# Cleanup android legacy download directory
+rm -rf $androidLegacyPath
+	
+# Recreate android legacy download directory
+mkdir $androidLegacyPath
+
+# Download and rename required sdks
+getRequiredSdks
+
+#Download optional android SDK
+getOptionalSdks
+
+# run test
+runTest
+
+if [ "$testStatus" -ne 0 ]; then 
+    # At least one test case fail 
+    exit 1
+else
+    exit 0
+fi
