@@ -331,11 +331,11 @@ QStatus TCBusAttachment::JoinSession(const char* host, uint16_t port, uint32_t& 
     std::promise<uint32_t> p;
 
     auto func = [this, &p, host, port] () {
-        session = 0;
-        sessionPort = port;
+        this->session = 0;
+        this->sessionPort = port;
         AJ_BusJoinSession(&bus, host, port, NULL);
         message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &p] () {
-            p.set_value(session);
+            p.set_value(this->session);
         };
     };
 

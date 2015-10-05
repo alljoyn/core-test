@@ -118,6 +118,12 @@ const uint16_t TC_UNMARSHAL_TIMEOUT = 100;
 const uint16_t WAIT_TIME  = 3000;
 const uint16_t WAIT_MSECS = 5;
 
+/* MSVC doesn't think DefaultAuthListener and DefaultAuthCallback are referenced, even though
+ * they're used later as function pointers. Suppress the warning that causes a build break on Windows.
+ */
+#if defined(_MSC_VER)
+#pragma warning(disable:4505)
+#endif
 static AJ_Status DefaultAuthListener(uint32_t mechanism, uint32_t command, AJ_Credential* cred)
 {
     AJ_Status status = AJ_ERR_INVALID;
@@ -163,7 +169,7 @@ class TCBusAttachment : public qcc::Thread {
 
     TCBusAttachment(const char* name, AJ_AuthListenerFunc listener = DefaultAuthListener, AJ_PeerAuthenticateCallback callback = DefaultAuthCallback) : qcc::Thread(name), running(true), authlistener(listener), authcallback(callback) { }
     void Connect(const char* router);
-    qcc::ThreadReturn Run(void* arg);
+    qcc::ThreadReturn STDCALL Run(void* arg);
     QStatus Stop();
     void Enqueue(Function f);
     void SendMessage();
