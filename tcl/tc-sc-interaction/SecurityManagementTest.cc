@@ -2686,6 +2686,21 @@ TEST_F(SecurityManagementPolicyTest, non_group_members_can_not_call_managedappli
     EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetMembershipSummaries(membershipSummariesArg));
 }
 
+TEST_F(SecurityManagementPolicyTest, non_group_members_can_not_get_managedapplication_version)
+{
+    InstallMembershipOnManager();
+    InstallMembershipOnTC();
+
+    SessionOpts opts;
+    uint32_t sessionId;
+    EXPECT_EQ(ER_OK, SC1Bus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, sessionId, opts));
+
+    SecurityApplicationProxy sapWithPeer1toPeer2(SC1Bus, TCBus.GetUniqueName().c_str());
+
+    uint16_t managedAppVersion;
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapWithPeer1toPeer2.GetManagedApplicationVersion(managedAppVersion));
+}
+
 TEST_F(SecurityManagementPolicyTest, non_members_can_call_managedapplication_methods_if_policy_allows)
 {
     InstallMembershipOnManager();
