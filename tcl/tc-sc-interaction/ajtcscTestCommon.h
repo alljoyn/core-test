@@ -188,6 +188,8 @@ class TCBusAttachment : public qcc::Thread {
     QStatus SetProperty(const char* peer, uint32_t mid, uint32_t pid, int32_t val);
     QStatus GetAllProperties(const char* peer, uint32_t mid, const char* ifn, TCProperties& val, bool secure = true);
 
+    QStatus GetGuid(qcc::GUID128& guid);
+
     const char* GetErrorName() {
         return response.c_str();
     }

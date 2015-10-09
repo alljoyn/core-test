@@ -455,6 +455,31 @@ QStatus TCBusAttachment::Signal(const char* peer, uint32_t id, const char* str)
     return p.get_future().get();
 }
 
+QStatus TCBusAttachment::GetGuid(qcc::GUID128& guid)
+{
+    AJ_GUID tc_guid;
+    std::promise<AJ_Status> p;
+
+    auto func = [this, &tc_guid, &p] () {
+        AJ_Status status = AJ_GetLocalGUID(&tc_guid);
+        p.set_value(status);
+    };
+
+    Enqueue(func);
+
+    AJ_Status status = p.get_future().get();
+    if (status == AJ_OK) {
+        char buf[128];
+        AJ_GUID_ToString(&tc_guid, buf, sizeof(buf));
+
+        qcc::GUID128 g(buf);
+        guid = g;
+        return ER_OK;
+    }
+
+    return ER_FAIL;
+}
+
 QStatus TCBusAttachment::GetProperty(const char* peer, uint32_t mid, uint32_t pid, int32_t& val)
 {
     struct RetVal {
