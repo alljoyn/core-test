@@ -131,7 +131,7 @@ class TCPolicyRulesAttachment : public TCBusAttachment {
         case APP_ECHO:
             const char* str;
             status = AJ_UnmarshalArgs(msg, "s", &str);
-            AJ_ASSERT(AJ_OK == status);
+            EXPECT_EQ(AJ_OK, status);
             printf("Echo: %s\n", str);
             status = AJ_MarshalReplyMsg(msg, &reply);
             AJ_ASSERT(AJ_OK == status);

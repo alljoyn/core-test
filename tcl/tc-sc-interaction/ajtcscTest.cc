@@ -163,7 +163,7 @@ void TCBusAttachment::RecvMessage(AJ_Message* msg)
         uint32_t id;
         const char* str;
         status = AJ_UnmarshalArgs(msg, "qus", &port, &id, &str);
-        AJ_ASSERT(AJ_OK == status);
+        EXPECT_EQ(AJ_OK, status);
         if (port == sessionPort) {
             printf("AcceptSession(bus=%p): AJ_METHOD_ACCEPT_SESSION %d %d %s OK\n", &bus, port, id, str);
             AJ_BusReplyAcceptSession(msg, TRUE);
