@@ -95,6 +95,10 @@ void TCProperties::HandleReply(AJ_Message* msg)
 void TCBusAttachment::Connect(const char* router)
 {
     AJ_Initialize();
+
+    // Ensure that a routing node is found as quickly as possible
+    AJ_SetSelectionTimeout(0);
+
     AJ_VERIFY(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
     AJ_ClearCredentials(0);
     AJ_BusSetAuthListenerCallback(&bus, authlistener);
