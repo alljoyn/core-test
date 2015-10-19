@@ -30,7 +30,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 
 #include <qcc/Environ.h>
@@ -283,7 +282,7 @@ int main(int argc, char** argv)
         }
 
         const InterfaceDescription* intf1 = remoteObj.GetInterface("org.alljoyn.alljoyn_test.Interface1");
-        assert(intf1);
+        QCC_ASSERT(intf1);
         const InterfaceDescription::Member* mysignal_intf1  = intf1->GetMember("my_signal");
 
         SignalListeningObject object;
@@ -297,7 +296,7 @@ int main(int argc, char** argv)
         }
 
         const InterfaceDescription* intf2 = remoteObj.GetInterface("org.alljoyn.alljoyn_test.Interface2");
-        assert(intf2);
+        QCC_ASSERT(intf2);
         const InterfaceDescription::Member* mysignal_intf2  = intf2->GetMember("my_signal");
 
         status =  g_msgBus->RegisterSignalHandler(&object,

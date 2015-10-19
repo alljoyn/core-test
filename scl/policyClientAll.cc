@@ -23,7 +23,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 
 #include <qcc/Environ.h>
@@ -124,18 +123,18 @@ class LocalTestObject1 : public BusObject {
         ifc2(testIfc2)
     {
         QCC_UNUSED(bus);
-        assert(ifc1);
-        assert(ifc2);
+        QCC_ASSERT(ifc1);
+        QCC_ASSERT(ifc2);
 
         a_signal_member = ifc1->GetMember("a_signal");
         b_signal_member = ifc1->GetMember("b_signal");
         c_signal_member = ifc2->GetMember("c_signal");
         d_signal_member = ifc2->GetMember("d_signal");
 
-        assert(a_signal_member);
-        assert(b_signal_member);
-        assert(c_signal_member);
-        assert(d_signal_member);
+        QCC_ASSERT(a_signal_member);
+        QCC_ASSERT(b_signal_member);
+        QCC_ASSERT(c_signal_member);
+        QCC_ASSERT(d_signal_member);
     }
 
     QStatus SendSignalA() {
@@ -222,18 +221,18 @@ class LocalTestObject2 : public BusObject {
         ifc2(testIfc2)
     {
         QCC_UNUSED(bus);
-        assert(ifc1);
-        assert(ifc2);
+        QCC_ASSERT(ifc1);
+        QCC_ASSERT(ifc2);
 
         e_signal_member = ifc1->GetMember("e_signal");
         f_signal_member = ifc1->GetMember("f_signal");
         g_signal_member = ifc2->GetMember("g_signal");
         h_signal_member = ifc2->GetMember("h_signal");
 
-        assert(e_signal_member);
-        assert(f_signal_member);
-        assert(g_signal_member);
-        assert(h_signal_member);
+        QCC_ASSERT(e_signal_member);
+        QCC_ASSERT(f_signal_member);
+        QCC_ASSERT(g_signal_member);
+        QCC_ASSERT(h_signal_member);
     }
 
     QStatus SendSignalE() {
@@ -333,7 +332,7 @@ static QStatus callMethodOrError(const char* wkName,
 
     const InterfaceDescription* alljoynTestIntf1 = g_msgBus->GetInterface(ifcName);
 
-    assert(alljoynTestIntf1);
+    QCC_ASSERT(alljoynTestIntf1);
     remoteObj1.AddInterface(*alljoynTestIntf1);
 
     Message reply(*g_msgBus);

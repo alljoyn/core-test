@@ -20,7 +20,6 @@
  ******************************************************************************/
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -202,24 +201,24 @@ class LocalTestObject : public BusObject {
 
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = g_msgBus->GetInterface("test.interface");
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
 
         /* Register the signal handler with the bus */
         my_signal_member = regTestIntf->GetMember("my_signal");
-        assert(my_signal_member);
+        QCC_ASSERT(my_signal_member);
         status = g_msgBus->RegisterSignalHandler(this,
                                                  static_cast<MessageReceiver::SignalHandler>(&LocalTestObject::SignalHandler),
                                                  my_signal_member,
                                                  NULL);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
 
         //Register method handler for method call
         const MethodEntry methodEntries[] = {
             { regTestIntf->GetMember("my_ping"), static_cast<MessageReceiver::MethodHandler>(&LocalTestObject::Ping) }
         };
         status = AddMethodHandlers(methodEntries, ArraySize(methodEntries));
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
         QCC_UNUSED(status);
     }
 
@@ -246,7 +245,7 @@ class LocalTestObject : public BusObject {
             printf("Authenticated using %s\n", msg->GetAuthMechanism().c_str());
         }
         QStatus status = MethodReply(msg, arg, 1);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
         QCC_UNUSED(status);
     }
 
@@ -282,7 +281,7 @@ class LocalTestObject : public BusObject {
 
     QStatus SendSignal() {
         uint8_t flags = 0;
-        assert(my_signal_member);
+        QCC_ASSERT(my_signal_member);
         MsgArg arg("s", "Hello World Signal");
         return Signal(g_proxyName.c_str(), g_sessionId, *my_signal_member, &arg, 1, 0, flags);
     }
@@ -360,21 +359,21 @@ int main(int argc, char*argv[]) {
     /* Create message bus */
     g_msgBus = new BusAttachment("authtest", true);
     status = g_msgBus->Start();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = g_msgBus->Connect();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     printf("Unique name is %s \n", g_msgBus->GetUniqueName().c_str());
 
     //Advertise the unique name and use the security management session port
     status = g_msgBus->AdvertiseName(g_msgBus->GetUniqueName().c_str(), g_transport);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     if (g_server) {
         status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authserver-keystore", false);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
     } else {
         status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authclient-keystore", false);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
     }
 
     if (clearks) {
@@ -384,15 +383,15 @@ int main(int argc, char*argv[]) {
     if (g_server) {
         printf("Server mode \n");
         status = g_msgBus->RequestName("innocent.app", DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
         status = g_msgBus->AdvertiseName("innocent.app", g_transport);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
 
         SessionPort sessionPort = 5;
         g_mySessionListener = new MySessionListener();
         SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, g_transport);
         status = g_msgBus->BindSessionPort(sessionPort, opts, *g_mySessionListener);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
     }
 
     PermissionConfigurator& PC = g_msgBus->GetPermissionConfigurator();
@@ -437,7 +436,7 @@ int main(int argc, char*argv[]) {
     /* Add org.alljoyn.alljoyn_test interface */
     InterfaceDescription* testIntf = NULL;
     status = g_msgBus->CreateInterface("test.interface", testIntf, g_encryption);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     testIntf->AddSignal("my_signal", "s", NULL, 0);
     testIntf->AddMethod("my_ping", "s", "s", "inStr,outStr", 0);
     testIntf->AddProperty("my_prop1", "i", PROP_ACCESS_RW);
@@ -460,14 +459,14 @@ int main(int argc, char*argv[]) {
         int i = scanf("%s", option);
         QCC_UNUSED(i);
         status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authserver-keystore", false);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
     } else {
         printf("Press Y to EnablePeerSecurity for app-app \n");
         char option[2];
         int i = scanf("%s", option);
         QCC_UNUSED(i);
         status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authclient-keystore", false);
-        assert(status == ER_OK);
+        QCC_ASSERT(status == ER_OK);
     }
 
     if (!g_server) {
@@ -479,10 +478,10 @@ int main(int argc, char*argv[]) {
         //The client sends method call, get prop, set prop, GetAllPop signal to service
         ProxyBusObject clientProxy(*g_msgBus, g_proxyName.c_str(), "/a/b", g_sessionId);
         status = clientProxy.IntrospectRemoteObject();
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         Message reply(*g_msgBus);
         const InterfaceDescription* ifc = clientProxy.GetInterface("test.interface");
-        assert(ifc != NULL);
+        QCC_ASSERT(ifc != NULL);
 
         //Make the method call;
         const InterfaceDescription::Member* pingMethod;
@@ -515,13 +514,13 @@ int main(int argc, char*argv[]) {
 
         //Make SetProp(my_prop1) call
         status = val.Set("i", 421);
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         status = clientProxy.SetProperty("test.interface", "my_prop1", val);
         printf("SetProperty my_prop1 status is %s \n", QCC_StatusText(status));
 
         //Make SetProp(my_prop2) call
         status = val.Set("s", "Set Property Business");
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         status = clientProxy.SetProperty("test.interface", "my_prop2", val);
         printf("SetProperty my_prop2 status is %s \n", QCC_StatusText(status));
 
@@ -534,13 +533,13 @@ int main(int argc, char*argv[]) {
             MsgArg* propval;
             char*propname;
             status = val.Get("a{sv}", &numprops, &props);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("Num of props %lu \n", numprops);
             status = props[0].Get("{sv}", &propname, &propval);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop1 fetched is '%s' \n", propname);
             status = props[1].Get("{sv}", &propname, &propval);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop2 fetched is '%s' \n", propname);
         }
 
@@ -558,10 +557,10 @@ int main(int argc, char*argv[]) {
         //The server side sends method call, get prop, set prop, GetAllPop signal to service
         ProxyBusObject clientProxy(*g_msgBus, g_proxyName.c_str(), "/a/b", g_sessionId);
         status = clientProxy.IntrospectRemoteObject();
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         Message reply(*g_msgBus);
         const InterfaceDescription* ifc = clientProxy.GetInterface("test.interface");
-        assert(ifc != NULL);
+        QCC_ASSERT(ifc != NULL);
 
         //Make the method call;
         const InterfaceDescription::Member* pingMethod;
@@ -594,13 +593,13 @@ int main(int argc, char*argv[]) {
 
         //Make SetProp(my_prop1) call
         status = val.Set("i", 421);
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         status = clientProxy.SetProperty("test.interface", "my_prop1", val);
         printf("SetProperty my_prop1 status is %s \n", QCC_StatusText(status));
 
         //Make SetProp(my_prop2) call
         status = val.Set("s", "Set Property Business");
-        assert(ER_OK == status);
+        QCC_ASSERT(ER_OK == status);
         status = clientProxy.SetProperty("test.interface", "my_prop2", val);
         printf("SetProperty my_prop2 status is %s \n", QCC_StatusText(status));
 
@@ -613,13 +612,13 @@ int main(int argc, char*argv[]) {
             MsgArg* propval;
             char*propname;
             status = val.Get("a{sv}", &numprops, &props);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("Num of props %lu \n", numprops);
             status = props[0].Get("{sv}", &propname, &propval);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop1 fetched is '%s' \n", propname);
             status = props[1].Get("{sv}", &propname, &propval);
-            assert(ER_OK == status);
+            QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop2 fetched is '%s' \n", propname);
         }
 

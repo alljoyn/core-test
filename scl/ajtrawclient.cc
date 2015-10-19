@@ -26,7 +26,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 #include <errno.h>
 

@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <assert.h>
 
 #include <vector>
 
@@ -207,7 +206,7 @@ class LocalTestObject : public BusObject {
         /* Get sls_signal member */
         if (ER_OK == status) {
             sls_signal_member = testIntf->GetMember("sls_signal");
-            assert(sls_signal_member);
+            QCC_ASSERT(sls_signal_member);
         }
     }
 
@@ -218,7 +217,7 @@ class LocalTestObject : public BusObject {
         QStatus status = ER_OK;
         uint8_t flags = 0;
         Message msg(*g_msgBus);
-        assert(sls_signal_member);
+        QCC_ASSERT(sls_signal_member);
 
         Timespec ts;
         GetMyTimeNow(&ts);
@@ -295,7 +294,7 @@ class SignalReceiver : public MessageReceiver {
         if (ttl == 0) {
             if (expected_infinite_ttl_count != received_infinite_ttl_count) {
                 printf("Missed infinite ttl signal. Expected %u, received %u \n", expected_infinite_ttl_count, received_infinite_ttl_count);
-                assert(false);
+                QCC_ASSERT(false);
             }
             expected_infinite_ttl_count++;
         }

@@ -20,7 +20,6 @@
  ******************************************************************************/
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -185,23 +184,23 @@ int main() {
     /* Create message bus */
     g_msgBus = new BusAttachment("authservicetest", true);
     status = g_msgBus->Start();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = g_msgBus->Connect();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA ALLJOYN_ECDHE_PSK", new MyAuthListener(), "nara-service-test-keystore", false);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     status = g_msgBus->RequestName("innocent.app", DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = g_msgBus->AdvertiseName("innocent.app", TRANSPORT_UDP);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     SessionPort sessionPort = 5;
     MyBusListener*g_myBusListener = new MyBusListener();
     SessionOpts opts(SessionOpts::TRAFFIC_MESSAGES, false, SessionOpts::PROXIMITY_ANY, TRANSPORT_UDP);
     status = g_msgBus->BindSessionPort(sessionPort, opts, *g_myBusListener);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     while (true) {
         qcc::Sleep(100);

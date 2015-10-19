@@ -51,7 +51,6 @@
 
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -398,15 +397,15 @@ class LocalTestObject : public BusObject {
     {
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface(::org::alljoyn::alljoyn_test::InterfaceName1);
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
 
         my_signal_member1 = regTestIntf->GetMember("my_signal1");
-        assert(my_signal_member1);
+        QCC_ASSERT(my_signal_member1);
         my_signal_member2 =  regTestIntf->GetMember("my_signal2");
-        assert(my_signal_member2);
+        QCC_ASSERT(my_signal_member2);
         my_signal_member3 =  regTestIntf->GetMember("my_signal3");
-        assert(my_signal_member3);
+        QCC_ASSERT(my_signal_member3);
 
         const MethodEntry methodEntries[] = {
             { regTestIntf->GetMember("authinit"), static_cast<MessageReceiver::MethodHandler>(&LocalTestObject::AuthInit) }
@@ -570,15 +569,15 @@ class LocalTestObject : public BusObject {
 
         QStatus status;
         const InterfaceDescription* intf = bus.GetInterface(::org::alljoyn::alljoyn_test::InterfaceName1);
-        assert(intf);
+        QCC_ASSERT(intf);
         const InterfaceDescription::Member* mysignal1  = intf->GetMember("my_signal1");
-        assert("mysignal1");
+        QCC_ASSERT("mysignal1");
 
         const InterfaceDescription::Member* mysignal2  = intf->GetMember("my_signal2");
-        assert("mysignal2");
+        QCC_ASSERT("mysignal2");
 
         const InterfaceDescription::Member* mysignal3  = intf->GetMember("my_signal3");
-        assert("mysignal3");
+        QCC_ASSERT("mysignal3");
 
         /* register the signal handler for Interface.my_signal1 */
         status =  bus.RegisterSignalHandler(this,

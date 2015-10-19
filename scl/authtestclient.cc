@@ -21,7 +21,6 @@
  ******************************************************************************/
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -199,7 +198,7 @@ void CreateMembershipCertChainPeer1() {
     //SGID1Chain[2].SetGuild(SGID1);
     //SGID1Chain[2].SetCA(true);
     //QStatus status = SGID1Chain[2].Sign(&g_privateKey[0]);
-    //assert(status == ER_OK);
+    //QCC_ASSERT(status == ER_OK);
 
     //SGID1 Chain, IA, signed by root
     qcc::MembershipCertificate tempIA;
@@ -212,7 +211,7 @@ void CreateMembershipCertChainPeer1() {
     tempIA.SetGuild(SGID1);
     tempIA.SetCA(true);
     QStatus status = tempIA.Sign(&g_caPrivateKey);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     SGID1Chain[1] = tempIA;
     QCC_UNUSED(status);
 
@@ -227,7 +226,7 @@ void CreateMembershipCertChainPeer1() {
     leaf.SetGuild(SGID1);
     leaf.SetCA(true);
     status = leaf.Sign(&g_privateKey[1]);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     SGID1Chain[0] = leaf;
 }
 
@@ -256,7 +255,7 @@ void CreateMembershipCertChainPeer2() {
     //SGID2Chain[2].SetGuild(SGID2);
     //SGID2Chain[2].SetCA(true);
     //QStatus status = SGID2Chain[2].Sign(&g_privateKey[2]);
-    //assert(status == ER_OK);
+    //QCC_ASSERT(status == ER_OK);
 
     //SGID2 Chain, IA, signed by root
     qcc::MembershipCertificate tempIA;
@@ -269,7 +268,7 @@ void CreateMembershipCertChainPeer2() {
     tempIA.SetGuild(SGID2);
     tempIA.SetCA(true);
     QStatus status = tempIA.Sign(&g_caPrivateKey);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     SGID2Chain[1] = tempIA;
     QCC_UNUSED(status);
 
@@ -284,7 +283,7 @@ void CreateMembershipCertChainPeer2() {
     leaf.SetGuild(SGID2);
     leaf.SetCA(true);
     status = leaf.Sign(&g_privateKey[3]);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     SGID2Chain[0] = leaf;
 }
 
@@ -713,9 +712,9 @@ int main(int argc, char*argv[]) {
     /* Create message bus */
     g_msgBus = new BusAttachment("security-manager", true);
     status = g_msgBus->Start();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = g_msgBus->Connect();
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     printf("Testing PermissionConfigurator functions.. \n");
     PermissionConfigurator& pc1 = g_msgBus->GetPermissionConfigurator();
@@ -742,7 +741,7 @@ int main(int argc, char*argv[]) {
 
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     //Set manifest template, ASACORE-2341 if no manifest template set, then no SLS emitted
     // All Inclusive manifest template
@@ -845,7 +844,7 @@ int main(int argc, char*argv[]) {
     MyBusListener busListener;
     g_msgBus->RegisterBusListener(busListener);
     status = g_msgBus->FindAdvertisedName(g_wellKnownName.c_str());
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     printf("Waiting to JoinSession with %s \n", g_wellKnownName.c_str());
     while (g_sessionId == 0) {
         qcc::Sleep(200);
@@ -860,7 +859,7 @@ int main(int argc, char*argv[]) {
     ECCPublicKey leafPublicKey;
     //const ECCPublicKey *leafPublicKey = g_publicKeyInfo.GetPublicKey();
     status =  securityAppProxy.GetEccPublicKey(leafPublicKey);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     printf("-----------------------------------------------\n");
     printf("Printing the public key of service bus: \n");
@@ -930,11 +929,11 @@ int main(int argc, char*argv[]) {
 
     String leafPEM, adminPEM, rootPEM;
     status = certChain[0].EncodeCertificatePEM(leafPEM);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = certChain[1].EncodeCertificatePEM(adminPEM);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
     status = certChain[2].EncodeCertificatePEM(rootPEM);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     status = certChain[0].Verify(certChain[1].GetSubjectPublicKey());
     printf("Verify statu 0-1 s is %s \n", QCC_StatusText(status));
@@ -958,7 +957,7 @@ int main(int argc, char*argv[]) {
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore", false);
-    assert(status == ER_OK);
+    QCC_ASSERT(status == ER_OK);
 
     //Install a Policy
     PermissionPolicy myPolicy;

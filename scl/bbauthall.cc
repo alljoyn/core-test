@@ -23,7 +23,6 @@
 #include <qcc/StringUtil.h>
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -100,7 +99,7 @@ class LocalTestObject : public BusObject {
     {
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface("org.alljoyn.bbjoin.interface");
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
 
         const MethodEntry methodEntries[] = {
@@ -209,7 +208,7 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
             /* Make Async method call */
             ProxyBusObject*remoteObj = new ProxyBusObject(*g_msgBus, name, "/org/alljoyn/bbjoin", sessionId);
             const InterfaceDescription* alljoynTestIntf = g_msgBus->GetInterface("org.alljoyn.bbjoin.interface");
-            assert(alljoynTestIntf);
+            QCC_ASSERT(alljoynTestIntf);
             remoteObj->AddInterface(*alljoynTestIntf);
             /* Prepare to make the async method call */
             /* Grab the interface */

@@ -27,7 +27,6 @@
  ******************************************************************************/
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -322,7 +321,7 @@ class BasicSampleObject : public BusObject {
         if (status == ER_OK) {
             /* Register the signal handler 'nameChanged' with the bus*/
             nameChangedMember = intf->GetMember("nameChanged");
-            assert(nameChangedMember);
+            QCC_ASSERT(nameChangedMember);
         } else {
             printf("Failed to Add interface: %s", INTERFACE_NAME);
         }
@@ -355,7 +354,7 @@ class BasicSampleObject : public BusObject {
            if (statusTest == ER_OK) {
              Register the signal handler 'nameChanged' with the bus
              nameChangedMember = intfTest->GetMember("nameChanged");
-             assert(nameChangedMember);
+             QCC_ASSERT(nameChangedMember);
             } else {
              printf("Failed to Add interface: %s", INTERFACE_NAME);
             }*/
@@ -369,7 +368,7 @@ class BasicSampleObject : public BusObject {
     QStatus EmitNameChangedSignal(qcc::String newName)
     {
         printf("Emiting Name Changed Signal.\n");
-        assert(nameChangedMember);
+        QCC_ASSERT(nameChangedMember);
         if (0 == s_sessionId) {
             printf("Sending NameChanged signal without a session id\n");
         }

@@ -22,7 +22,6 @@
 
 #include <gtest/gtest.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>

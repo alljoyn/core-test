@@ -104,7 +104,7 @@ class LocalTestObject : public BusObject {
 
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface(g_InterfaceName);
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
 
 
@@ -143,7 +143,7 @@ class LocalTestObject : public BusObject {
 
         /* Add the padding test interface to this object */
         const InterfaceDescription* regPaddingTestIntf = bus.GetInterface(g_PaddingInterfaceName);
-        assert(regPaddingTestIntf);
+        QCC_ASSERT(regPaddingTestIntf);
         AddInterface(*regPaddingTestIntf);
         /* Register the method handlers with the object */
         const MethodEntry paddingmethodEntries[] = {

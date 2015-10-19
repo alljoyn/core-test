@@ -27,7 +27,6 @@
 #include <signal.h>
 #include <string.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 
 #include <qcc/Environ.h>
@@ -200,7 +199,7 @@ class LocalTestObject : public BusObject {
     {
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface(g_InterfaceName);
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
 
         /* Register the method handlers with the object */

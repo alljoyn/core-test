@@ -22,7 +22,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 
 #include <vector>
 
@@ -118,7 +117,7 @@ class LocalTestObject : public BusObject {
         /* Get sls_signal member */
         if (ER_OK == status) {
             sls_signal_member = testIntf->GetMember("sls_signal");
-            assert(sls_signal_member);
+            QCC_ASSERT(sls_signal_member);
         }
     }
 
@@ -128,7 +127,7 @@ class LocalTestObject : public BusObject {
         QStatus status = ER_OK;
         uint8_t flags = ALLJOYN_FLAG_SESSIONLESS;
         Message msg(*g_msgBus);
-        assert(sls_signal_member);
+        QCC_ASSERT(sls_signal_member);
 
         Timespec ts;
         GetMyTimeNow(&ts);

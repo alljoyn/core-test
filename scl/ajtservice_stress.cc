@@ -36,7 +36,6 @@
  ******************************************************************************/
 #include <qcc/platform.h>
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -140,17 +139,17 @@ class LocalTestObject : public BusObject {
 
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = g_msgBus->GetInterface(::org::alljoyn::alljoyn_test::InterfaceName1);
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
         /* Add the values interface to this object */
         const InterfaceDescription* valuesIntf = g_msgBus->GetInterface(::org::alljoyn::alljoyn_test::InterfaceName2);
-        assert(valuesIntf);
+        QCC_ASSERT(valuesIntf);
         AddInterface(*valuesIntf);
 
         my_signal_member1 = regTestIntf->GetMember("my_signal");
-        assert(my_signal_member1);
+        QCC_ASSERT(my_signal_member1);
         my_signal_member2 =  valuesIntf->GetMember("my_signal");
-        assert(my_signal_member2);
+        QCC_ASSERT(my_signal_member2);
 
 
         /* Register the method handlers with the object */

@@ -23,7 +23,6 @@
 #include <Crtdbg.h>
 #endif
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -338,17 +337,17 @@ class LocalTestObject1 : public BusObject {
 
         /* Add the test interface1 to this object */
         const InterfaceDescription* regTestIntf1 = bus.GetInterface(::abcd::InterfaceName1);
-        assert(regTestIntf1);
+        QCC_ASSERT(regTestIntf1);
         AddInterface(*regTestIntf1);
 
         /* Add the test interface2 to this object */
         const InterfaceDescription* regTestIntf2 = bus.GetInterface(::abcd::InterfaceName2);
-        assert(regTestIntf2);
+        QCC_ASSERT(regTestIntf2);
         AddInterface(*regTestIntf2);
 
         /* Register the signal handler A with the bus */
         const InterfaceDescription::Member* member1 = regTestIntf1->GetMember(::abcd::Signal1);
-        assert(member1);
+        QCC_ASSERT(member1);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject1::SignalHandlerA),
                                            member1,
@@ -359,7 +358,7 @@ class LocalTestObject1 : public BusObject {
 
         /* Register the signal handler B with the bus */
         const InterfaceDescription::Member* member2 = regTestIntf1->GetMember(::abcd::Signal2);
-        assert(member2);
+        QCC_ASSERT(member2);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject1::SignalHandlerB),
                                            member2,
@@ -371,7 +370,7 @@ class LocalTestObject1 : public BusObject {
 
         /* Register the signal handler C with the bus */
         const InterfaceDescription::Member* member3 = regTestIntf2->GetMember(::abcd::Signal3);
-        assert(member3);
+        QCC_ASSERT(member3);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject1::SignalHandlerC),
                                            member3,
@@ -382,7 +381,7 @@ class LocalTestObject1 : public BusObject {
 
         /* Register the signal handler D with the bus */
         const InterfaceDescription::Member* member4 = regTestIntf2->GetMember(::abcd::Signal4);
-        assert(member4);
+        QCC_ASSERT(member4);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject1::SignalHandlerD),
                                            member4,
@@ -739,17 +738,17 @@ class LocalTestObject2 : public BusObject {
 
         /* Add the test interface1 to this object */
         const InterfaceDescription* regTestIntf1 = bus.GetInterface(::efgh::InterfaceName1);
-        assert(regTestIntf1);
+        QCC_ASSERT(regTestIntf1);
         AddInterface(*regTestIntf1);
 
         /* Add the test interface2 to this object */
         const InterfaceDescription* regTestIntf2 = bus.GetInterface(::efgh::InterfaceName2);
-        assert(regTestIntf2);
+        QCC_ASSERT(regTestIntf2);
         AddInterface(*regTestIntf2);
 
         /* Register the signal handler E with the bus */
         const InterfaceDescription::Member* member1 = regTestIntf1->GetMember(::efgh::Signal1);
-        assert(member1);
+        QCC_ASSERT(member1);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject2::SignalHandlerE),
                                            member1,
@@ -760,7 +759,7 @@ class LocalTestObject2 : public BusObject {
 
         /* Register the signal handler F with the bus */
         const InterfaceDescription::Member* member2 = regTestIntf1->GetMember(::efgh::Signal2);
-        assert(member2);
+        QCC_ASSERT(member2);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject2::SignalHandlerF),
                                            member2,
@@ -771,7 +770,7 @@ class LocalTestObject2 : public BusObject {
 
         /* Register the signal handler G with the bus */
         const InterfaceDescription::Member* member3 = regTestIntf2->GetMember(::efgh::Signal3);
-        assert(member3);
+        QCC_ASSERT(member3);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject2::SignalHandlerG),
                                            member3,
@@ -782,7 +781,7 @@ class LocalTestObject2 : public BusObject {
 
         /* Register the signal handler D with the bus */
         const InterfaceDescription::Member* member4 = regTestIntf2->GetMember(::efgh::Signal4);
-        assert(member4);
+        QCC_ASSERT(member4);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject2::SignalHandlerH),
                                            member4,

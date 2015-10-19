@@ -24,7 +24,6 @@
 #include <Crtdbg.h>
 #endif
 
-#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <vector>
@@ -443,16 +442,16 @@ class LocalTestObject : public BusObject {
 
         /* Add the test interface to this object */
         const InterfaceDescription* regTestIntf = bus.GetInterface(::org::alljoyn::alljoyn_test::InterfaceName);
-        assert(regTestIntf);
+        QCC_ASSERT(regTestIntf);
         AddInterface(*regTestIntf);
         /* Add the values interface to this object */
         const InterfaceDescription* valuesIntf = bus.GetInterface(::org::alljoyn::alljoyn_test::values::InterfaceName);
-        assert(valuesIntf);
+        QCC_ASSERT(valuesIntf);
         AddInterface(*valuesIntf);
 
         /* Register the signal handler with the bus */
         const InterfaceDescription::Member* member = regTestIntf->GetMember("my_signal");
-        assert(member);
+        QCC_ASSERT(member);
         status = bus.RegisterSignalHandler(this,
                                            static_cast<MessageReceiver::SignalHandler>(&LocalTestObject::SignalHandler),
                                            member,

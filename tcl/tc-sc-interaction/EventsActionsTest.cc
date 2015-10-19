@@ -212,7 +212,7 @@ class EventsActionsTest : public testing::Test {
 
         //Pull in the interface for the remote bus object.
         const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
-        assert(ifc);
+        QCC_ASSERT(ifc);
         remoteObj->AddInterface(*ifc);
 
         //Specify the method to be called Asynchronously.

@@ -131,25 +131,25 @@ class SessionTestObject : public BusObject {
     {
         /* Add the session test interface 1 to this object */
         const InterfaceDescription* testIntf1 = bus.GetInterface(TEST_SERVICE_INTERFACE_NAME1);
-        assert(testIntf1);
+        QCC_ASSERT(testIntf1);
         AddInterface(*testIntf1);
 
         /* Add the session test interface 2 to this object */
         const InterfaceDescription* testIntf2 = bus.GetInterface(TEST_SERVICE_INTERFACE_NAME2);
-        assert(testIntf2);
+        QCC_ASSERT(testIntf2);
         AddInterface(*testIntf2);
 
         /* Store the Chat signal member away so it can be quickly looked up when signals are sent */
         chatSignalMember = testIntf1->GetMember("Chat");
-        assert(chatSignalMember);
+        QCC_ASSERT(chatSignalMember);
         chatSignalMember11 = testIntf1->GetMember("Chat11");
-        assert(chatSignalMember11);
+        QCC_ASSERT(chatSignalMember11);
         chatSignalMember12 = testIntf1->GetMember("Chat12");
-        assert(chatSignalMember12);
+        QCC_ASSERT(chatSignalMember12);
         chatSignalMember21 = testIntf2->GetMember("Chat21");
-        assert(chatSignalMember21);
+        QCC_ASSERT(chatSignalMember21);
         chatSignalMember22 = testIntf2->GetMember("Chat22");
-        assert(chatSignalMember22);
+        QCC_ASSERT(chatSignalMember22);
     }
 
     /** Send a Chat signal */
@@ -825,15 +825,15 @@ int TestAppMain(int argc, char** argv)
     SignalReceiver signalReceiver;
 
     const InterfaceDescription::Member* chatSignalMember = testIntf1->GetMember("Chat");
-    assert(chatSignalMember);
+    QCC_ASSERT(chatSignalMember);
     const InterfaceDescription::Member* chatSignalMember11 = testIntf1->GetMember("Chat11");
-    assert(chatSignalMember11);
+    QCC_ASSERT(chatSignalMember11);
     const InterfaceDescription::Member* chatSignalMember12 = testIntf1->GetMember("Chat12");
-    assert(chatSignalMember12);
+    QCC_ASSERT(chatSignalMember12);
     const InterfaceDescription::Member* chatSignalMember21 = testIntf2->GetMember("Chat21");
-    assert(chatSignalMember21);
+    QCC_ASSERT(chatSignalMember21);
     const InterfaceDescription::Member* chatSignalMember22 = testIntf2->GetMember("Chat22");
-    assert(chatSignalMember22);
+    QCC_ASSERT(chatSignalMember22);
 
 
     /* Register signal handler */

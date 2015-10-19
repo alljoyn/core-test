@@ -24,7 +24,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 
 #include <qcc/String.h>
@@ -186,7 +185,7 @@ QStatus DoNameChange(char* newName)
         const InterfaceDescription* introIntf = remoteObj.GetInterface(org::allseen::Introspectable::InterfaceName);
         if (!introIntf) {
             introIntf = s_msgBus->GetInterface(org::allseen::Introspectable::InterfaceName);
-            assert(introIntf);
+            QCC_ASSERT(introIntf);
             remoteObj.AddInterface(*introIntf);
 
         }
@@ -195,7 +194,7 @@ QStatus DoNameChange(char* newName)
         Message reply(*s_msgBus);
         MsgArg lang("s", introLang.c_str());
         const InterfaceDescription::Member* introMember = introIntf->GetMember("IntrospectWithDescription");
-        assert(introMember);
+        QCC_ASSERT(introMember);
         status1 = remoteObj.MethodCall(*introMember, &lang, 1, reply, timeout);
         if (ER_OK == status1) {
             printf("Introspection XML in sample: %s\n", reply->GetArg(0)->v_string.str);
@@ -216,7 +215,7 @@ QStatus DoNameChange(char* newName)
         const InterfaceDescription* introIntf = remoteObj.GetInterface(org::freedesktop::DBus::Introspectable::InterfaceName);
         if (!introIntf) {
             introIntf = s_msgBus->GetInterface(org::freedesktop::DBus::Introspectable::InterfaceName);
-            assert(introIntf);
+            QCC_ASSERT(introIntf);
             remoteObj.AddInterface(*introIntf);
 
         }
@@ -225,7 +224,7 @@ QStatus DoNameChange(char* newName)
         /* Attempt to retrieve introspection from the remote object using sync call */
         Message reply(*s_msgBus);
         const InterfaceDescription::Member* introMember = introIntf->GetMember("Introspect");
-        assert(introMember);
+        QCC_ASSERT(introMember);
         status1 = remoteObj.MethodCall(*introMember, NULL, 0, reply, timeout);
 
         /* Parse the XML reply */

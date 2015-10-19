@@ -238,17 +238,17 @@ class LocalTestObject : public BusObject {
         QStatus status = ER_OK;
 
         const InterfaceDescription* Intf = g_msgBus->GetInterface(::org::alljoyn::file_transfer::InterfaceName);
-        assert(Intf);
+        QCC_ASSERT(Intf);
         AddInterface(*Intf);
 
         my_signal_member = Intf->GetMember("my_ftp_signal");
-        assert(my_signal_member);
+        QCC_ASSERT(my_signal_member);
         my_throughput_signal_member = Intf->GetMember("my_throughput_signal");
-        assert(my_throughput_signal_member);
+        QCC_ASSERT(my_throughput_signal_member);
         my_ftp_over_member = Intf->GetMember("my_ftp_over");
-        assert(my_ftp_over_member);
+        QCC_ASSERT(my_ftp_over_member);
         my_sender_ok_member = Intf->GetMember("my_sender_ok");
-        assert(my_sender_ok_member);
+        QCC_ASSERT(my_sender_ok_member);
 
         /* Register the method handlers with the object */
         const MethodEntry methodEntries[] = {
@@ -340,15 +340,15 @@ class ClientObject : public MessageReceiver {
         QStatus status = ER_OK;
 
         const InterfaceDescription* Intf = g_msgBus->GetInterface(::org::alljoyn::file_transfer::InterfaceName);
-        assert(Intf);
+        QCC_ASSERT(Intf);
         /* Register the signal handler with the bus */
 
         my_signal_member = Intf->GetMember("my_ftp_signal");
-        assert(my_signal_member);
+        QCC_ASSERT(my_signal_member);
         my_throughput_signal_member = Intf->GetMember("my_throughput_signal");
-        assert(my_throughput_signal_member);
+        QCC_ASSERT(my_throughput_signal_member);
         my_ftp_over_member = Intf->GetMember("my_ftp_over");
-        assert(my_ftp_over_member);
+        QCC_ASSERT(my_ftp_over_member);
 
 
         if (!throughput) {
@@ -410,7 +410,7 @@ class ClientObject : public MessageReceiver {
         if (!g_ttl) {
             if (count != i) {
                 printf("Missing signal and infinite ttl. Danger !  expected: %u, got  %u\n", count, i);
-                assert(false);
+                QCC_ASSERT(false);
             }
             count++;
             printf("Throughput Signal Received. %d %u bytes\n", i, length);

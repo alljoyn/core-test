@@ -23,7 +23,6 @@
 
 #include <signal.h>
 #include <stdio.h>
-#include <assert.h>
 #include <vector>
 #include <inttypes.h>
 #include <qcc/Environ.h>
