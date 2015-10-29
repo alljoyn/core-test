@@ -92,6 +92,12 @@ void TCProperties::HandleReply(AJ_Message* msg)
     AJ_ASSERT(AJ_OK == status);
 }
 
+TCBusAttachment::~TCBusAttachment()
+{
+    Stop();
+    Join();
+}
+
 void TCBusAttachment::Connect(const char* router)
 {
     AJ_Initialize();
