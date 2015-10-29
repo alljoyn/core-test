@@ -168,7 +168,8 @@ class TCBusAttachment : public qcc::Thread {
   public:
 
     TCBusAttachment(const char* name, AJ_AuthListenerFunc listener = DefaultAuthListener, AJ_PeerAuthenticateCallback callback = DefaultAuthCallback) : qcc::Thread(name), running(true), authlistener(listener), authcallback(callback) { }
-    void Connect(const char* router);
+    ~TCBusAttachment();
+    void Connect(const char* router = NULL);
     qcc::ThreadReturn STDCALL Run(void* arg);
     QStatus Stop();
     void Enqueue(Function f);
