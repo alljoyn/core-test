@@ -33,13 +33,16 @@
 # Parameter: none
 # Return: none
 function usage() {
-   echo 'Usage: win7Jenkins -h -r [windows_sdk_url] -s [thin_release_url] -t [thin_debug_url] -a [android_release_url] -w [workspace_path] -s [tools_rel_url]'
+   echo 'Usage: win7Jenkins -h -r [windows_sdk_url] -s [thin_release_url] -t [thin_debug_url] -a [android_release_url] -w [workspace_path] -s [test_tools_url] -l [windows sdk name] -m [windows release sdk name] -n [windows debug sdk name]'
    echo ' -h help (optional)
           -r windows sdk url with br_on pd_on 
           -t thin client debug sdk url
           -a android release sdk url
           -w workspace path
-          -s windows sc release test tools url'
+          -s windows test tools url
+          -l windows sdk name
+          -m windows release sdk name
+          -n windows debug sdk name'
 }
 
 # Function name: parseArgs
@@ -51,7 +54,7 @@ function parseArgs() {
 
     echo "Parsing arguments..."
 
-    args=`getopt hr:a:t:w: $*`
+    args=`getopt hr:a:t:w:s:l:m:n: $*`
 
     if [ $? != 0 ]; then
         usage
@@ -62,9 +65,9 @@ function parseArgs() {
 
     # windows br=on pd=on SDK url, default url is for master. It includes both release and debug
     winSdkUrl=""
-    winSdk="alljoyn-0.0.0-win7x64vs2013-sdk"
-    winRelSdk="alljoyn-0.0.0-win7x64vs2013-sdk-rel"
-    winDbgSdk="alljoyn-0.0.0-win7x64vs2013-sdk-dbg"
+    winSdk="alljoyn-0.0.1509-win7x64vs2013-sdk"
+    winRelSdk="alljoyn-0.0.1509-win7x64vs2013-sdk-rel"
+    winDbgSdk="alljoyn-0.0.1509-win7x64vs2013-sdk-dbg"
     
     # Thin client debug SDK url, default url is for master
     # Currently jenkins download server has no ajtcl release sdk
@@ -90,6 +93,9 @@ function parseArgs() {
         case "$i" in
              -h) shift;usage;exit 0;;
              -r) shift;winSdkUrl=$1;echo "windows sdk url $winSdkUrl";shift;;
+             -l) shift;winSdk=$1;echo "windows sdk name $winSdkUrl";shift;;
+             -m) shift;winRelSdk=$1;echo "windows release sdk name $winRelSdk";shift;;
+             -n) shift;winDbgSdk=$1;echo "windows debug sdk name $winDbgSdk";shift;;
              -a) shift;androidRelUrl=$1;echo "android distribution release url $androidRelUrl";shift;;
              -t) shift;tcDbgUrl=$1;echo "windows thin client debug url $tcDbgUrl";shift;;
              -w) shift;workspacePath=$1;echo "workspace path $workspacePath";shift;;
@@ -111,7 +117,6 @@ function parseArgs() {
 		echo "Thin client debug url $tcDbgUrl"
 	else
 	    echo "Empty thin client debug url $tcDbgUrl !"
-		exit 4
 	fi
 	
     # workspace path should exist
@@ -139,7 +144,7 @@ function parseArgs() {
     toolsLegacyPath="${windowsLegacyPath}/test_tools-rel"
     
 	# win7Testbot path
-	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptPath="${wsPath}/test-tools/testbot/windows/sbin"
 	testScriptName="${testScriptPath}/win7Testbot"
 	
 	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
@@ -166,7 +171,7 @@ function parseArgs() {
 	
 	# Require br=on pd=off SC sdks
 	#   debug only thin client sdk
-	requiredSdks=(${winSdkUrl} ${tcDbgUrl})
+	requiredSdks=(${winSdkUrl})
 	
 	# Android and test-tools sdks are optional
 	optionalSdks=(${androidRelUrl} ${toolsRelUrl})
@@ -283,14 +288,12 @@ function legacyRename() {
 #   Download required sdks and rename to be legacy compatible:
 #       windows BR=on/PD=off release sdk
 #       windows BR=on/PD=off debug sdk
-#       TC BR=on/PD=off debug sdk
 # Parameter: none
 # Return: 
 #   exit 3 if download failed; exit 4 if rename failed
 function getRequiredSdks() {
     local relReady=1
     local dbgReady=1
-    local tcDbgReady=1
     
     # Download windows sdk
     getSdk "${winSdkUrl}" "${winSdk}" 1 "${localPath}" "${localPath}/${winSdk}/${winRelSdk}"
@@ -298,16 +301,6 @@ function getRequiredSdks() {
 
     if [ "$relReady" -eq 0 ]; then
         echo "windows sdk ready"
-    
-        getSdk "${tcDbgUrl}" "${tcDbgSdk}" 1 "${tcLegacyPath}" "${tcLegacyPath}/${tcDbgSdk}"
-        tcDbgReady=${sdkReady}
-            
-        if [ "$tcDbgReady" -eq 0 ]; then
-            echo "windows thin client debug sdk ready"
-        else
-            echo "windows thin client debug sdk download failed!"
-            exit 3
-        fi
     else
         echo "windows sdk download failed!"
         exit 3
@@ -331,12 +324,6 @@ function getRequiredSdks() {
     legacyRename "${windowsLegacyPath}/${winDbgSdk}" "${windowsLegacyPath}/sdk-dbg"
     dbgRename=$renameStatus
 
-    chmod 777 ${tcLegacyPath}
-    chmod 777 ${tcLegacyPath}/*
-    
-    legacyRename "${tcLegacyPath}/${tcDbgSdk}" "${tcLegacyPath}/scons"
-    tcDbgRename=$renameStatus
-
     if [ "${rootRename}" -ne 0 ]; then
         echo "Rename ${rootRename} failed!"
         exit 4
@@ -349,11 +336,6 @@ function getRequiredSdks() {
     
     if [ "${dbgRename}" -ne 0 ]; then
         echo "Rename ${dbgRename} failed!"
-        exit 4
-    fi
-
-    if [ "${tcDbgRename}" -ne 0 ]; then
-        echo "Rename ${tcDbgRename} failed!"
         exit 4
     fi
 }
@@ -496,9 +478,6 @@ mkdir $androidLegacyPath
 
 # Download and rename required sdks
 getRequiredSdks
-
-#Download optional android SDK
-getOptionalSdks
 
 # run test
 runTest

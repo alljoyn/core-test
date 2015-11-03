@@ -2909,7 +2909,7 @@ chmod 777 $tcTestPath/*
 chmod 777 $tcUnitTestPath/*
 
 # Run thin client tests
-runTcTests
+#runTcTests
 
 runCppTests
 
@@ -2917,7 +2917,7 @@ runCppTests
 #runJavaTests
 
 # Run Windows-android inter-operation tests
-runAndroidIntTests
+#runAndroidIntTests
 
 echo "......" >> $testResultFile
 

@@ -32,7 +32,7 @@
 # Parameter: none
 # Return: none
 function usage() {
-   echo 'Usage: linuxJenkins -h -r [linux_release_url] -d [linux_debug_url] -a [offon_release_url] -b [offon_debug_url] -s [thin_release_url] -y [thin_debug_url] -p [policydb_release_url] -q [policydb_debug_url] -t [tools_release_url]  -g [tools_debug_url] -w [workspace_path] -e [expect_script_path] -c [policydb_config_path] -x [events_actions_log_path]'
+   echo 'Usage: linuxJenkins -h -r [linux_release_url] -d [linux_debug_url] -a [offon_release_url] -b [offon_debug_url] -s [thin_release_url] -y [thin_debug_url] -p [policydb_release_url] -q [policydb_debug_url] -t [tools_release_url]  -g [tools_debug_url] -w [workspace_path] -e [expect_script_path] -c [policydb_config_path] -x [events_actions_log_path] -m [linux_sc_release_sdk_name] -n [linux_sc_debug_sdk_name]'
    echo ' -h help (optional)
           -r linux release sdk url with br_on pd_off 
           -d linux debug sdk url with br_on pd_off
@@ -47,7 +47,9 @@ function usage() {
           -w workspace path
           -e expect script path
           -c policydb routing node config file path
-          -x events actions log path'
+          -x events actions log path
+          -m linux release sdk file name 
+          -n linux debug sdk file name'
 }
 
 # Function name: parseArgs
@@ -59,7 +61,7 @@ function parseArgs() {
 
     echo "Parsing arguments..."
 
-    args=`getopt hr:d:a:b:s:y:p:q:t:g:w:e:c:x: $*`
+    args=`getopt hr:d:a:b:s:y:p:q:t:g:w:e:c:x:m:n: $*`
 
     if [ $? != 0 ]; then
         usage
@@ -70,11 +72,11 @@ function parseArgs() {
 
     # LINUX br=on pd=off release SDK url, with complete http path and file name
     onOffRelUrl="http://[path]/alljoyn-0.0.0-linux_x64-sdk-rel.zip"
-    onOffRelSdk="alljoyn-0.0.0-linux_x64-sdk-rel"
+    onOffRelSdk="alljoyn-0.0.1-linux_x64-sdk-rel"
     
     # LINUX br=on pd=off debug SDK url, with complete http path and file name
     onOffDbgUrl="http://[path]/alljoyn-0.0.0-linux_x64-sdk-dbg.zip"
-    onOffDbgSdk="alljoyn-0.0.0-linux_x64-sdk-dbg"
+    onOffDbgSdk="alljoyn-0.0.1-linux_x64-sdk-dbg"
     
     # LINUX br=off pd=on release SDK url, default url is for master
     offOnRelUrl=""
@@ -127,7 +129,9 @@ function parseArgs() {
         case "$i" in
              -h) shift;usage;exit 0;;
              -r) shift;onOffRelUrl=$1;echo "linux onoff release sdk url $onOffRelUrl";shift;;
+             -m) shift;onOffRelSdk=$1;echo "linux onoff release sdk $onOffRelSdk";shift;;
              -d) shift;onOffDbgUrl=$1;echo "linux onoff debug sdk url $onOffDbgUrl";shift;;
+             -n) shift;onOffDbgSdk=$1;echo "linux onoff debug sdk $onOffDbgSdk";shift;;
              -a) shift;offOnRelUrl=$1;echo "linux offon release sdk url $offOnRelUrl";shift;;
              -b) shift;offOnDbgUrl=$1;echo "linux offon debug sdk url $offOnDbgUrl";shift;;
              -s) shift;tcRelUrl=$1;echo "Linux thin client release url $tcRelUrl";shift;;
@@ -153,13 +157,24 @@ function parseArgs() {
 	    echo "Empty linux release url $onOffRelUrl !"
 		exit 3
 	fi
+
+    # Both release and debug sdk name should be valid because both release and debug binaries are tested
+	if [ -n "$onOffRelSdk" -a -n "$onOffDbgSdk" ]; then
+		echo "Linux release sdk $onOffRelSdk debug url $onOffDbgSdk"
+	elif [ -n "$onOffRelSdk" ]; then
+		echo "Empty linux debug sdk $onOffDbgSdk !"
+		exit 3
+	else
+	    echo "Empty linux release sdk $onOffRelSdk !"
+		exit 3
+	fi
 	
 	# thin client debug sdk url is required
 	if [ -n "$tcDbgUrl" ]; then
 		echo "Thin client debug url $tcDbgUrl"
 	else
 	    echo "Empty thin client debug url $tcDbgUrl !"
-		exit 3
+            exit 3
 	fi
 	
 	# policydb test is optional
@@ -202,7 +217,7 @@ function parseArgs() {
  	pdLegacyPath="${localPath}/buildbot_pdb"
 	  
 	# linuxAndroidTest path
-	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptPath="${wsPath}/test-tools/testbot/linux/sbin"
 	testScriptName="${testScriptPath}/multiDaemonTest"
 	
 	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
@@ -355,15 +370,15 @@ function getRequiredSdks() {
         if [ "$dbgReady" -eq 0 ]; then
             echo "Linux br=on pd=off debug 64 sdk ready"
         
-            getSdk "${tcDbgUrl}" "${tcDbgSdk}" 1 "${tcLegacyPath}"
-            tcDbgReady=${sdkReady}
+           getSdk "${tcDbgUrl}" "${tcDbgSdk}" 1 "${tcLegacyPath}"
+           tcDbgReady=${sdkReady}
             
-            if [ "$tcDbgReady" -eq 0 ]; then
-                echo "Linux thin client debug sdk ready"
-            else
-                echo "Linux thin client debug sdk download failed!"
-                exit 3
-            fi
+           if [ "$tcDbgReady" -eq 0 ]; then
+              echo "Linux thin client debug sdk ready"
+           else
+              echo "Linux thin client debug sdk download failed!"
+              exit 3
+           fi
         else
             echo "Linux br=on pd=off debug 64 sdk download failed!"
             exit 3
@@ -387,7 +402,7 @@ function getRequiredSdks() {
     legacyRename "${tcLegacyPath}/${tcDbgSdk}" "${tcLegacyPath}/scons"
     tcDbgRename=$renameStatus
 
-    if [ "${relRename}" -ne 0 -o "${tcDbgRename}" -ne 0 ]; then
+    if [ "${relRename}" -ne 0 ]; then
         echo "Rename ${relRename} failed!"
         exit 4
     fi
@@ -401,6 +416,7 @@ function getRequiredSdks() {
         echo "Rename ${tcDbgRename} failed!"
         exit 4
     fi
+
 }
 
 # Function name: getOptionalSdks
@@ -503,7 +519,7 @@ function runTest() {
     testStatus=1
 
 (cd ${wsPath}
-${testScriptName} -v -p ${linuxLegacyPath} -l ${tcLegacyPath} -e ${expectScriptPath} -c ${policyConfigPath} -x ${eventsLogPath}
+${testScriptName} -v -p ${linuxLegacyPath} -l ${tcLegacyPath} -e ${expectScriptPath}
 )
 
     testStatus=$?
@@ -524,7 +540,7 @@ rm -rf ${wsPath}/*.html ${wsPath}/*.log ${wsPath}/*.txt ${wsPath}/*.nvram ${wsPa
 # wget must be available to continue
 getWgetPath
 
-if ["$wgetReady" -ne 0 ]; then
+if [ "$wgetReady" -ne 0 ]; then
     echo "wget is NOT available!"
     exit 2
 fi
@@ -552,7 +568,7 @@ mkdir $pdLegacyPath
 getRequiredSdks
 
 #Download optional SDKs
-getOptionalSdks
+#getOptionalSdks
 
 # run test
 runTest
