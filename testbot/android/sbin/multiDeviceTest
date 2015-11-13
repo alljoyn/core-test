@@ -3352,14 +3352,14 @@ function oneServiceMulClients() {
 	for ((index=0; index<$tests; index++))
 	do 
 
-		echo "Test Case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..." >> $testErrorLog
-		echo "Test case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..."
-		echo "Test case $testCase(SCLCTP-001-$binaryType bbservice/bbclient)..." >> $testDetailLog
+		echo "Test Case $testCase($binaryType bbservice/bbclient)..." >> $testErrorLog
+		echo "Test case $testCase($binaryType bbservice/bbclient)..."
+		echo "Test case $testCase($binaryType bbservice/bbclient)..." >> $testDetailLog
 		echo >> $testResultFile
-		echo "Test case=$testCase(SCLCTP-001-$binaryType bbservice/bbclient)">> $testResultFile
+		echo "Test case=$testCase($binaryType bbservice/bbclient)">> $testResultFile
 		
 		echo "<br>" >> $testResultHtml
-		echo "<p>Test case=$testCase(SCLCTP-001-$binaryType bbservice/bbclient)</p>">> $testResultHtml
+		echo "<p>Test case=$testCase($binaryType bbservice/bbclient)</p>">> $testResultHtml
 
 		# If devices can NOT ping each other, test block
 		if [ "$devicesConnected" -eq 0 ]; then
@@ -4020,9 +4020,9 @@ function runRawSocketTest() {
 	echo "Test case $testCase($binaryType raw socket test)..."
 	echo "Test case $testCase($binaryType raw socket test)..." >> $testDetailLog
 	echo >> $testResultFile
-	echo "Test case=$testCase(SCLPTP-A043-$binaryType raw socket)">> $testResultFile
+	echo "Test case=$testCase($binaryType raw socket)">> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "<p>Test case=$testCase(SCLPTP-A043-$binaryType raw socket)</p>">> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType raw socket)</p>">> $testResultHtml
 	
 
 	# If devices can NOT ping each other, test block
@@ -4118,14 +4118,11 @@ function runSecurityMethod() {
 	local type=$2
 	local secmode=$3
 	local testCase=$(($totalTests + 1))
-	local testTitle=""
 
 	if [ "$secmode" -eq "$SRPMODE" ]; then
 		testDesc="SRP"
-		testTitle="SCLCTP-007"
 	elif [ "$secmode" -eq "$LOGONMODE" ]; then
 		testDesc="LOGON"
-		testTitle="SCLCTP-009"
 	else
 		testDesc="regular"
 	fi
@@ -4134,9 +4131,9 @@ function runSecurityMethod() {
 	echo "Test case $testCase($binaryType $testDesc bbclient test)..."
 	echo "Test case $testCase($binaryType $testDesc bbclient test)..." >> $testDetailLog
 	echo >> $testResultFile
-	echo "Test case=$testCase($testTitle $binaryType $testDesc bbclient test)">> $testResultFile
+	echo "Test case=$testCase($binaryType $testDesc bbclient test)">> $testResultFile
     echo "<br>" >> $testResultHtml
-	echo "<p>Test case=$testCase($testTitle $binaryType $testDesc bbclient test)</p>">> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType $testDesc bbclient test)</p>">> $testResultHtml
 
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -4443,8 +4440,8 @@ function runJniChatInWifi() {
 	echo "Test case $testCase($binaryType jni chat test under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "Test case=$testCase(SCLPTP-A038-$binaryType jni chat under wifi)">> $testResultFile
-	echo "<p>Test case=$testCase(SCLPTP-A038-$binaryType jni chat under wifi)</p>">> $testResultHtml
+	echo "Test case=$testCase($binaryType jni chat under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase($binaryType jni chat under wifi)</p>">> $testResultHtml
 
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -4565,8 +4562,8 @@ function runChatInWifi() {
 	echo "Test case $testCase($binaryType java chat test under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "Test case=$testCase(SCLPTP-A042-$binaryType java chat under wifi)">> $testResultFile
-	echo "<p>Test case=$testCase(SCLPTP-A042-$binaryType java chat under wifi)</p>">> $testResultHtml
+	echo "Test case=$testCase($binaryType java chat under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase($binaryType java chat under wifi)</p>">> $testResultHtml
 
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -4685,8 +4682,8 @@ function runSessionlessInWifi() {
 	echo "Test case $testCase($binaryType sessionless test under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "Test case=$testCase(SCLPTP-A047-$binaryType sessionless under wifi)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-A047-$binaryType sessionless under wifi)</p>">> $testResultHtml
+	echo "Test case=$testCase($binaryType sessionless under wifi)">> $testResultFile
+    echo "<p>Test case=$testCase($binaryType sessionless under wifi)</p>">> $testResultHtml
     
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -4808,9 +4805,9 @@ function runPropertyInWifi() {
 	echo "Test case $testCase($binaryType property service/client test under wifi)..."
 	echo "Test case $testCase($binaryType property service/client test under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
-	echo "Test case=$testCase(SCLPTP-A081-$binaryType property service/client under wifi)">> $testResultFile
+	echo "Test case=$testCase($binaryType property service/client under wifi)">> $testResultFile
     echo "<br>" >> $testResultHtml
-	echo "<p>Test case=$testCase(SCLPTP-A081-$binaryType property service/client under wifi)</p>">> $testResultHtml
+	echo "<p>Test case=$testCase($binaryType property service/client under wifi)</p>">> $testResultHtml
 	
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -5005,8 +5002,8 @@ function runJniSimpleInWifi() {
 	echo "Test case $testCase($binaryType jni simple service/client under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "Test case=$testCase(SCLPTP-A039-$binaryType jni simple service/client under wifi)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-A039-$binaryType jni simple service/client under wifi)</p>">> $testResultHtml
+	echo "Test case=$testCase($binaryType jni simple service/client under wifi)">> $testResultFile
+    echo "<p>Test case=$testCase($binaryType jni simple service/client under wifi)</p>">> $testResultHtml
     
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -5126,8 +5123,8 @@ function runSimpleInWifi() {
 	echo "Test case $testCase($binaryType simple service/client under wifi)..." >> $testDetailLog
 	echo >> $testResultFile
 	echo "<br>" >> $testResultHtml
-	echo "Test case=$testCase(SCLPTP-A082-$binaryType simple service/client under wifi)">> $testResultFile
-	echo "<p>Test case=$testCase(SCLPTP-A082-$binaryType simple service/client under wifi)</p>">> $testResultHtml
+	echo "Test case=$testCase($binaryType simple service/client under wifi)">> $testResultFile
+	echo "<p>Test case=$testCase($binaryType simple service/client under wifi)</p>">> $testResultHtml
 
 	# If devices can NOT ping each other, test block
 	if [ "$devicesConnected" -eq 0 ]; then
@@ -5263,11 +5260,11 @@ function runUT() {
 	echo >> $testResultFile
 	
 	if [ "$program" == "cmtest" ]; then
-		echo "Test case=$testCase(SCLPTP-A008-cmtest)">> $testResultFile
+		echo "Test case=$testCase(cmtest)">> $testResultFile
 		# cmtest takes long
 		timeOut=2100
 	elif [ "$program" == "ajtest" ]; then
-		echo "Test case=$testCase(SCLPTP-A007-ajtest)">> $testResultFile
+		echo "Test case=$testCase(ajtest)">> $testResultFile
 	else
 		echo "Test case=$testCase($program)">> $testResultFile
 	fi

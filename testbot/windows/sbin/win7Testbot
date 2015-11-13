@@ -841,9 +841,9 @@ function basicServiceClient() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W014 basic_service/basic_client $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(basic_service/basic_client $buildVariant)"
+	echo "Test case=$testCase(basic_service/basic_client $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(basic_service/basic_client $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="basic_client_$buildVariant.txt"
 	local SERVICE_LOG="basic_service_$buildVariant.txt"
@@ -1174,9 +1174,9 @@ function bbServiceClient() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W013 Method calls over TCP $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(Method calls over TCP $buildVariant)"
+	echo "Test case=$testCase(Method calls over TCP $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(Method calls over TCP $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="bbclient_$buildVariant.txt"
 	local SERVICE_LOG="bbservice_$buildVariant.txt"
@@ -1693,9 +1693,9 @@ function lostAdvertisedName() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W003 lostAdvertisedName test $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W005 lostAdvertisedName test $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W005 lostAdvertisedName test $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(lostAdvertisedName test $buildVariant)"
+	echo "Test case=$testCase(lostAdvertisedName test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(lostAdvertisedName test $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="bbclient_lost_$buildVariant.txt"
 	local SERVICE_LOG="bbservice_lost_$buildVariant.txt"
@@ -1791,9 +1791,9 @@ function javaMethodCall() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W016 JavaSDKDocMethod test $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(JavaSDKDocMethod test $buildVariant)"
+	echo "Test case=$testCase(JavaSDKDocMethod test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(JavaSDKDocMethod test $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="java_method_client_$buildVariant.txt"
 	local SERVICE_LOG="java_method_service_$buildVariant.txt"
@@ -1952,9 +1952,9 @@ function javaProperty() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W017 JavaSDKDocProperties test $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(JavaSDKDocProperties test $buildVariant)"
+	echo "Test case=$testCase(JavaSDKDocProperties test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(JavaSDKDocProperties test $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="java_property_client_$buildVariant.txt"
 	local SERVICE_LOG="java_property_service_$buildVariant.txt"
@@ -2071,9 +2071,9 @@ function javaSignal() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W021 JavaSDKDocSignal test $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(JavaSDKDocSignal test $buildVariant)"
+	echo "Test case=$testCase(JavaSDKDocSignal test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(JavaSDKDocSignal test $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="java_signal_client_$buildVariant.txt"
 	local SERVICE_LOG="java_signal_service_$buildVariant.txt"
@@ -2203,9 +2203,9 @@ function javaSecurityLogon() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)"
-	echo "Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-W018 JavaSDKDocSecurityLogon test $buildVariant)</p>">> $testResultHtml
+	echo "Test case=$testCase(JavaSDKDocSecurityLogon test $buildVariant)"
+	echo "Test case=$testCase(JavaSDKDocSecurityLogon test $buildVariant)">> $testResultFile
+    echo "<p>Test case=$testCase(JavaSDKDocSecurityLogon test $buildVariant)</p>">> $testResultHtml
     
 	local CLIENT_LOG="java_logon_client_$buildVariant.txt"
 	local SERVICE_LOG="java_logon_service_$buildVariant.txt"
@@ -2820,10 +2820,10 @@ function runAndroidIntTests() {
 				if [ "$loadSuccess" -eq 0 ]; then
 					# Start win-bbservice/android-bbclient test
 					# 2 seconds between bbservice and bbclient
-					runWinService1 "com.iop" 2 "SCLPTP-IOP041 Win bbservice/Android bbClient"
+					runWinService1 "com.iop" 2 "Win bbservice/Android bbClient"
 		
 					# Start win-bbclient/android-bbservice test
-					runWinClient1 "gov.iopa" 2 "SCLPTP-IOP007 Android bbservice/Win7 bbClient"
+					runWinClient1 "gov.iopa" 2 "Android bbservice/Win7 bbClient"
 
 					# Start NGNS inter-op tests
 					runWinService1 "org.ngns.unicast.response1" 45 "SCLNGNS-INTEROP-1 Android discovery Unicast response"

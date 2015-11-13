@@ -1086,9 +1086,9 @@ function twoDaemonsTest() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase(SCLPTP-L018 method call $transport)"
-	echo "Test case=$testCase(SCLPTP-L018 method call $transport)">> $testResultFile
-    echo "<p>Test case=$testCase(SCLPTP-L018 method call $transport)<p>">> $testResultHtml
+	echo "Test case=$testCase(method call $transport)"
+	echo "Test case=$testCase(method call $transport)">> $testResultFile
+    echo "<p>Test case=$testCase(method call $transport)<p>">> $testResultHtml
     
 	local serviceLog="${testDetailDir}${scriptName}_${testCase}_bbservice.log"
 	local clientLog="${testDetailDir}${scriptName}_${testCase}_bbclient.log"
@@ -3530,10 +3530,10 @@ function runSCIntrospection() {
 	echo "SC end-end messaging introspection test ..." >> $testDetailLog
 	
 	local launchDaemon=$1
-	local testMap="SCLCTP-003 no pid"
+	local testMap="no pid"
 
 	if [ "$launchDaemon" -eq 1 ]; then
-		testMap="SCLCTP-004 pid"
+		testMap="pid"
 	fi
 
 	# Initialize result to success
@@ -3612,10 +3612,10 @@ function runSCAsyncCall() {
 	echo "SC end-end messaging asynchronous method call test ..." >> $testDetailLog
 	
 	local launchDaemon=$1
-	local testMap="SCLCTP-005 no pid"
+	local testMap="no pid"
 
 	if [ "$launchDaemon" -eq 1 ]; then
-		testMap="SCLCTP-006 pid"
+		testMap="pid"
 	fi
 
 	# Initialize result to success
@@ -3695,10 +3695,10 @@ function runSCSyncAsyncMix() {
 	echo "SC end-end messaging synchronous and asynchronous mix test ..." >> $testDetailLog
 	
 	local launchDaemon=$1
-	local testMap="SCLCTP-011 no pid"
+	local testMap="no pid"
 
 	if [ "$launchDaemon" -eq 1 ]; then
-		testMap="SCLCTP-012 pid"
+		testMap="pid"
 	fi
 
 	# Initialize result to success
@@ -3795,10 +3795,10 @@ function runSharedKeyStore() {
 	echo "SC end-end messaging shared key store test ..." >> $testDetailLog
 	
 	local launchDaemon=$1
-	local testMap="SCLCTP-059 no pid"
+	local testMap="no pid"
 
 	if [ "$launchDaemon" -eq 1 ]; then
-		testMap="SCLCTP-060 pid"
+		testMap="pid"
 	fi
 
 	# Initialize result to success
@@ -3948,7 +3948,7 @@ function runBbsigStress() {
 	
 	echo "SC bbservice/bbsig stress test ..." >> $testDetailLog
 	
-	local testMap="SCLPTP-L046 stress signal"
+	local testMap="stress signal"
 
 	# Initialize result to success
 	testResults[totalTests]=0
@@ -4045,7 +4045,7 @@ function runBbsigStressAuth() {
 	
 	echo "SC bbservice/bbsig stress authentication test ..." >> $testDetailLog
 	
-	local testMap="SCLPTP-L047 stress authentication signal"
+	local testMap="stress authentication signal"
 
 	# Initialize result to success
 	testResults[totalTests]=0
@@ -4142,7 +4142,7 @@ function runBastress2() {
 	local transport=$1
 	echo "SC bastress2 stress test over $transport ..." >> $testDetailLog
 	
-	local testMap="SCLPTP-L050 SC bastress2 $transport"
+	local testMap="SC bastress2 $transport"
 
 	# Initialize result to success
 	testResults[totalTests]=0
@@ -4245,7 +4245,7 @@ function runBbjoinStress() {
 	
 	echo "SC bbjoin stress test ..." >> $testDetailLog
 	
-	local testMap="SCLPTP-L052 SC bbjoin stress"
+	local testMap="SC bbjoin stress"
 
 	# Initialize result to success
 	testResults[totalTests]=0
@@ -4335,9 +4335,9 @@ function basicCSample() {
 	echo >> $testResultFile
     echo "<br>" >> $testResultHtml
     
-	echo "Test case=$testCase($testVariant SCLPTP-L001 C sample)"
-	echo "Test case=$testCase($testVariant SCLPTP-L001 C sample)" >> $testResultFile
-	echo "<p>Test case=$testCase($testVariant SCLPTP-L001 C sample)</p>" >> $testResultHtml
+	echo "Test case=$testCase($testVariant C sample)"
+	echo "Test case=$testCase($testVariant C sample)" >> $testResultFile
+	echo "<p>Test case=$testCase($testVariant C sample)</p>" >> $testResultHtml
 
 	# Stop old processes
 	clean_up_all
@@ -6180,9 +6180,9 @@ function runSessionsTests() {
 	    echo >> $testResultFile
         echo "<br>" >> $testResultHtml
         
-	    echo "Test case=$testCase(SCLCTP-033- point-point sessions test)"
-	    echo "Test case=$testCase(SCLCTP-033- point-point sessions test)">> $testResultFile
-        echo "<p>Test case=$testCase(SCLCTP-033- point-point sessions test)</p>">> $testResultHtml
+	    echo "Test case=$testCase(point-point sessions test)"
+	    echo "Test case=$testCase(point-point sessions test)">> $testResultFile
+        echo "<p>Test case=$testCase(point-point sessions test)</p>">> $testResultHtml
         
 	    local p2pLog="${testDetailDir}${scriptName}_${testCase}_sessions_p2p.log"
         local p2pHtml="${testDetailDir}${scriptName}_${testCase}_sessions_p2p_error.txt"
@@ -6218,9 +6218,9 @@ function runSessionsTests() {
 	    echo >> $testResultFile
         echo "<br>" >> $testResultHtml
         
-	    echo "Test case=$testCase(SCLCTP-031- multi-point sessions test)"
-	    echo "Test case=$testCase(SCLCTP-031- multi-point sessions test)">> $testResultFile
-        echo "<p>Test case=$testCase(SCLCTP-031- multi-point sessions test)</p>">> $testResultHtml
+	    echo "Test case=$testCase(multi-point sessions test)"
+	    echo "Test case=$testCase(multi-point sessions test)">> $testResultFile
+        echo "<p>Test case=$testCase(multi-point sessions test)</p>">> $testResultHtml
         
 	    local sessionsMpLog="sessions_mp.log"
         local sessionsMpError="sessions_mp_error.txt"
@@ -6256,9 +6256,9 @@ function runSessionsTests() {
 	    echo >> $testResultFile
         echo "<br>" >> $testResultHtml
         
-	    echo "Test case=$testCase(SCLCTP-039- bind,unbind,join,rejoin multi-point session)"
-	    echo "Test case=$testCase(SCLCTP-039- bind,unbind,join,rejoin multi-point session)">> $testResultFile
-        echo "<p>Test case=$testCase(SCLCTP-039- bind,unbind,join,rejoin multi-point session)</p>">> $testResultHtml
+	    echo "Test case=$testCase(bind,unbind,join,rejoin multi-point session)"
+	    echo "Test case=$testCase(bind,unbind,join,rejoin multi-point session)">> $testResultFile
+        echo "<p>Test case=$testCase(bind,unbind,join,rejoin multi-point session)</p>">> $testResultHtml
         
 	    local mpUnbindLog="sessions_mp_unbind.log"
         local mpUnbindError="sessions_mp_unbind_error.txt"
