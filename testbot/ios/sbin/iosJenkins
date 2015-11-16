@@ -30,12 +30,16 @@
 # Parameter: none
 # Return: none
 function usage() {
-   echo 'Usage: iosJenkins -h -i [ios_sdk_url] -j [android_sdk_url] -w [workspace_path] -l [arm64]'
+   echo 'Usage: iosJenkins -h -i [ios_sdk_url] -j [android_sdk_url] -w [workspace_path] -f -o [ios_zip] -p [ios_path] -m [android_zip] -n [android_path]'
    echo ' -h help (optional)
           -i ios sdk url
           -j android sdk url
           -w workspace path
-          -f use arm64 flag to compile ios 8.1 device'
+          -f use arm64 flag to compile ios 8.1 device
+          -o ios sdk zip
+          -p ios sdk path after unzip
+          -m android sdk zip
+          -n android sdk path after unzip'
 }
 
 # Function name: parseArgs
@@ -47,7 +51,7 @@ function parseArgs() {
 
     echo "Parsing arguments..."
 
-    args=`getopt hi:j:w:f $*`
+    args=`getopt hi:j:w:fo:p:m:n: $*`
 
     if [ $? != 0 ]; then
         usage
@@ -57,14 +61,19 @@ function parseArgs() {
     set -- $args
 
     # IOS SDK url, default url is for master
-    iosSdkUrl="http://sea-alljoyn-openmwrt/depot/testbot/latest/alljoyn/master/darwin/alljoyn-0.0.0-osx_ios-sdk.zip"
+    iosSdkUrl="https://build.allseenalliance.org/ci/view/Core%20master%20SDK/job/master-osx-sdk/lastSuccessfulBuild/artifact/sdks/alljoyn-0.0.1-osx_ios-sdk.zip"
+    iosSdkZip="alljoyn-0.0.1-osx_ios-sdk.zip"
+    iosPath="alljoyn-0.0.1-osx_ios-sdk"
 
+    
     # Android SDK url default url is for master
-    androidSdkUrl="http://sea-alljoyn-openmwrt/depot/testbot/latest/alljoyn/master/android-arm-on-off/alljoyn-0.0.0-android-sdk-rel.zip"
-
-
+    androidSdkUrl="https://build.allseenalliance.org/ci/view/Core%20master%20SDK/job/master-android-sdk/lastSuccessfulBuild/artifact/sdks/alljoyn-0.0.1-android-sdk-rel.zip"
+    
+    androidRelSdkZip="alljoyn-0.0.1-android-sdk-rel.zip"
+    androidPath="alljoyn-0.0.1-rel"
+    
     # Local workspace path
-    workspacePath="/Users/seabuild/jenkins/c01smini/workspace/ios_81_testbot"
+    workspacePath=""
     
     # armv7 flag by default for 71 device
     arm64Flag=0
@@ -74,12 +83,16 @@ function parseArgs() {
         case "$i" in
              -h) shift;usage;exit 0;;
              -i) shift;iosSdkUrl=$1;echo "ios sdk url $iosSdkUrl";shift;;
+             -o) shift;iosSdkZip=$1;echo "ios sdk zip $iosSdkZip";shift;;
+             -p) shift;iosPath=$1;echo "ios sdk path $iosPath after unzip";shift;;
              -j) shift;androidSdkUrl=$1;echo "android sdk url $androidSdkUrl";shift;;
+             -m) shift;androidRelSdkZip=$1;echo "android release sdk zip $androidRelSdkZip";shift;;
+             -n) shift;androidPath=$1;echo "android sdk path $androidPath after unzip";shift;;
              -w) shift;workspacePath=$1;echo "workspace path $workspacePath";shift;;
              -f) shift;arm64Flag=1; echo "IOS 8.1 device";;
         esac
     done
-    
+        
     if [ -n "$workspacePath" -a -d "$workspacePath" ]; then
 		wsPath="$workspacePath"
 		lastChr=${workspacePath#${workspacePath%?}}
@@ -91,18 +104,17 @@ function parseArgs() {
 		echo "Invalid workspace local path $workspacePath"
 		exit 7
 	fi
-
-    iosSdkZip="alljoyn-0.0.0-osx_ios-sdk.zip"
-    iosLocalRoot="${wsPath}/alljoyn-0.0.0-osx_ios-sdk"
+    	
+    iosLocalRoot="${wsPath}/${iosPath}"
     iosFullPath="${iosLocalRoot}"
     
-    androidRelSdkZip="alljoyn-0.0.0-android-sdk-rel.zip"
     androidLocalRoot="${wsPath}/alljoyn-android"
-    androidRelPath="${androidLocalRoot}/core/alljoyn-0.0.1-rel"
-    	
+    androidRelPath="${androidLocalRoot}/core/${androidPath}"
+    
 	# iosAndroidTest path
-	testScriptPath="${wsPath}/test-tools/alljoyn/autotest/buildbot/sbin"
+	testScriptPath="${wsPath}/test-tools/testbot/ios/sbin"
 	testScriptName="${testScriptPath}/iosAndroidTest"
+	jsScriptPath="${wsPath}/test-tools/testbot/ios/js"
 	
 	if [ -d "$testScriptPath" -a -x "$testScriptName" ]; then
         echo "Good test script $testScriptName"
@@ -199,7 +211,7 @@ function runTest() {
     testStatus=1
 
 (cd ${wsPath}
-${testScriptName} -v -i ${iosFullPath} -a ${androidRelPath} ${armFlag}
+${testScriptName} -v -i ${iosFullPath} -a ${androidRelPath} ${armFlag} -j ${jsScriptPath}
 )
 
     testStatus=$?

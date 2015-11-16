@@ -37,13 +37,13 @@
 # Parameter: none
 # Return: none
 function usage() {
-   echo 'Usage: iosAndroidTest -h -v -i [ios_app_path] -a [android_app_path] -r'
+   echo 'Usage: iosAndroidTest -h -v -i [ios_app_path] -a [android_app_path] -l -j [ios_js_path]'
    echo ' -h help (optional)
           -v verbose (optional)
           -i ios app path
           -a android app path
-          -t tcp only
-          -l latest ios 8.1 device'
+          -l latest ios 8.1 device
+          -j ios js script path'
 
 }
 
@@ -56,7 +56,7 @@ function parseCmdArgs() {
 
     echo "Parsing arguments..."
 
-    args=`getopt hvi:a:tl $*`
+    args=`getopt hvi:a:lj: $*`
 
     if [ $? != 0 ]; then
         usage
@@ -82,20 +82,20 @@ function parseCmdArgs() {
 	# ios device version
 	iosVersion=7
 
-	# turn off ice test by default
-	tryIce=0
-
     # IOS 7.1 devices by default
     ios8Device=0
     
+    # test script path
+    jsScriptDir=""
+   
     for i
     do
         case "$i" in
              -h) shift;usage;exit 0;;
              -v) shift;verbose=true; echo "verbose $verbose";;
              -i) shift;iosSrcPath=$1;echo "ios app path $iosSrcPath";shift;;
+             -j) shift;jsScriptDir=$1;echo "ios js path $jsScriptDir";shift;;
              -a) shift;androidAppPath=$1;echo "android app path $androidAppPath";shift;;
-             -t) shift;tryIce=1; echo "try ice and tcp";;
              -l) shift;ios8Device=1; echo "IOS 8.1 device";;
         esac
     done
@@ -112,6 +112,18 @@ function parseCmdArgs() {
        exit 2
     fi
 
+    if [ -n "$jsScriptDir" -a -d "$jsScriptDir" ]; then
+       testScriptDir="$jsScriptDir"
+       lastChr=${jsScriptDir#${jsScriptDir%?}}
+       # Remove trailing /
+       if [ "$lastChr" == "/" ]; then
+          testScriptDir=`echo "${jsScriptDir%?}"`
+       fi
+    else
+       echo "Invalid ios js script path $jsScriptDir"
+       exit 2
+    fi
+    
     if [ -n "$androidAppPath" -a -d "$androidAppPath" ]; then
        androidBinPath="$androidAppPath"
        lastChr=${iosSrcPath#${androidAppPath%?}}
@@ -140,19 +152,14 @@ function SetUpGlobalVariables() {
    
    totalTests=0
 
-   # test script path on cmac01
-   #testScriptDir="/Users/haitaoz/test-bin/test/alljoyn/autotest/buildbot/sbin"
-   testScriptDir="/Users/seabuild/test/test/alljoyn/autotest/buildbot/sbin"
-
 	# which ios device to test
 	iosDeviceId=""
 
    # OPENSSL_ROOT folder to create ios device binaries
-   #sslRoot="/Users/haitaoz/openssl-1.01"
-   sslRoot="/Users/seabuild/openssl-1.0.1e"
+   sslRoot="/Users/ajats/openssl-1.0.1e"
 
    # Android adb
-   ADB="/Users/seabuild/Downloads/android-sdk-macosx/platform-tools/adb"
+   ADB="/usr/local/bin/adb"
 
    # android device directory to store app
    androidDir="/data/local/tmp"
@@ -360,8 +367,8 @@ function SearchIOSBinaries() {
 function BuildIOSBinaries() {
    echo "Building ios binaries..." >> $testDetailLog
 
-   # Allow user interaction for buildbot
-   security unlock-keychain -p Blu3T00th $HOME/Library/Keychains/login.keychain >> $testDetailLog 2>&1
+   # Allow user interaction for automation
+   security unlock-keychain -p afTx9wsP7tCynD0qCe9G $HOME/Library/Keychains/login.keychain >> $testDetailLog 2>&1
 
    # Init to fail
    buildStatus=1
@@ -508,12 +515,6 @@ function DeployAppsToAndroid() {
 
    DeployAndroidNative "${androidBinPath}/cpp/bin/bbclient"
 
-   # for ice, need alljoyn-daemon and scan apk running on android
-   if [ "$tryIce" -eq 1 ]; then
-      DeployAndroidNative "${androidBinPath}/cpp/bin/alljoyn-daemon"
-
-      DeployAndroidApk "${androidBinPath}/cpp/alljoyn_android/alljoyn_android_ext/bin/alljoyn_android_ext.apk"
-   fi
 }
 
 # Function name: DeployAppToDevices
@@ -934,27 +935,6 @@ function test2() {
 function androidNativeTests() {
 
 	echo "Start native tests on android..." >> $testDetailLog
-
-	# for ice native tests on android, we need to launch pre-installed daemon and scan apk
-	if [ "$tryIce" -eq 1 ]; then
-		echo "Launch pre-installed daemon and scan service on android..." >> $testDetailLog
-
-		killAndroidProcess "alljoyn-daemon"
-
-		# Launch pre-installed daemon on android
-		$ADB shell "su -c /data/alljoyn/alljoyn-daemon --internal" >> $testDetailLog 2>&1 </dev/null &
-
-		# make sure pre-installed daemon started
-		sleep 2
-
-		# Launch proximity scan apk on android
-		$ADB shell am startservice -a org.alljoyn.jni.alljoynandroidext >> $testDetailLog &
-
-		# make sure scan service started
-		sleep 5
-
-		# TODO: check scan service is launched
-	fi
 
     #run basicBusService on ios and native bbclient on android
 	test1
