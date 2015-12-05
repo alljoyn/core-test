@@ -534,7 +534,7 @@ int main(int argc, char*argv[]) {
             char*propname;
             status = val.Get("a{sv}", &numprops, &props);
             QCC_ASSERT(ER_OK == status);
-            printf("Num of props %lu \n", numprops);
+            std::cout << "Num of props " << numprops << std::endl;
             status = props[0].Get("{sv}", &propname, &propval);
             QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop1 fetched is '%s' \n", propname);
@@ -613,7 +613,7 @@ int main(int argc, char*argv[]) {
             char*propname;
             status = val.Get("a{sv}", &numprops, &props);
             QCC_ASSERT(ER_OK == status);
-            printf("Num of props %lu \n", numprops);
+            std::cout << "Num of props " << numprops << std::endl;
             status = props[0].Get("{sv}", &propname, &propval);
             QCC_ASSERT(ER_OK == status);
             printf("GAP Value of prop1 fetched is '%s' \n", propname);

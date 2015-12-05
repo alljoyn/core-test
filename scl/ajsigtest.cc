@@ -82,7 +82,7 @@ std::map<qcc::String, std::pair<uint32_t, uint32_t> > SignalList;
 
 static volatile sig_atomic_t g_interrupt = false;
 
-static void GetMyTimeNow(Timespec* ts)
+static void GetMyTimeNow(Timespec<qcc::EpochTime>* ts)
 {
 #ifdef _WIN32
     struct _timeb timebuffer;
@@ -219,7 +219,7 @@ class LocalTestObject : public BusObject {
         Message msg(*g_msgBus);
         QCC_ASSERT(sls_signal_member);
 
-        Timespec ts;
+        Timespec<qcc::EpochTime> ts;
         GetMyTimeNow(&ts);
         MsgArg arg[6];
 
@@ -247,7 +247,7 @@ class LocalTestObject : public BusObject {
         arg[4].Set("u", ttimeToLive);
         arg[5].Set("u", count_infinite_ttl);
 
-        if (g_debug) { printf("Sec is %lu, ms is %u \n", ts.seconds, ts.mseconds); }
+        if (g_debug) { std::cout << "Sec is " << ts.seconds << ", ms is " << ts.mseconds << std::endl; }
         printf("SendSignal #: %u %x\n", count, count);
         fflush(stdout);
         status = Signal(NULL, g_SessionId, *sls_signal_member, arg, 6, ttimeToLive, flags, &msg);
@@ -299,15 +299,15 @@ class SignalReceiver : public MessageReceiver {
             expected_infinite_ttl_count++;
         }
 
-        Timespec ts;
+        Timespec<qcc::EpochTime> ts;
         GetMyTimeNow(&ts);
         uint32_t diff = (ts.seconds - receivedSeconds);
 
         SignalList[msg->GetSender()].first++;
         SignalList[msg->GetSender()].second = c;
         if (g_debug) {
-            printf("Receiver- CTS: %lu, RTS: %lu  \n", ts.seconds, receivedSeconds);
-            printf("Receiver- CTmS: %u, RTmS: %u  \n", ts.mseconds, receivedMseconds);
+            std::cout << "Receiver- CTS: " << ts.seconds << ", RTS: " << receivedSeconds << std::endl;
+            std::cout << "Receiver- CTmS: " << ts.mseconds << ", RTmS: " << receivedMseconds << std::endl;
         }
         SignalArrivalTime = GetTimestamp();
         printf("[%u] RxSignal:me: %s, ttl=%u ms, length=%u from: %s - %u %x in %u ms\n", (SignalArrivalTime - StartTime), g_msgBus->GetUniqueName().c_str(), ttl, length,  msg->GetSender(), c, c,  diff * 1000 + (ts.mseconds - receivedMseconds));

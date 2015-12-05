@@ -67,7 +67,7 @@ static BusAttachment* g_msgBus = NULL;
 static bool g_debug = false;
 
 static volatile sig_atomic_t g_interrupt = false;
-static void GetMyTimeNow(Timespec* ts)
+static void GetMyTimeNow(Timespec<qcc::EpochTime>* ts)
 {
 #ifdef _WIN32
     struct _timeb timebuffer;
@@ -141,7 +141,7 @@ class LocalTestObject : public BusObject {
         if (g_debug) {
             std::cout << "RSec is" << receivedSeconds << ", Rms is " << receivedMseconds << std::endl;
         }
-        Timespec ts;
+        Timespec<qcc::EpochTime> ts;
         GetMyTimeNow(&ts);
         if (g_debug) {
             std::cout << "Sec is" << ts.seconds << ", ms is " << ts.mseconds << std::endl;

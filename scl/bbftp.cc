@@ -389,7 +389,7 @@ class ClientObject : public MessageReceiver {
             size_t num_bytes_to_write = msg->GetArg(0)->v_string.len;
             size_t i = fwrite(msg->GetArg(0)->v_string.str, 1, num_bytes_to_write, opf);
 
-            printf("bytes written = %lu \n", i);
+            std::cout << "bytes written = " << i << std::endl;
             fflush(opf);
         }
         printf(".");

@@ -72,7 +72,7 @@ static bool g_debug = false;
 
 static volatile sig_atomic_t g_interrupt = false;
 
-static void GetMyTimeNow(Timespec* ts)
+static void GetMyTimeNow(Timespec<qcc::EpochTime>* ts)
 {
 #ifdef _WIN32
     struct _timeb timebuffer;
@@ -129,7 +129,7 @@ class LocalTestObject : public BusObject {
         Message msg(*g_msgBus);
         QCC_ASSERT(sls_signal_member);
 
-        Timespec ts;
+        Timespec<qcc::EpochTime> ts;
         GetMyTimeNow(&ts);
         MsgArg arg[3];
         arg[0].Set("u", count);
@@ -162,7 +162,7 @@ class SignalReceiver : public MessageReceiver {
         uint16_t receivedMseconds = 0;
         const MsgArg* arg2((msg->GetArg(2)));
         arg2->Get("q", &receivedMseconds);
-        Timespec ts;
+        Timespec<qcc::EpochTime> ts;
         GetMyTimeNow(&ts);
         uint32_t diff = (ts.seconds - receivedSeconds);
         std::cout << "RxSignal: " << sourcePath << " - " << c << std::hex << c << std::dec << " in " << diff * 1000 + (ts.mseconds - receivedMseconds) << std::endl;

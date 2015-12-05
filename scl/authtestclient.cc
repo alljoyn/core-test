@@ -999,15 +999,14 @@ int main(int argc, char*argv[]) {
     status =  securityAppProxy.GetMembershipSummaries(arg);
     printf("Service GetMembership summaries status is %s \n", QCC_StatusText(status));
     size_t count = arg.v_array.GetNumElements();
-    printf("Membership summaries returned %lu \n", count);
+    std::cout << "Membership summaries returned " << count << std::endl;
 
     KeyInfoNISTP256* keyInfos = new KeyInfoNISTP256[count];
     String* serials = new String[count];
     status = SecurityApplicationProxy::MsgArgToCertificateIds(arg, serials, keyInfos, count);
     for (size_t i = 0; i < count; i++) {
-        printf("Serial %lu = %s \n", i, serials[i].c_str());
+        std::cout << "Serial " << i << " = " << serials[i].c_str() << std::endl;
     }
-
 
     //Install the policy
     if (peer1) {
