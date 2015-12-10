@@ -5899,14 +5899,14 @@ function runWifiSuite() {
 	#runJniChatInWifi
 
 	# Sessionless service and client test
-	#runSessionlessInWifi
+	runSessionlessInWifi
 
 	# Property service and client test
 	# AJTEST-451: test fail occasionally
 	# runPropertyInWifi
 
 	# Run java simple service and client test
-	#runSimpleInWifi
+	runSimpleInWifi
 
 	# java java chat test between two devices
 	# FIXME: ASACORE-1975 uses DONE to replace ENTER in softkeyboard
