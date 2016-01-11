@@ -13,6 +13,8 @@
 #    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 import os
+import platform
+import re
 
 Import('env')
 
@@ -162,7 +164,23 @@ if env.has_key('GTEST_DIR'):
     if env.has_key('AJTC_CORE_DIR'):
         if addnl_unittest_env['OS'] == 'win7':
             addnl_unittest_env.Append(LIBS=['advapi32'])
-
+            
+        if platform.system() == 'Linux':
+            default_target = 'linux'
+        elif platform.system() == 'Windows':
+            default_target = 'win32'
+        elif platform.system() == 'Darwin':
+            default_target = 'darwin'
+        
+        addnl_unittest_env.Append(CPPPATH = [ '$AJTC_CORE_DIR/src/external/sha2' ])
+        addnl_unittest_env.Append(CPPDEFINES = [ 'AJ_ARDP', 'AJ_TCP' ])
+        
         alljoyn_thin_standard_test_srcs = addnl_unittest_env.Glob("../tcl/tc-sc-interaction/*.cc")
+        alljoyn_thin_standard_test_srcs.append(addnl_unittest_env.Glob("../../ajtcl/src/*.c"))
+        alljoyn_thin_standard_test_srcs.append(addnl_unittest_env.Glob("../../ajtcl/src/target/" + os.environ.get('AJ_TARG', default_target) + "/*.c"))
+        alljoyn_thin_standard_test_srcs.append(addnl_unittest_env.Glob("../../ajtcl/src/crypto/*.c"))
+        alljoyn_thin_standard_test_srcs.append(addnl_unittest_env.Glob("../../ajtcl/src/nvram/*.c"))
+        alljoyn_thin_standard_test_srcs.append(addnl_unittest_env.Glob("../../ajtcl/src/external/sha2/*.c"))
+        
         alljoyn_thin_standard_test_objs = [ addnl_unittest_env.Object(alljoyn_thin_standard_test_srcs) ]
         addnl_unittest_env.Program('ajtcsctest', alljoyn_thin_standard_test_objs)

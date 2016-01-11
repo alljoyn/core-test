@@ -20,7 +20,6 @@
 #include <queue>
 #include <functional>
 #include <mutex>
-#include <future>
 
 #include "InMemoryKeyStore.h"
 #include "PermissionMgmtObj.h"
@@ -258,16 +257,16 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
             n++;
         }
 
-        std::promise<void> p;
+        qcc::Event e;
 
-        auto func = [this, &p, objs, prxs] () {
+        auto func = [this, &e, objs, prxs] () {
             AJ_RegisterObjects(objs, prxs);
             AJ_VERIFY(AJ_OK == AJ_RegisterObjectsACL());
-            p.set_value();
+            e.SetEvent();
         };
 
         Enqueue(func);
-        p.get_future().wait();
+        qcc::Event::Wait(e, qcc::Event::WAIT_FOREVER);
     }
 
     QStatus GetProperty(const char* peer, uint32_t pid, int32_t& val) {

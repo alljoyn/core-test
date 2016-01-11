@@ -24,7 +24,6 @@
 #include <queue>
 #include <functional>
 #include <mutex>
-#include <future>
 
 using namespace ajn;
 using namespace qcc;

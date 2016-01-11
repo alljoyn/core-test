@@ -19,7 +19,6 @@
 #include <queue>
 #include <functional>
 #include <mutex>
-#include <future>
 
 extern "C" {
 #include <ajtcl/alljoyn.h>
@@ -118,6 +117,28 @@ const uint16_t TC_UNMARSHAL_TIMEOUT = 100;
 const uint16_t WAIT_TIME  = 3000;
 const uint16_t WAIT_MSECS = 5;
 
+template<class T>
+class Promise {
+public:
+    Promise() {}
+
+    void SetResult(T value) {
+        result = value;
+        event.SetEvent();
+    }
+
+    T Wait(uint32_t maxMs, T defaultResult) {
+        if (ER_OK == qcc::Event::Wait(event, maxMs)) {
+            return result;
+        }
+        return defaultResult;
+    }
+
+private:
+    qcc::Event event;
+    T result;
+};
+
 /* MSVC doesn't think DefaultAuthListener and DefaultAuthCallback are referenced, even though
  * they're used later as function pointers. Suppress the warning that causes a build break on Windows.
  */
@@ -144,8 +165,8 @@ static AJ_Status DefaultAuthListener(uint32_t mechanism, uint32_t command, AJ_Cr
 
 static void DefaultAuthCallback(const void* context, AJ_Status status)
 {
-    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
-    p->set_value(status);
+    Promise<AJ_Status>* p = (Promise<AJ_Status>*) context;
+    p->SetResult(status);
 }
 
 class TCProperties {
@@ -166,7 +187,6 @@ class TCBusAttachment : public qcc::Thread {
     typedef std::map<int, Function> MsgHandlerMap;
 
   public:
-
     TCBusAttachment(const char* name, AJ_AuthListenerFunc listener = DefaultAuthListener, AJ_PeerAuthenticateCallback callback = DefaultAuthCallback) : qcc::Thread(name), running(true), authlistener(listener), authcallback(callback) { }
     void Connect(const char* router);
     qcc::ThreadReturn STDCALL Run(void* arg);
