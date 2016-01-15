@@ -291,7 +291,7 @@ class LocalTestObject : public BusObject {
 
 
 
-int main(int argc, char*argv[]) {
+int CDECL_CALL main(int argc, char* argv[]) {
 
     QStatus status = ER_OK;
     bool clearks = false;

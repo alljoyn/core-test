@@ -167,7 +167,7 @@ class MyBusListener : public SessionPortListener, public SessionListener {
 
 };
 
-int main() {
+int CDECL_CALL main() {
 
     QStatus status = ER_OK;
 

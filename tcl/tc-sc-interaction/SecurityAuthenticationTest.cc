@@ -82,8 +82,8 @@ static void TCAuthCallback(const void* context, AJ_Status status)
     if (AJ_OK == status) {
         authenticationSuccessfull = TRUE;
     }
-    std::promise<AJ_Status>* p = (std::promise<AJ_Status>*) context;
-    p->set_value(status);
+    Promise<AJ_Status>* p = (Promise<AJ_Status>*) context;
+    p->SetResult(status);
 }
 
 static void ClearFlags() {
