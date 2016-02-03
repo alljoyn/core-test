@@ -346,7 +346,6 @@ QStatus TCBusAttachment::JoinSession(const char* host, uint16_t port, uint32_t& 
     Enqueue(func);
 
     /* Wait for reply */
-    uint32_t session = 0;
     qcc::Event::Wait(e, WAIT_TIME);
 
     if (!session) {
