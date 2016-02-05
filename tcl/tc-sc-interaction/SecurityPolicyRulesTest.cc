@@ -482,7 +482,6 @@ class SecurityPolicyRulesTest : public testing::Test {
         TCKey.SetPublicKey(&TCPublicKey);
 
         managerBus.RegisterApplicationStateListener(appStateListener);
-        managerBus.AddApplicationStateRule();
 
         // All Inclusive manifest
         PermissionPolicy::Rule::Member member[1];

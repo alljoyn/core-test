@@ -280,7 +280,6 @@ void BasePermissionMgmtTest::SetUp()
     RegisterKeyStoreListeners();
 
     adminBus.RegisterApplicationStateListener(testASL);
-    status = adminBus.AddApplicationStateRule();
     EXPECT_EQ(ER_OK, status) << "  Failed to show interest in session-less signal.  Actual Status: " << QCC_StatusText(status);
 }
 

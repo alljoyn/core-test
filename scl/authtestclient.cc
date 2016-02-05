@@ -736,8 +736,6 @@ int CDECL_CALL main(int argc, char* argv[]) {
     printf("End of testing PermissionConfigurator functions.. \n\n\n\n\n");
 
     g_msgBus->RegisterApplicationStateListener(appStateListener);
-    g_msgBus->AddApplicationStateRule();
-
 
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
