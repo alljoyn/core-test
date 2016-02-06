@@ -35,14 +35,14 @@ using namespace std;
 #define WAIT_SIGNAL 1000
 
 static const char psk_hint[] = "<anonymous>";
-static uint8_t psk[128];
+static uint8_t g_psk[128];
 static uint32_t len = 0;
 static void SetPsk(const uint8_t* buffer, uint32_t bufLen)
 {
-    if (bufLen > sizeof (psk)) {
-        bufLen = sizeof (psk);
+    if (bufLen > sizeof (g_psk)) {
+        bufLen = sizeof (g_psk);
     }
-    memcpy(psk, buffer, bufLen);
+    memcpy(g_psk, buffer, bufLen);
     len = bufLen;
 }
 
@@ -68,7 +68,7 @@ static AJ_Status TCAuthListener(uint32_t mechanism, uint32_t command, AJ_Credent
             break;
 
         case AJ_CRED_PRV_KEY:
-            cred->data = psk;
+            cred->data = g_psk;
             cred->len = len;
             cred->expiration = 1;
             status = AJ_OK;
@@ -219,8 +219,6 @@ TEST_F(SecurityClaimApplicationTest, IsUnclaimableByDefault)
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -350,8 +348,6 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
-    securityManagerBus.AddApplicationStateRule();
-
     //Create admin group key
     KeyInfoNISTP256 securityManagerKey;
     PermissionConfigurator& permissionConfigurator = securityManagerBus.GetPermissionConfigurator();
@@ -444,8 +440,6 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
 
-    securityManagerBus.AddApplicationStateRule();
-
     //Create admin group key
     KeyInfoNISTP256 securityManagerKey;
     PermissionConfigurator& permissionConfigurator = securityManagerBus.GetPermissionConfigurator();
@@ -526,8 +520,6 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_adminGroupKey)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -671,8 +663,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
  */
 TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     const uint8_t psk[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
@@ -786,8 +776,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
  * Manifest digest != digest in the identity certificate */
 TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equal_claim_manifest)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -905,8 +893,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equ
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1028,8 +1014,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1174,8 +1158,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1266,8 +1248,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
  */
 TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
@@ -1352,8 +1332,6 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_security_enabled)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1550,8 +1528,6 @@ class ClaimThread2 : public Thread {
  */
 TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1645,8 +1621,6 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_security_mechanisms)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     const uint8_t psk[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
@@ -1735,8 +1709,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
  */
 TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identity_cert)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -1844,7 +1816,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
     EXPECT_FALSE(appStateListener.stateChanged);
-    securityManagerBus.AddApplicationStateRule();
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1899,7 +1870,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     EXPECT_FALSE(appStateListener.stateChanged);
-    securityManagerBus.AddApplicationStateRule();
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2057,7 +2027,6 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     EXPECT_FALSE(appStateListener.stateChanged);
-    securityManagerBus.AddApplicationStateRule();
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2260,8 +2229,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     // called.
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
-
-    securityManagerBus.AddApplicationStateRule();
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2515,8 +2482,6 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
-    securityManagerBus.AddApplicationStateRule();
-
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
@@ -2673,8 +2638,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
-    securityManagerBus.AddApplicationStateRule();
-
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
@@ -2741,8 +2704,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
  */
 TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     securityManagerKeyListener = new DefaultECDHEAuthListener();
@@ -2858,8 +2819,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
  */
 TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
 
     // Setup the test peer
@@ -2893,8 +2852,6 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
  */
 TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_off)
 {
-    securityManagerBus.AddApplicationStateRule();
-
     appStateListener.stateChanged = false;
 
     // Setup the test peer

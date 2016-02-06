@@ -732,7 +732,6 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
     managerBus.RegisterApplicationStateListener(appStateListener);
-    managerBus.AddApplicationStateRule();
 
     // All Inclusive manifest
     PermissionPolicy::Rule::Member member[1];
