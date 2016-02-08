@@ -263,8 +263,7 @@ class SecurityManagementPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, sapWithSC1.GetApplicationState(applicationStateSC1));
         EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateSC1);
 
-        managerBus.RegisterApplicationStateListener(appStateListener);
-        managerBus.AddApplicationStateRule();
+        EXPECT_EQ(ER_OK, managerBus.RegisterApplicationStateListener(appStateListener));
 
         // All Inclusive manifest
         const size_t manifestSize = 1;

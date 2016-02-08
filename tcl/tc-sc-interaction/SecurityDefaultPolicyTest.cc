@@ -73,21 +73,21 @@ static AJ_Object AppObjects[] = {
     { NULL }
 };
 
-static int32_t prop1;
-static int32_t prop2;
+static int32_t g_prop1;
+static int32_t g_prop2;
 
 static AJ_Status PropGetHandler(AJ_Message* msg, uint32_t id, void* context)
 {
     QCC_UNUSED(context);
     switch (id) {
     case APP_PROP1:
-        AJ_MarshalArgs(msg, "i", prop1);
-        printf("Get Prop1: %d\n", prop1);
+        AJ_MarshalArgs(msg, "i", g_prop1);
+        printf("Get Prop1: %d\n", g_prop1);
         return AJ_OK;
 
     case APP_PROP2:
-        AJ_MarshalArgs(msg, "i", prop2);
-        printf("Get Prop2: %d\n", prop2);
+        AJ_MarshalArgs(msg, "i", g_prop2);
+        printf("Get Prop2: %d\n", g_prop2);
         return AJ_OK;
 
     default:
@@ -100,13 +100,13 @@ static AJ_Status PropSetHandler(AJ_Message* msg, uint32_t id, void* context)
     QCC_UNUSED(context);
     switch (id) {
     case APP_PROP1:
-        AJ_UnmarshalArgs(msg, "i", &prop1);
-        printf("Set Prop1: %d\n", prop1);
+        AJ_UnmarshalArgs(msg, "i", &g_prop1);
+        printf("Set Prop1: %d\n", g_prop1);
         return AJ_OK;
 
     case APP_PROP2:
-        AJ_UnmarshalArgs(msg, "i", &prop2);
-        printf("Set Prop2: %d\n", prop2);
+        AJ_UnmarshalArgs(msg, "i", &g_prop2);
+        printf("Set Prop2: %d\n", g_prop2);
         return AJ_OK;
 
     default:
@@ -120,8 +120,8 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
 
     TCDefaultPolicyAttachment(const char* name) : TCBusAttachment(name) {
         sessionPort = 0;
-        prop1 = 42;
-        prop2 = 17;
+        g_prop1 = 42;
+        g_prop2 = 17;
         signalReceivedFlag = FALSE;
     }
 
@@ -282,10 +282,10 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
     }
 
     int32_t ReadProp1() {
-        return prop1;
+        return g_prop1;
     }
     int32_t ReadProp2() {
-        return prop2;
+        return g_prop2;
     }
 
     bool signalReceivedFlag;
@@ -508,8 +508,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
         EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
         EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
-        managerBus.RegisterApplicationStateListener(appStateListener);
-        managerBus.AddApplicationStateRule();
+        EXPECT_EQ(ER_OK, managerBus.RegisterApplicationStateListener(appStateListener));
 
         // All Inclusive manifest
         const size_t manifestSize = 1;
