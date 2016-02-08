@@ -731,8 +731,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, applicationStateTC);
 
-    managerBus.RegisterApplicationStateListener(appStateListener);
-    managerBus.AddApplicationStateRule();
+	EXPECT_EQ(ER_OK, managerBus.RegisterApplicationStateListener(appStateListener));
 
     // All Inclusive manifest
     PermissionPolicy::Rule::Member member[1];
