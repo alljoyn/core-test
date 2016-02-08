@@ -735,9 +735,8 @@ int CDECL_CALL main(int argc, char* argv[]) {
     printf("Before calling EPS, calling GetSigningPublicKey  %s \n", QCC_StatusText(status));
     printf("End of testing PermissionConfigurator functions.. \n\n\n\n\n");
 
-    g_msgBus->RegisterApplicationStateListener(appStateListener);
-    g_msgBus->AddApplicationStateRule();
-
+    status = g_msgBus->RegisterApplicationStateListener(appStateListener);
+    QCC_ASSERT(status == ER_OK);
 
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
     status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
