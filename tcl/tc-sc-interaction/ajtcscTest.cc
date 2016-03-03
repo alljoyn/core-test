@@ -260,6 +260,9 @@ QStatus TCBusAttachment::EnablePeerSecurity(const char* mechanisms)
         if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
             suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
         }
+        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_SPEKE")) {
+            suites[numsuites++] = AUTH_SUITE_ECDHE_SPEKE;
+        }
         if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
             suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
         }
