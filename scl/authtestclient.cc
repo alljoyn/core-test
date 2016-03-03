@@ -809,8 +809,9 @@ int CDECL_CALL main(int argc, char* argv[]) {
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    PermissionMgmtObj::GenerateManifestDigest(*g_msgBus, manifest, 1, digest, Crypto_SHA256::DIGEST_SIZE);
+    Manifest manifestObj[1];
+    status = manifestObj[0]->SetRules(manifest, 1);
+    QCC_ASSERT(ER_OK == status);
 
     //Self signed admin cert
     qcc::IdentityCertificate adminCert;
@@ -824,13 +825,19 @@ int CDECL_CALL main(int argc, char* argv[]) {
     adminCert.SetSubjectPublicKey(g_adminpublicKeyInfo.GetPublicKey());
     adminCert.SetAlias("admin-leaf-cert-alias");
     adminCert.SetCA(true);
-    adminCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
     //sign the leaf cert
     pc1.SignCertificate(adminCert);
+    // Sign the manifest.
+    CredentialAccessor ca(*g_msgBus);
+    ECCPrivateKey privateKey;
+    status = ca.GetDSAPrivateKey(privateKey);
+    QCC_ASSERT(ER_OK == status);
+    status = manifestObj[0]->Sign(adminCert, &privateKey);
+    QCC_ASSERT(ER_OK == status);
 
-    printf("Claiming myself using Self signed IC, a new GUID128, a diff. ca pub key and an asga pub key (which is same as my pub key) \n");
+    printf("Claiming myself using Self signed IC, a new GUID128, a diff. CA pub key and an ASGA pub key (which is same as my pub key) \n");
     GUID128 myGUID;
-    status = mySecurityAppProxy.Claim(g_cakeyInfo, myGUID, g_asgakeyInfo, &adminCert, 1, manifest, 1);
+    status = mySecurityAppProxy.Claim(g_cakeyInfo, myGUID, g_asgakeyInfo, &adminCert, 1, manifestObj, 1);
     printf("Admin Claim status is %s \n", QCC_StatusText(status));
 
 
@@ -839,7 +846,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
         status = mySecurityAppProxy.InstallMembership(&memCert, 1);
         printf("Install Membership status is %s \n", QCC_StatusText(status));
     }
-    //Lets focus attention on service side.
+    //Let's focus attention on service side.
     MyBusListener busListener;
     g_msgBus->RegisterBusListener(busListener);
     status = g_msgBus->FindAdvertisedName(g_wellKnownName.c_str());
@@ -907,7 +914,6 @@ int CDECL_CALL main(int argc, char* argv[]) {
     validityLeaf.validTo = 1427404154 + 630720000;
     //validityLeaf.validTo = 1427404154 + 630;
     leafCert.SetValidity(&validityLeaf);
-    leafCert.SetDigest(digest, Crypto_SHA256::DIGEST_SIZE);
     leafCert.SetSubjectPublicKey(&leafPublicKey);
     //leafCert.SetAlias("leaf-cert-alias-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     leafCert.SetAlias("leaf-cert-alias-0123456789abcdef");
@@ -924,6 +930,10 @@ int CDECL_CALL main(int argc, char* argv[]) {
     certChain[1] = adminCertSignedByCA;
     //This CA cert is self signed
     certChain[2] = g_CACert;
+
+    // Sign the manifest.
+    status = manifestObj[0]->Sign(leafCert, &privateKey);
+    QCC_ASSERT(ER_OK == status);
 
 
     String leafPEM, adminPEM, rootPEM;
@@ -950,7 +960,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
     //printf("BUG Reset status is %s  \n",QCC_StatusText(status));
 
     //All set to claim
-    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, (qcc::IdentityCertificate*)certChain, 3, manifest, 1);
+    status = securityAppProxy.Claim(g_cakeyInfo, asgaGUID, g_asgakeyInfo, certChain, 3, manifestObj, 1);
     printf("Service Claim status is %s \n", QCC_StatusText(status));
 
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
@@ -978,7 +988,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
     }
 
     if (updateIdentity) {
-        status = securityAppProxy.UpdateIdentity((qcc::IdentityCertificate*)certChain, 3, manifest, 1);
+        status = securityAppProxy.UpdateIdentity((qcc::IdentityCertificate*)certChain, 3, manifestObj, 1);
         printf("Service Update Identity status is %s \n", QCC_StatusText(status));
     }
 

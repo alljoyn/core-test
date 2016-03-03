@@ -313,56 +313,56 @@ class WildCardPolicyRulesTestSessionPortListener : public SessionPortListener {
 
 // String constants associated with the interfaces used for tests
 namespace test {
-    static const char argentinaObjPath[] = "/test/argentina";
-    static const char arabicObjPath[] = "/test/arabic";
-    namespace calcium {
-        static const char InterfaceName[] = "test.calcium"; // Interface name
-        namespace method {
-            static const char march[] = "march"; //march method name
-        }
-        namespace signal {
-            static const char make[] = "make"; //make signal name
-        }
-        namespace property {
-            static const char mayonise[] = "mayonise"; //mayonise property name
-        }
-    }
-    namespace california {
-        static const char InterfaceName[] = "test.california"; // Interface name
-        namespace method {
-            static const char metal[] = "metal"; //metal method name
-        }
-        namespace signal {
-            static const char mess[] = "mess"; //mess signal name
-        }
-        namespace property {
-            static const char meal[] = "meal"; //meal property name
-        }
-    }
-    namespace camera {
-        static const char InterfaceName[] = "test.camera"; // Interface name
-        namespace method {
-            static const char mob[] = "mob"; //mob method name
-        }
-        namespace signal {
-            static const char money[] = "money"; //money signal name
-        }
-        namespace property {
-            static const char motel[] = "motel"; //motel property name
-        }
-    }
-    namespace cashew {
-        static const char InterfaceName[] = "test.cashew"; // Interface name
-        namespace method {
-            static const char mint[] = "mint"; //mint method name
-        }
-        namespace signal {
-            static const char mits[] = "mits"; //mits signal name
-        }
-        namespace property {
-            static const char mini[] = "mini"; //mini property name
-        }
-    }
+static const char argentinaObjPath[] = "/test/argentina";
+static const char arabicObjPath[] = "/test/arabic";
+namespace calcium {
+static const char InterfaceName[] = "test.calcium";         // Interface name
+namespace method {
+static const char march[] = "march";             //march method name
+}
+namespace signal {
+static const char make[] = "make";             //make signal name
+}
+namespace property {
+static const char mayonise[] = "mayonise";             //mayonise property name
+}
+}
+namespace california {
+static const char InterfaceName[] = "test.california";         // Interface name
+namespace method {
+static const char metal[] = "metal";             //metal method name
+}
+namespace signal {
+static const char mess[] = "mess";             //mess signal name
+}
+namespace property {
+static const char meal[] = "meal";             //meal property name
+}
+}
+namespace camera {
+static const char InterfaceName[] = "test.camera";         // Interface name
+namespace method {
+static const char mob[] = "mob";             //mob method name
+}
+namespace signal {
+static const char money[] = "money";             //money signal name
+}
+namespace property {
+static const char motel[] = "motel";             //motel property name
+}
+}
+namespace cashew {
+static const char InterfaceName[] = "test.cashew";         // Interface name
+namespace method {
+static const char mint[] = "mint";             //mint method name
+}
+namespace signal {
+static const char mits[] = "mits";             //mits signal name
+}
+namespace property {
+static const char mini[] = "mini";             //mini property name
+}
+}
 }
 
 class ArgentinaTestBusObject : public BusObject {
@@ -756,10 +756,10 @@ void SecurityWildCardPolicyRulesTest::SetUp()
     ECCPublicKey TCPublicKey;
     EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     //Create identityCert
     const size_t certChainSize = 1;
@@ -772,7 +772,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   "ManagerAlias",
                                                                   3600,
                                                                   identityCertChainMaster[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     SecurityApplicationProxy sapWithManagerBus(managerBus, managerBus.GetUniqueName().c_str());
     /* set claimable */
@@ -781,7 +781,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                              managerGuid,
                                              managerKey,
                                              identityCertChainMaster, certChainSize,
-                                             manifest, manifestSize));
+                                             manifestObj, ArraySize(manifestObj)));
 
     for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
         if (appStateListener.isClaimed(managerBus.GetUniqueName())) {
@@ -807,16 +807,16 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   "SCAlias",
                                                                   3600,
                                                                   identityCertChainSC[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     //Manager claims Peers
     /* set claimable */
     SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
     EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
-                                        managerGuid,
-                                        managerKey,
-                                        identityCertChainSC, certChainSize,
-                                        manifest, manifestSize));
+                                     managerGuid,
+                                     managerKey,
+                                     identityCertChainSC, certChainSize,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
         if (appStateListener.isClaimed(SCBus.GetUniqueName())) {
@@ -838,15 +838,15 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                   "TCAlias",
                                                                   3600,
                                                                   identityCertChainTC[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
     /* set claimable */
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
     EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
     EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
-                                        managerGuid,
-                                        managerKey,
-                                        identityCertChainTC, certChainSize,
-                                        manifest, manifestSize));
+                                     managerGuid,
+                                     managerKey,
+                                     identityCertChainTC, certChainSize,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
         if (appStateListener.isClaimed(TCBus.GetUniqueName())) {
@@ -1285,8 +1285,8 @@ TEST_F(SecurityWildCardPolicyRulesTest, Wildcard_message_type_matched_properly_i
 
     SecurityWildCardSignalReceiver moneySignalReceiver;
     EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&moneySignalReceiver,
-                                                    static_cast<MessageReceiver::SignalHandler>(&SecurityWildCardSignalReceiver::SignalHandler),
-                                                    SCBus.GetInterface(test::camera::InterfaceName)->GetMember(test::camera::signal::money), NULL));
+                                                 static_cast<MessageReceiver::SignalHandler>(&SecurityWildCardSignalReceiver::SignalHandler),
+                                                 SCBus.GetInterface(test::camera::InterfaceName)->GetMember(test::camera::signal::money), NULL));
 
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_ARA_CAME_MONEY));
 }
@@ -1378,8 +1378,8 @@ TEST_F(SecurityWildCardPolicyRulesTest, unspecified_action_mask_is_explicitly_DE
 
     SecurityWildCardSignalReceiver messSignalReceiver;
     EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&messSignalReceiver,
-                                                    static_cast<MessageReceiver::SignalHandler>(&SecurityWildCardSignalReceiver::SignalHandler),
-                                                    SCBus.GetInterface(test::california::InterfaceName)->GetMember(test::california::signal::mess), NULL));
+                                                 static_cast<MessageReceiver::SignalHandler>(&SecurityWildCardSignalReceiver::SignalHandler),
+                                                 SCBus.GetInterface(test::california::InterfaceName)->GetMember(test::california::signal::mess), NULL));
 
     EXPECT_EQ(ER_PERMISSION_DENIED, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_ARG_CALI_MESS));
 }

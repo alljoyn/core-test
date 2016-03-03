@@ -94,7 +94,7 @@ static void TCAuthCallback(const void* context, AJ_Status status)
     if (AJ_OK == status) {
         authenticationSuccessfull = TRUE;
     }
-    Promise<AJ_Status>* p = (Promise<AJ_Status>*) context;
+    Promise<AJ_Status>* p = (Promise<AJ_Status>*)context;
     p->SetResult(status);
 }
 
@@ -445,10 +445,10 @@ class SecurityAuthenticationTest : public testing::Test {
         //Random GUID used for the SecurityManager
         GUID128 managerGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         //Create identityCert
         const size_t certChainSize = 1;
@@ -461,7 +461,7 @@ class SecurityAuthenticationTest : public testing::Test {
                                                                       "ManagerAlias",
                                                                       3600,
                                                                       identityCertChainMaster[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         /* set claimable */
         managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
@@ -469,7 +469,7 @@ class SecurityAuthenticationTest : public testing::Test {
                                               managerGuid,
                                               managerKey,
                                               identityCertChainMaster, certChainSize,
-                                              manifest, manifestSize));
+                                              manifestObj, ArraySize(manifestObj)));
 
 
         ECCPublicKey managerPublicKey;
@@ -487,16 +487,16 @@ class SecurityAuthenticationTest : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         /* set claimable */
         SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         //Manager claims Peers
         EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainSC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainSC, certChainSize,
+                                         manifestObj, ArraySize(manifestObj)));
 
         //Create TC identityCert
         IdentityCertificate identityCertChainTC[certChainSize];
@@ -508,12 +508,12 @@ class SecurityAuthenticationTest : public testing::Test {
                                                                       "TCAlias",
                                                                       3600,
                                                                       identityCertChainTC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
         EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainTC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainTC, certChainSize,
+                                         manifestObj, ArraySize(manifestObj)));
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &SCAuthListener));
@@ -1085,14 +1085,14 @@ class SecurityAuthenticationTest2 : public testing::Test {
         EXPECT_EQ(ER_OK, pcCA.GetSigningPublicKey(caKey));
 
         //------------ Claim self(managerBus), SC, and TC --------
-        uint8_t managerDigest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                                   manifest, manifestSize,
-                                                                   managerDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest managerManifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                    manifest, manifestSize,
+                                                                    managerManifestObj[0])) << " GenerateManifest failed.";
 
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA,
-                                                                   manifest, manifestSize,
-                                                                   caDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA,
+                                                                    manifest, manifestSize,
+                                                                    caManifestObj[0])) << " GenerateManifest failed.";
 
         //Create identityCert
         const size_t certChainSize = 1;
@@ -1105,7 +1105,7 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "ManagerAlias",
                                                                       3600,
                                                                       identityCertChainMaster[0],
-                                                                      managerDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      managerManifestObj[0])) << "Failed to create identity certificate.";
 
         /* set claimable */
         managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
@@ -1113,7 +1113,7 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                               managerGuid,
                                               managerKey,
                                               identityCertChainMaster, certChainSize,
-                                              manifest, manifestSize));
+                                              managerManifestObj, ArraySize(managerManifestObj)));
 
 
         ECCPublicKey managerPublicKey;
@@ -1130,17 +1130,17 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
         //Manager claims Peers
         /* set claimable */
         SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithSC.Claim(caKey,
-                                            managerGuid,
-                                            caKey,
-                                            identityCertChainSC, 1,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         caKey,
+                                         identityCertChainSC, 1,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         //Create TC identityCert
         IdentityCertificate identityCertChainTC[certChainSize];
@@ -1152,13 +1152,13 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "TCAlias",
                                                                       3600,
                                                                       identityCertChainTC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         EXPECT_EQ(ER_OK, sapWithTC.Claim(caKey,
-                                            managerGuid,
-                                            caKey,
-                                            identityCertChainTC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         caKey,
+                                         identityCertChainTC, certChainSize,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &SCAuthListener));
@@ -1438,10 +1438,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
 
         GUID128 SCGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA1,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA1,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         IdentityCertificate identityCertChainSC[1];
 
@@ -1456,10 +1456,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifest, manifestSize))
+        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifestObj, ArraySize(manifestObj)))
             << "Failed to update Identity cert or manifest ";
         uint32_t sessionId;
         SessionOpts opts;
@@ -1546,10 +1546,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
 
         GUID128 SCGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA1,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA1,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         IdentityCertificate identityCertChainSC[1];
 
@@ -1564,10 +1564,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifest, manifestSize))
+        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifestObj, ArraySize(manifestObj)))
             << "Failed to update Identity cert or manifest ";
     }
 
@@ -1604,10 +1604,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
 
         GUID128 SCGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA1,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA1,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         IdentityCertificate identityCertChainSC[1];
 
@@ -1622,10 +1622,10 @@ class SecurityAuthenticationTest2 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifest, manifestSize))
+        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifestObj, ArraySize(manifestObj)))
             << "Failed to update Identity cert or manifest ";
         uint32_t sessionId;
         SessionOpts opts;
@@ -1676,7 +1676,7 @@ class SecurityAuthenticationTest2 : public testing::Test {
 
     const size_t manifestSize;
     PermissionPolicy::Rule manifest[1];
-    uint8_t caDigest[Crypto_SHA256::DIGEST_SIZE];
+    Manifest caManifestObj[1];
 
     ECCPublicKey TCPublicKey;
     KeyInfoNISTP256 TCKey;
@@ -1945,8 +1945,8 @@ TEST_F(SecurityAuthenticationTest2, authenticate_test4_case2) {
 }
 
 /*
-* See authenticate_test4_case1 above for full test description
-*/
+ * See authenticate_test4_case1 above for full test description
+ */
 TEST_F(SecurityAuthenticationTest2, authenticate_test4_case2_1) {
     BaseAuthenticationTest4(busUsedAsCA);
     uint32_t sessionId;
@@ -2061,8 +2061,8 @@ TEST_F(SecurityAuthenticationTest2, authenticate_test4_case7) {
 class SecurityAuthentication3AuthListener1 : public DefaultECDHEAuthListener {
   public:
     SecurityAuthentication3AuthListener1() {
-        uint8_t incorrect_psk[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        uint8_t incorrect_password[16] = {0,0,0,0};
+        uint8_t incorrect_psk[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        uint8_t incorrect_password[16] = { 0, 0, 0, 0 };
         SetPSK(incorrect_psk, sizeof(incorrect_psk));
         SetPassword(incorrect_password, sizeof(incorrect_password));
         calledAuthMechanisms.clear();
@@ -2217,14 +2217,14 @@ class SecurityAuthenticationTest3 : public testing::Test {
         EXPECT_EQ(ER_OK, pcCA.GetSigningPublicKey(caKey));
 
         //------------ Claim self(managerBus), SC, and TC --------
-        uint8_t managerDigest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                                   manifest, manifestSize,
-                                                                   managerDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest managerManifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                    manifest, manifestSize,
+                                                                    managerManifestObj[0])) << " GenerateManifest failed.";
 
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA,
-                                                                   manifest, manifestSize,
-                                                                   caDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA,
+                                                                    manifest, manifestSize,
+                                                                    caManifestObj[0])) << " GenerateManifest failed.";
 
         //Create identityCert
         const size_t certChainSize = 1;
@@ -2237,7 +2237,7 @@ class SecurityAuthenticationTest3 : public testing::Test {
                                                                       "ManagerAlias",
                                                                       3600,
                                                                       identityCertChainMaster[0],
-                                                                      managerDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      managerManifestObj[0])) << "Failed to create identity certificate.";
 
         /* set claimable */
         managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
@@ -2245,7 +2245,7 @@ class SecurityAuthenticationTest3 : public testing::Test {
                                               managerGuid,
                                               managerKey,
                                               identityCertChainMaster, certChainSize,
-                                              manifest, manifestSize));
+                                              managerManifestObj, ArraySize(managerManifestObj)));
 
 
         ECCPublicKey managerPublicKey;
@@ -2262,17 +2262,17 @@ class SecurityAuthenticationTest3 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
         //Manager claims Peers
         /* set claimable */
         SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithSC.Claim(caKey,
-                                            managerGuid,
-                                            caKey,
-                                            identityCertChainSC, 1,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         caKey,
+                                         identityCertChainSC, 1,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         //Create TC identityCert
         IdentityCertificate identityCertChainTC[certChainSize];
@@ -2284,13 +2284,13 @@ class SecurityAuthenticationTest3 : public testing::Test {
                                                                       "TCAlias",
                                                                       3600,
                                                                       identityCertChainTC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         EXPECT_EQ(ER_OK, sapWithTC.Claim(caKey,
-                                            managerGuid,
-                                            caKey,
-                                            identityCertChainTC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         caKey,
+                                         identityCertChainTC, certChainSize,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &SCAuthListener));
@@ -2478,10 +2478,10 @@ class SecurityAuthenticationTest3 : public testing::Test {
 
         GUID128 SCGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         IdentityCertificate identityCertChainSC[1];
 
@@ -2496,10 +2496,10 @@ class SecurityAuthenticationTest3 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifest, manifestSize))
+        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifestObj, ArraySize(manifestObj)))
             << "Failed to update Identity cert or manifest ";
 
         AJ_AlwaysPrintf(("BaseAuthenticationTest5 complete\n"));
@@ -2536,7 +2536,7 @@ class SecurityAuthenticationTest3 : public testing::Test {
 
     const size_t manifestSize;
     PermissionPolicy::Rule manifest[1];
-    uint8_t caDigest[Crypto_SHA256::DIGEST_SIZE];
+    Manifest caManifestObj[1];
 
     ECCPublicKey TCPublicKey;
     KeyInfoNISTP256 TCKey;
@@ -2579,7 +2579,7 @@ class SecurityAuthenticationTest3 : public testing::Test {
  */
 TEST_F(SecurityAuthenticationTest3, authenticate_test5_SC_tries_to_secure_session) {
     BaseAuthenticationTest5(busUsedAsCA);
-    
+
     uint32_t sessionId;
     SessionOpts opts;
     EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, sessionId, opts));
@@ -2615,7 +2615,7 @@ TEST_F(SecurityAuthenticationTest3, authenticate_test5_TC_tries_to_secure_sessio
         SCAuthListener.calledAuthMechanisms.clear();
 
         EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
-        
+
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_ECDSA") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_ECDSA auth mechanism to be tried, but it wasn't.";
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_NULL") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_NULL auth mechanism to be tried, but it wasn't.";
     }
@@ -2641,12 +2641,12 @@ TEST_F(SecurityAuthenticationTest3, authenticate_test5_peer1_tries_to_secure_ses
         EXPECT_EQ(ER_OK, proxy1.SecureConnection(true));
 
         /*
-        * All auth mechanisms with higher priority than ECDHE_NULL should have failed, and we check that authentication fell back on ECDHE_NULL.
-        * Ideally we would check that each failed auth mechanism was called, and in the correct order, but the AuthenticationComplete
-        * callback is not called reliably when authentication falls back to another mechanism.
-        * The bug https://jira.allseenalliance.org/browse/ASACORE-2716 tracks this issue. 
-        * By setting ER_DEBUG_AUTH_KEY_EXCHANGER=15 and viewing the tracing code, we can manually confirm that all mechanisms are being tried. 
-        */
+         * All auth mechanisms with higher priority than ECDHE_NULL should have failed, and we check that authentication fell back on ECDHE_NULL.
+         * Ideally we would check that each failed auth mechanism was called, and in the correct order, but the AuthenticationComplete
+         * callback is not called reliably when authentication falls back to another mechanism.
+         * The bug https://jira.allseenalliance.org/browse/ASACORE-2716 tracks this issue.
+         * By setting ER_DEBUG_AUTH_KEY_EXCHANGER=15 and viewing the tracing code, we can manually confirm that all mechanisms are being tried.
+         */
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_NULL") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_NULL auth mechanism to be tried, but it wasn't.";
     }
 }
@@ -2656,7 +2656,7 @@ TEST_F(SecurityAuthenticationTest3, authenticate_test5_peer1_tries_to_secure_ses
  * This is the same test except the list of auth mechanisms is limited to ECDHE
  * and Peer2 is used for authentication instead of Peer1
  *
- * Disabled. See https://jira.allseenalliance.org/browse/ASACORE-2718 for details. 
+ * Disabled. See https://jira.allseenalliance.org/browse/ASACORE-2718 for details.
  */
 TEST_F(SecurityAuthenticationTest3, DISABLED_authenticate_test5_peer2_tries_to_secure_session_only_ECDHE) {
     BaseAuthenticationTest5(busUsedAsCA);
@@ -2673,15 +2673,15 @@ TEST_F(SecurityAuthenticationTest3, DISABLED_authenticate_test5_peer2_tries_to_s
         EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
 
         /*
-         * This test fails because not all auth mechanisms get tried before falling back to ECDHE_NULL. The trace from the SC shows 
+         * This test fails because not all auth mechanisms get tried before falling back to ECDHE_NULL. The trace from the SC shows
          * that ECDHE_SPEKE gets tried, then ECDHE_NULL gets tried. When ECDHE_SPEKE is not in the list, the trace shows that ECDSA
          * gets tried, then NULL.  So the behavior seems to be: try the mechanism with the higest integer value in PeerState.h, then
          * fall back to ECDHE_NULL. The test was broken before ECHDE_SPEKE was added (because ECDHE_PSK was not being attempted), but
-         * showed up when a new auth mechanism with lower priority than ECDSA was added with a higher integer value in PeerState.h. 
-         * Auth mechanism priority should be indpendent of the integer value, but previously the priority and integer values agreed 
+         * showed up when a new auth mechanism with lower priority than ECDSA was added with a higher integer value in PeerState.h.
+         * Auth mechanism priority should be indpendent of the integer value, but previously the priority and integer values agreed
          * (i.e., higher integer = higher priority). There are two issues here: 1. the order that auth mechanisms are tried is not as
-         * expected, and 2. not all mechanisms getting tried before falling back to ECDHE_NULL. 
-         * The bug https://jira.allseenalliance.org/browse/ASACORE-2718 tracks this issue. 
+         * expected, and 2. not all mechanisms getting tried before falling back to ECDHE_NULL.
+         * The bug https://jira.allseenalliance.org/browse/ASACORE-2718 tracks this issue.
          */
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_ECDSA") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_ECDSA auth mechanism to be tried, but it wasn't.";
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_NULL") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_NULL auth mechanism to be tried, but it wasn't.";
@@ -2823,14 +2823,14 @@ class SecurityAuthenticationTest4 : public testing::Test {
         EXPECT_EQ(ER_OK, pcCA.GetSigningPublicKey(caKey));
 
         //------------ Claim self(managerBus), SC, and TC --------
-        uint8_t managerDigest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                                   manifest, manifestSize,
-                                                                   managerDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest managerManifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                    manifest, manifestSize,
+                                                                    managerManifestObj[0])) << " GenerateManifest failed.";
 
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA,
-                                                                   manifest, manifestSize,
-                                                                   caDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA,
+                                                                    manifest, manifestSize,
+                                                                    caManifestObj[0])) << " GenerateManifest failed.";
 
         //Create identityCert
         const size_t certChainSize = 1;
@@ -2843,7 +2843,7 @@ class SecurityAuthenticationTest4 : public testing::Test {
                                                                       "ManagerAlias",
                                                                       3600,
                                                                       identityCertChainMaster[0],
-                                                                      managerDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      managerManifestObj[0])) << "Failed to create identity certificate.";
 
         /* set claimable */
         managerBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
@@ -2851,7 +2851,7 @@ class SecurityAuthenticationTest4 : public testing::Test {
                                               managerGuid,
                                               managerKey,
                                               identityCertChainMaster, certChainSize,
-                                              manifest, manifestSize));
+                                              managerManifestObj, ArraySize(managerManifestObj)));
 
 
         ECCPublicKey managerPublicKey;
@@ -2868,16 +2868,16 @@ class SecurityAuthenticationTest4 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
         //Manager claims Peers
         EXPECT_EQ(ER_OK, sapWithSC.Claim(caKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainSC, 1,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainSC, 1,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         //Create TC identityCert
         IdentityCertificate identityCertChainTC[certChainSize];
@@ -2889,13 +2889,13 @@ class SecurityAuthenticationTest4 : public testing::Test {
                                                                       "TCAlias",
                                                                       3600,
                                                                       identityCertChainTC[0],
-                                                                      caDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      caManifestObj[0])) << "Failed to create identity certificate.";
 
         EXPECT_EQ(ER_OK, sapWithTC.Claim(caKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainTC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainTC, certChainSize,
+                                         caManifestObj, ArraySize(caManifestObj)));
 
         EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &managerAuthListener));
         EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", &SCAuthListener));
@@ -2986,10 +2986,10 @@ class SecurityAuthenticationTest4 : public testing::Test {
 
         GUID128 SCGuid;
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(busUsedAsCA1,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(busUsedAsCA1,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         IdentityCertificate identityCertChainSC[1];
 
@@ -3004,10 +3004,10 @@ class SecurityAuthenticationTest4 : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
-        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifest, manifestSize))
+        EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, 1, manifestObj, ArraySize(manifestObj)))
             << "Failed to update Identity cert or manifest ";
         uint32_t sessionId;
         SessionOpts opts;
@@ -3057,7 +3057,7 @@ class SecurityAuthenticationTest4 : public testing::Test {
 
     const size_t manifestSize;
     PermissionPolicy::Rule manifest[1];
-    uint8_t caDigest[Crypto_SHA256::DIGEST_SIZE];
+    Manifest caManifestObj[1];
 
     ECCPublicKey TCPublicKey;
     KeyInfoNISTP256 TCKey;
