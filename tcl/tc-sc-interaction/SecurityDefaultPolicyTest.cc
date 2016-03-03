@@ -249,7 +249,7 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
         tmp = prxs;
         n = 0;
         while (tmp[n].path) {
-           if (secure) {
+            if (secure) {
                 tmp[n].flags |= AJ_OBJ_FLAG_SECURE;
             } else {
                 tmp[n].flags &= ~AJ_OBJ_FLAG_SECURE;
@@ -260,10 +260,10 @@ class TCDefaultPolicyAttachment : public TCBusAttachment {
         qcc::Event e;
 
         auto func = [this, &e, objs, prxs] () {
-            AJ_RegisterObjects(objs, prxs);
-            AJ_VERIFY(AJ_OK == AJ_RegisterObjectsACL());
-            e.SetEvent();
-        };
+                        AJ_RegisterObjects(objs, prxs);
+                        AJ_VERIFY(AJ_OK == AJ_RegisterObjectsACL());
+                        e.SetEvent();
+                    };
 
         Enqueue(func);
         qcc::Event::Wait(e, qcc::Event::WAIT_FOREVER);
@@ -537,10 +537,10 @@ class SecurityDefaultPolicyTest : public testing::Test {
         //Create TC key
         EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         //Create identityCert
         const size_t certChainSize = 1;
@@ -553,7 +553,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       "ManagerAlias",
                                                                       3600,
                                                                       identityCertChainMaster[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         SecurityApplicationProxy sapWithManagerBus(managerBus, managerBus.GetUniqueName().c_str());
         /* set claimable */
@@ -562,7 +562,7 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                  managerGuid,
                                                  managerKey,
                                                  identityCertChainMaster, certChainSize,
-                                                 manifest, manifestSize));
+                                                 manifestObj, ArraySize(manifestObj)));
 
         for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
             if (appStateListener.isClaimed(managerBus.GetUniqueName())) {
@@ -588,16 +588,16 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       "SCAlias",
                                                                       3600,
                                                                       identityCertChainSC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         //Manager claims Peers
         /* set claimable */
         SCBus.GetPermissionConfigurator().SetApplicationState(PermissionConfigurator::CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithSC.Claim(managerKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainSC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainSC, certChainSize,
+                                         manifestObj, ArraySize(manifestObj)));
 
         for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
             if (appStateListener.isClaimed(SCBus.GetUniqueName())) {
@@ -619,15 +619,15 @@ class SecurityDefaultPolicyTest : public testing::Test {
                                                                       "TCAlias",
                                                                       3600,
                                                                       identityCertChainTC[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
         /* set claimable */
         TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
         EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
         EXPECT_EQ(ER_OK, sapWithTC.Claim(managerKey,
-                                            managerGuid,
-                                            managerKey,
-                                            identityCertChainTC, certChainSize,
-                                            manifest, manifestSize));
+                                         managerGuid,
+                                         managerKey,
+                                         identityCertChainTC, certChainSize,
+                                         manifestObj, ArraySize(manifestObj)));
 
         for (int msec = 0; msec < 10000; msec += WAIT_MSECS) {
             if (appStateListener.isClaimed(SCBus.GetUniqueName())) {
@@ -887,7 +887,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDSA_everything_passes)
 
     ProxyBusObject proxy;
     proxy = ProxyBusObject(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
-    
+
     // SC to TC
     EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
     EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
@@ -1114,9 +1114,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
         EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
-                                               SCToTCSessionId,
-                                               *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                               &arg, 1, 0, 0));
+                                            SCToTCSessionId,
+                                            *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                            &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1242,9 +1242,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         ChirpSignalReceiver chirpSignalReceiver;
 
         EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&chirpSignalReceiver,
-                                                        static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
-                                                        SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                                        NULL));
+                                                     static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
+                                                     SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                                     NULL));
 
         EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
 
@@ -1257,9 +1257,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         }
         EXPECT_TRUE(chirpSignalReceiver.signalReceivedFlag) << "SC failed to receive the Signal from TC";
         SCBus.UnregisterSignalHandler(&chirpSignalReceiver,
-                                         static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
-                                         SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                         NULL);
+                                      static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
+                                      SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                      NULL);
     }
 
     //3. Peer A (SC) makes a method call, get property call, set property call, getall
@@ -1298,9 +1298,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_instal
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
         EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
-                                               SCToTCSessionId,
-                                               *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                               &arg, 1, 0, 0));
+                                            SCToTCSessionId,
+                                            *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                            &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1403,9 +1403,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
 
         MsgArg arg("s", "Chirp this String out in the signal.");
         EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&chirpSignalReceiver,
-                                                        static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
-                                                        SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                                        NULL));
+                                                     static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
+                                                     SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                                     NULL));
 
         // Signals are send and forget.  They will always return ER_OK.
         EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
@@ -1419,9 +1419,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
         }
         EXPECT_TRUE(chirpSignalReceiver.signalReceivedFlag) << "SC failed to receive the Signal from TC";
         SCBus.UnregisterSignalHandler(&chirpSignalReceiver,
-                                         static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
-                                         SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                         NULL);
+                                      static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
+                                      SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                      NULL);
     }
 
     // 3. Peer A (SC) makes an unsecure method call, get property call, set property call, getall
@@ -1477,9 +1477,9 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_unsecure_method_signal_propertie
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
         EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
-                                               SCToTCSessionId,
-                                               *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                               &arg, 1, 0, 0));
+                                            SCToTCSessionId,
+                                            *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                            &arg, 1, 0, 0));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1714,10 +1714,10 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
         SCManifest[0].SetMembers(1, members);
     }
 
-    uint8_t SCDigest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                               SCManifest, manifestSize,
-                                                               SCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest SCManifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                SCManifest, manifestSize,
+                                                                SCManifestObj[0])) << " GenerateManifest failed.";
 
     //Create SC identityCert
     IdentityCertificate identityCertChainSC[certChainSize];
@@ -1729,9 +1729,9 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   "SCAlias",
                                                                   3600,
                                                                   identityCertChainSC[0],
-                                                                  SCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  SCManifestObj[0])) << "Failed to create identity certificate.";
 
-    EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifestObj, ArraySize(SCManifestObj)));
     EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     /*************Update TC Manifest *************/
@@ -1759,10 +1759,10 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
         SCManifest[0].SetMembers(1, members);
     }
 
-    uint8_t TCDigest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                               TCManifest, manifestSize,
-                                                               TCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest TCManifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                TCManifest, manifestSize,
+                                                                TCManifestObj[0])) << " GenerateManifest failed.";
 
     //Create TC identityCert
     IdentityCertificate identityCertChainTC[certChainSize];
@@ -1774,9 +1774,9 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   "TCAlias",
                                                                   3600,
                                                                   identityCertChainTC[0],
-                                                                  TCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  TCManifestObj[0])) << "Failed to create identity certificate.";
 
-    EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifestObj, ArraySize(TCManifestObj)));
     EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
     SessionOpts opts;
@@ -1785,7 +1785,7 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
     SecurityApplicationProxy sapSCwithTC(SCBus, TCBus.GetUniqueName().c_str(), SCToTCSessionId);
     EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.Reset());
 
-    EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+    EXPECT_EQ(ER_PERMISSION_DENIED, sapSCwithTC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifestObj, ArraySize(SCManifestObj)));
 }
 
 TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations_TC)
@@ -1834,10 +1834,10 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
         TCManifest[0].SetMembers(1, members);
     }
 
-    uint8_t TCDigest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                               TCManifest, manifestSize,
-                                                               TCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest TCManifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                TCManifest, manifestSize,
+                                                                TCManifestObj[0])) << " GenerateManifest failed.";
 
     //Create TC identityCert
     IdentityCertificate identityCertChainTC[certChainSize];
@@ -1849,9 +1849,9 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   "TCAlias",
                                                                   3600,
                                                                   identityCertChainTC[0],
-                                                                  TCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  TCManifestObj[0])) << "Failed to create identity certificate.";
 
-    EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChainTC, certChainSize, TCManifestObj, ArraySize(TCManifestObj)));
     EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
     /*************Update SC Manifest *************/
@@ -1884,10 +1884,10 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
         TCManifest[0].SetMembers(1, members);
     }
 
-    uint8_t SCDigest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerBus,
-                                                               SCManifest, manifestSize,
-                                                               SCDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest SCManifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerBus,
+                                                                SCManifest, manifestSize,
+                                                                SCManifestObj[0])) << " GenerateManifest failed.";
 
     //Create SC identityCert
     IdentityCertificate identityCertChainSC[certChainSize];
@@ -1899,9 +1899,9 @@ TEST_F(SecurityDefaultPolicyTest, manifest_can_deny_secure_management_operations
                                                                   "SCAlias",
                                                                   3600,
                                                                   identityCertChainSC[0],
-                                                                  SCDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to create identity certificate.";
+                                                                  SCManifestObj[0])) << "Failed to create identity certificate.";
 
-    EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifest, manifestSize));
+    EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChainSC, certChainSize, SCManifestObj, ArraySize(SCManifestObj)));
     EXPECT_EQ(ER_OK, sapWithSC.SecureConnection(true));
 
     SessionOpts opts;
