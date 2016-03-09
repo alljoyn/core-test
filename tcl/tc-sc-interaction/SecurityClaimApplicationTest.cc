@@ -280,10 +280,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -292,7 +292,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -306,10 +306,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -379,10 +379,10 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "1215",
@@ -391,7 +391,7 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
@@ -406,10 +406,10 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
      */
     ASSERT_EQ(static_cast<size_t>(0), caKey.GetKeyIdLen());
     EXPECT_NE(ER_OK, sapWithTC.Claim(caKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
@@ -473,10 +473,10 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "1215",
@@ -485,7 +485,7 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
@@ -500,10 +500,10 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
      */
     ASSERT_EQ(static_cast<size_t>(0), securityManagerKey.GetKeyIdLen());
     EXPECT_NE(ER_OK, sapWithTC.Claim(caKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
@@ -603,10 +603,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(SCBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(SCBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     // SC will become the the one signing the identity certificate.
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(SCBus,
@@ -616,7 +616,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     //Verify the caPublicKey != adminGroupSecurityPublicKey.
@@ -633,10 +633,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(caKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -723,10 +723,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -735,7 +735,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -749,10 +749,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -765,120 +765,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
-}
-
-/*
- * Verify that Calim fails when the digest in the Identity certificate does not
- * match the digest of the manifest.
- *
- * Test Case:
- * Claim
- * Manifest digest != digest in the identity certificate */
-TEST_F(SecurityClaimApplicationTest, Claim_fails_if_identity_cert_digest_not_equal_claim_manifest)
-{
-    appStateListener.stateChanged = false;
-    //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
-
-    /* The State signal is only emitted if manifest template is installed */
-    SetManifestTemplate(securityManagerBus);
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    appStateListener.stateChanged = false;
-
-    TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
-    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
-
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
-
-    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
-    PermissionConfigurator::ApplicationState applicationStateTC;
-    EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
-    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
-
-    //Create admin group key
-    KeyInfoNISTP256 securityManagerKey;
-    PermissionConfigurator& permissionConfigurator = securityManagerBus.GetPermissionConfigurator();
-    EXPECT_EQ(ER_OK, permissionConfigurator.GetSigningPublicKey(securityManagerKey));
-
-    //Random GUID used for the SecurityManager
-    GUID128 securityManagerGuid;
-
-    //Create identityCertChain
-    IdentityCertificate identityCertChain[1];
-
-    // peer public key used to generate the identity certificate chain
-    ECCPublicKey TCPublicKey;
-    EXPECT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
-
-    // All Inclusive manifest
-    PermissionPolicy::Rule::Member member[1];
-    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
-    const size_t manifestSize = 1;
-    PermissionPolicy::Rule manifest[manifestSize];
-    manifest[0].SetObjPath("*");
-    manifest[0].SetInterfaceName("*");
-    manifest[0].SetMembers(1, member);
-
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
-
-    // Manifest that is different then the All Inclusive manifest passed in as
-    // the digest.
-    PermissionPolicy::Rule::Member member2[1];
-    member2[0].Set("*", PermissionPolicy::Rule::Member::METHOD_CALL, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
-    PermissionPolicy::Rule manifest2[manifestSize];
-    manifest2[0].SetObjPath("*");
-    manifest2[0].SetInterfaceName("*");
-    manifest2[0].SetMembers(1, member2);
-
-    uint8_t digest2[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest2, manifestSize,
-                                                               digest2, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
-
-    EXPECT_TRUE(memcmp(digest, digest2, Crypto_SHA256::DIGEST_SIZE) != 0);
-
-    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
-                                                                  "0",
-                                                                  securityManagerGuid.ToString(),
-                                                                  &TCPublicKey,
-                                                                  "Alias",
-                                                                  3600,
-                                                                  identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
-
-    /*
-     * Claim TC
-     * the certificate authority is self signed so the certificateAuthority
-     * key is the same as the adminGroup key.
-     * For this test the adminGroupId is a randomly generated GUID as long as the
-     * GUID is consistent it's unimportant that the GUID is random.
-     * Use generated identity certificate signed by the securityManager
-     * Since we are only interested in claiming the peer we are using an all
-     * inclusive manifest.
-     */
-    EXPECT_EQ(ER_DIGEST_MISMATCH, sapWithTC.Claim(securityManagerKey,
-                                                     securityManagerGuid,
-                                                     securityManagerKey,
-                                                     identityCertChain, 1,
-                                                     manifest2, manifestSize));
 }
 
 /*
@@ -951,10 +837,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -963,7 +849,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -977,10 +863,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -996,10 +882,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
 
     appStateListener.stateChanged = false;
     EXPECT_EQ(ER_PERMISSION_DENIED, sapWithTC.Claim(securityManagerKey,
-                                                       securityManagerGuid,
-                                                       securityManagerKey,
-                                                       identityCertChain, 1,
-                                                       manifest, manifestSize));
+                                                    securityManagerGuid,
+                                                    securityManagerKey,
+                                                    identityCertChain, 1,
+                                                    manifestObj, ArraySize(manifestObj)));
 }
 
 /*
@@ -1072,10 +958,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1084,7 +970,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -1098,10 +984,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -1129,10 +1015,10 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member2);
 
-    uint8_t digest2[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest2, manifestSize,
-                                                               digest2, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj2[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest2, manifestSize,
+                                                                manifestObj2[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1141,13 +1027,13 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain2[0],
-                                                                  digest2, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj2[0])) << "Failed to create identity certificate.";
 
     EXPECT_EQ(ER_PERMISSION_DENIED, sapWithTC.Claim(securityManagerKey,
-                                                       securityManagerGuid,
-                                                       securityManagerKey,
-                                                       identityCertChain2, 1,
-                                                       manifest2, manifestSize));
+                                                    securityManagerGuid,
+                                                    securityManagerKey,
+                                                    identityCertChain2, 1,
+                                                    manifestObj2, ArraySize(manifestObj2)));
 }
 
 /*
@@ -1207,10 +1093,10 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1219,7 +1105,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -1233,10 +1119,10 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
      * inclusive manifest.
      */
     EXPECT_EQ(ER_PERMISSION_DENIED, sapWithTC.Claim(securityManagerKey,
-                                                       securityManagerGuid,
-                                                       securityManagerKey,
-                                                       identityCertChain, 1,
-                                                       manifest, manifestSize));
+                                                    securityManagerGuid,
+                                                    securityManagerKey,
+                                                    identityCertChain, 1,
+                                                    manifestObj, ArraySize(manifestObj)));
 }
 
 /*
@@ -1302,10 +1188,10 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(SCBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(SCBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(SCBus,
                                                                   "0",
@@ -1314,13 +1200,13 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     EXPECT_EQ(ER_BUS_SECURITY_NOT_ENABLED, sapWithTC.Claim(caKey,
-                                                              securityManagerGuid,
-                                                              caKey,
-                                                              identityCertChain, 1,
-                                                              manifest, manifestSize));
+                                                           securityManagerGuid,
+                                                           caKey,
+                                                           identityCertChain, 1,
+                                                           manifestObj, ArraySize(manifestObj)));
 }
 
 /*
@@ -1373,10 +1259,10 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1385,7 +1271,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     printf("TC NAME %s\n", TCBus.GetUniqueName().c_str());
@@ -1401,10 +1287,10 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
      * inclusive manifest.
      */
     EXPECT_EQ(ER_AUTH_FAIL, sapWithTC.Claim(securityManagerKey,
-                                               securityManagerGuid,
-                                               securityManagerKey,
-                                               identityCertChain, 1,
-                                               manifest, manifestSize));
+                                            securityManagerGuid,
+                                            securityManagerKey,
+                                            identityCertChain, 1,
+                                            manifestObj, ArraySize(manifestObj)));
 }
 
 class ClaimThread1 : public Thread {
@@ -1440,10 +1326,10 @@ class ClaimThread1 : public Thread {
         manifest[0].SetInterfaceName("*");
         manifest[0].SetMembers(1, member);
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(thiz->securityManagerBus,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(thiz->securityManagerBus,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(thiz->securityManagerBus,
                                                                       "0",
@@ -1452,13 +1338,13 @@ class ClaimThread1 : public Thread {
                                                                       "Alias",
                                                                       3600,
                                                                       identityCertChain[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         status = sapWithTC.Claim(securityManagerKey,
-                                    securityManagerGuid,
-                                    securityManagerKey,
-                                    identityCertChain, 1,
-                                    manifest, manifestSize);
+                                 securityManagerGuid,
+                                 securityManagerKey,
+                                 identityCertChain, 1,
+                                 manifestObj, ArraySize(manifestObj));
 
         return static_cast<ThreadReturn>(0);
     }
@@ -1497,10 +1383,10 @@ class ClaimThread2 : public Thread {
         manifest[0].SetInterfaceName("*");
         manifest[0].SetMembers(1, member);
 
-        uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-        EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(thiz->SCBus,
-                                                                   manifest, manifestSize,
-                                                                   digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+        Manifest manifestObj[1];
+        EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(thiz->SCBus,
+                                                                    manifest, manifestSize,
+                                                                    manifestObj[0])) << " GenerateManifest failed.";
 
         EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(thiz->SCBus,
                                                                       "0",
@@ -1509,13 +1395,13 @@ class ClaimThread2 : public Thread {
                                                                       "Alias",
                                                                       3600,
                                                                       identityCertChain[0],
-                                                                      digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                      manifestObj[0])) << "Failed to create identity certificate.";
 
         status = sapWithTC.Claim(securityManagerKey,
-                                    securityManagerGuid,
-                                    securityManagerKey,
-                                    identityCertChain, 1,
-                                    manifest, manifestSize);
+                                 securityManagerGuid,
+                                 securityManagerKey,
+                                 identityCertChain, 1,
+                                 manifestObj, ArraySize(manifestObj));
         return static_cast<ThreadReturn>(0);
     }
 };
@@ -1675,10 +1561,10 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1687,15 +1573,15 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
     EXPECT_EQ(ER_AUTH_FAIL, sapWithTC.Claim(securityManagerKey,
-                                               securityManagerGuid,
-                                               securityManagerKey,
-                                               identityCertChain, 1,
-                                               manifest, manifestSize));
+                                            securityManagerGuid,
+                                            securityManagerKey,
+                                            identityCertChain, 1,
+                                            manifestObj, ArraySize(manifestObj)));
 }
 
 /*
@@ -1767,10 +1653,10 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     // securityManagerKey used instead of TC key to make sure we create an
     // invalid cert.
@@ -1782,15 +1668,15 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
     EXPECT_EQ(ER_BUS_REPLY_IS_ERROR_MESSAGE, sapWithTC.Claim(securityManagerKey,
-                                                         securityManagerGuid,
-                                                         securityManagerKey,
-                                                         identityCertChain, 1,
-                                                         manifest, manifestSize));
+                                                             securityManagerGuid,
+                                                             securityManagerKey,
+                                                             identityCertChain, 1,
+                                                             manifestObj, ArraySize(manifestObj)));
 }
 
 /*
@@ -1950,10 +1836,10 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -1962,17 +1848,17 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
     ASSERT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
 
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
@@ -2104,10 +1990,10 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -2116,7 +2002,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
@@ -2141,10 +2027,10 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     appStateListener.stateChanged = false;
 
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2300,10 +2186,10 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -2312,16 +2198,16 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
     EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
             break;
@@ -2360,10 +2246,10 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    //uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(managerClaimingBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    //Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerClaimingBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerClaimingBus,
                                                                   "0",
@@ -2372,15 +2258,13 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChainToClaimAdmin[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
-
-
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.Claim(securityManagerKey,
                                                      securityManagerGuid,
                                                      securityManagerKey,
                                                      identityCertChainToClaimAdmin, 1,
-                                                     manifest, manifestSize));
+                                                     manifestObj, ArraySize(manifestObj)));
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2427,10 +2311,10 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     updatedManifest[0].SetInterfaceName("*");
     updatedManifest[0].SetMembers(1, updatedMember);
 
-    uint8_t updatedDigest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               updatedManifest, updatedManifestSize,
-                                                               updatedDigest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest updatedManifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                updatedManifest, updatedManifestSize,
+                                                                updatedManifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "1",
@@ -2439,12 +2323,12 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain1[0],
-                                                                  updatedDigest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  updatedManifestObj[0])) << "Failed to create identity certificate.";
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
     // Call updateIdentity
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain1, 1,
-                                                 updatedManifest, updatedManifestSize));
+                                              updatedManifestObj, ArraySize(updatedManifestObj)));
 
     appStateListener.stateChanged = false;
 
@@ -2552,10 +2436,10 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
@@ -2564,16 +2448,16 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
 
     EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0);
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-                                        securityManagerGuid,
-                                        securityManagerKey,
-                                        identityCertChain, 1,
-                                        manifest, manifestSize));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
             break;
@@ -2597,9 +2481,8 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
     AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
-    AJ_Manifest updated = { rules };
 
-    TCBus.SetPermissionManifest(&updated);
+    TCBus.SetPermissionManifest(rules);
     // Verify that the security manager saw the "Needs Update" notification
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
@@ -2679,9 +2562,8 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
     AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
-    AJ_Manifest manifest = { rules };
 
-    TCBus.SetPermissionManifest(&manifest);
+    TCBus.SetPermissionManifest(rules);
     appStateListener.stateChanged = false;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2762,10 +2644,10 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     manifest[0].SetInterfaceName("*");
     manifest[0].SetMembers(1, member);
 
-    uint8_t digest[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest, manifestSize,
-                                                               digest, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     // Manifest that is different then the All Inclusive manifest passed in as the digest to make the claim call fail
     PermissionPolicy::Rule::Member member2[1];
@@ -2775,12 +2657,12 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     manifest2[0].SetInterfaceName("*");
     manifest2[0].SetMembers(1, member2);
 
-    uint8_t digest2[Crypto_SHA256::DIGEST_SIZE];
-    EXPECT_EQ(ER_OK, PermissionMgmtObj::GenerateManifestDigest(securityManagerBus,
-                                                               manifest2, manifestSize,
-                                                               digest2, Crypto_SHA256::DIGEST_SIZE)) << " GenerateManifestDigest failed.";
+    Manifest manifestObj2[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest2, manifestSize,
+                                                                manifestObj2[0])) << " GenerateManifest failed.";
 
-    EXPECT_TRUE(memcmp(digest, digest2, Crypto_SHA256::DIGEST_SIZE) != 0);
+
 
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
@@ -2790,14 +2672,17 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
                                                                   "Alias",
                                                                   3600,
                                                                   identityCertChain[0],
-                                                                  digest, Crypto_SHA256::DIGEST_SIZE)) << "Failed to creat identity certificate.";
+                                                                  manifestObj2[0])) << "Failed to create identity certificate.";
     printf("\n Before calling claim");
     appStateListener.stateChanged = false;
-    EXPECT_EQ(ER_DIGEST_MISMATCH, sapWithTC.Claim(securityManagerKey,
-                                                     securityManagerGuid,
-                                                     securityManagerKey,
-                                                     identityCertChain, 1,
-                                                     manifest2, manifestSize));
+    /* Provide bogus key info so Claim will fail. */
+    KeyInfoNISTP256 bogusKey(securityManagerKey);
+    bogusKey.SetPublicKey(&TCPublicKey);
+    EXPECT_EQ(ER_INVALID_CERTIFICATE, sapWithTC.Claim(bogusKey,
+                                                      securityManagerGuid,
+                                                      bogusKey,
+                                                      identityCertChain, 1,
+                                                      manifestObj2, ArraySize(manifestObj2)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {

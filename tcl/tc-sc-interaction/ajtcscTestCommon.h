@@ -198,7 +198,7 @@ class TCBusAttachment : public qcc::Thread {
     qcc::String GetUniqueName();
     QStatus EnablePeerSecurity(const char* mechanisms);
     void SetApplicationState(uint16_t state);
-    void SetPermissionManifest(AJ_Manifest* manifest);
+    void SetPermissionManifest(AJ_PermissionRule* manifest);
     QStatus BindSessionPort(uint16_t port);
     QStatus JoinSession(const char* host, uint16_t port, uint32_t& id);
     QStatus AuthenticatePeer(const char* host);

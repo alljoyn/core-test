@@ -40,8 +40,8 @@ int CDECL_CALL main(int argc, char* argv[])
     testing::InitGoogleTest(&argc, argv);
     status = RUN_ALL_TESTS();
 
-    AllJoynShutdown();
     AllJoynRouterShutdown();
+    AllJoynShutdown();
 
     std::cout << argv[0] << " exiting with status " << status << std::endl;
 
@@ -252,23 +252,23 @@ QStatus TCBusAttachment::EnablePeerSecurity(const char* mechanisms)
     qcc::Event e;
 
     auto func = [this, &e, str] () {
-        uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
-        size_t numsuites = 0;
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_SPEKE")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_SPEKE;
-        }
-        if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
-            suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
-        }
-        AJ_BusEnableSecurity(&bus, suites, numsuites);
-        e.SetEvent();
-    };
+                    uint32_t suites[AJ_AUTH_SUITES_NUM] = { 0 };
+                    size_t numsuites = 0;
+                    if (qcc::String::npos != str.find("ALLJOYN_ECDHE_NULL")) {
+                        suites[numsuites++] = AUTH_SUITE_ECDHE_NULL;
+                    }
+                    if (qcc::String::npos != str.find("ALLJOYN_ECDHE_PSK")) {
+                        suites[numsuites++] = AUTH_SUITE_ECDHE_PSK;
+                    }
+                    if (qcc::String::npos != str.find("ALLJOYN_ECDHE_SPEKE")) {
+                        suites[numsuites++] = AUTH_SUITE_ECDHE_SPEKE;
+                    }
+                    if (qcc::String::npos != str.find("ALLJOYN_ECDHE_ECDSA")) {
+                        suites[numsuites++] = AUTH_SUITE_ECDHE_ECDSA;
+                    }
+                    AJ_BusEnableSecurity(&bus, suites, numsuites);
+                    e.SetEvent();
+                };
 
     Enqueue(func);
     qcc::Event::Wait(e, qcc::Event::WAIT_FOREVER);
@@ -280,30 +280,30 @@ void TCBusAttachment::SetApplicationState(uint16_t state)
     qcc::Event e;
 
     auto func = [this, &e, state] () {
-        AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
-        e.SetEvent();
-    };
+                    AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
+                    e.SetEvent();
+                };
 
     Enqueue(func);
     qcc::Event::Wait(e, qcc::Event::WAIT_FOREVER);
 }
 
-void TCBusAttachment::SetPermissionManifest(AJ_Manifest* manifest)
+void TCBusAttachment::SetPermissionManifest(AJ_PermissionRule* manifest)
 {
     qcc::Event e;
 
     auto func = [this, &e, manifest] () {
-        uint16_t state;
-        uint16_t cap;
-        uint16_t info;
-        AJ_SecurityGetClaimConfig(&state, &cap, &info);
-        /* Only change if already claimed */
-        if (APP_STATE_CLAIMED == state) {
-            AJ_ManifestTemplateSet(manifest);
-            AJ_SecuritySetClaimConfig(&bus, APP_STATE_NEED_UPDATE, cap, info);
-        }
-        e.SetEvent();
-    };
+                    uint16_t state;
+                    uint16_t cap;
+                    uint16_t info;
+                    AJ_SecurityGetClaimConfig(&state, &cap, &info);
+                    /* Only change if already claimed */
+                    if (APP_STATE_CLAIMED == state) {
+                        AJ_ManifestTemplateSet(manifest);
+                        AJ_SecuritySetClaimConfig(&bus, APP_STATE_NEED_UPDATE, cap, info);
+                    }
+                    e.SetEvent();
+                };
 
     Enqueue(func);
     qcc::Event::Wait(e, qcc::Event::WAIT_FOREVER);
@@ -314,12 +314,12 @@ QStatus TCBusAttachment::BindSessionPort(uint16_t port)
     Promise<bool> p;
 
     auto func = [this, &p, port] () {
-        sessionPort = port;
-        AJ_BusBindSessionPort(&bus, port, NULL, 0);
-        message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
-            p.SetResult(true);
-        };
-    };
+                    sessionPort = port;
+                    AJ_BusBindSessionPort(&bus, port, NULL, 0);
+                    message_handlers[AJ_REPLY_ID(AJ_METHOD_BIND_SESSION_PORT)] = [this, &p] () {
+                                                                                     p.SetResult(true);
+                                                                                 };
+                };
 
     Enqueue(func);
 
@@ -338,13 +338,13 @@ QStatus TCBusAttachment::JoinSession(const char* host, uint16_t port, uint32_t& 
     qcc::Event e;
 
     auto func = [this, &e, host, port] () {
-        this->session = 0;
-        this->sessionPort = port;
-        AJ_BusJoinSession(&bus, host, port, NULL);
-        message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &e] () {
-            e.SetEvent();
-        };
-    };
+                    this->session = 0;
+                    this->sessionPort = port;
+                    AJ_BusJoinSession(&bus, host, port, NULL);
+                    message_handlers[AJ_REPLY_ID(AJ_METHOD_JOIN_SESSION)] = [this, &e] () {
+                                                                                e.SetEvent();
+                                                                            };
+                };
 
     Enqueue(func);
 
@@ -364,9 +364,9 @@ QStatus TCBusAttachment::AuthenticatePeer(const char* host)
     Promise<AJ_Status> p;
 
     auto func = [this, &p, host] () {
-        /* AuthCallback will set p's value */
-        AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
-    };
+                    /* AuthCallback will set p's value */
+                    AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
+                };
 
     Enqueue(func);
 
@@ -380,31 +380,31 @@ QStatus TCBusAttachment::MethodCall(const char* peer, uint32_t id, const char* s
     Promise<QStatus> p;
 
     auto func = [this, &p, peer, id, str] () {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response = "";
+                    AJ_Status status;
+                    AJ_Message msg;
+                    SCStatus = ER_FAIL;
+                    response = "";
 
-        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000));
-        if (str) {
-            AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
-        }
+                    AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, id, peer, session, 0, 25000));
+                    if (str) {
+                        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
+                    }
 
-        /* Access control is on AJ_DeliverMsg */
-        status = AJ_DeliverMsg(&msg);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                SCStatus = ER_PERMISSION_DENIED;
-            }
-            AJ_CloseMsg(&msg);
-            p.SetResult(SCStatus);
-            return;
-        }
+                    /* Access control is on AJ_DeliverMsg */
+                    status = AJ_DeliverMsg(&msg);
+                    if (AJ_OK != status) {
+                        if (AJ_ERR_ACCESS == status) {
+                            SCStatus = ER_PERMISSION_DENIED;
+                        }
+                        AJ_CloseMsg(&msg);
+                        p.SetResult(SCStatus);
+                        return;
+                    }
 
-        message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
-            p.SetResult(SCStatus);
-        };
-    };
+                    message_handlers[AJ_REPLY_ID(id)] = [this, &p] () {
+                                                            p.SetResult(SCStatus);
+                                                        };
+                };
 
     Enqueue(func);
 
@@ -417,29 +417,29 @@ QStatus TCBusAttachment::Signal(const char* peer, uint32_t id, const char* str)
     Promise<QStatus> p;
 
     auto func = [this, &p, peer, id, str] () {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
+                    AJ_Status status;
+                    AJ_Message msg;
+                    SCStatus = ER_FAIL;
 
-        AJ_VERIFY(AJ_OK == AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0));
-        if (str) {
-            AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
-        }
+                    AJ_VERIFY(AJ_OK == AJ_MarshalSignal(&bus, &msg, id, peer, session, 0, 0));
+                    if (str) {
+                        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", str));
+                    }
 
-        /* Access control is on AJ_DeliverMsg */
-        status = AJ_DeliverMsg(&msg);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                SCStatus = ER_PERMISSION_DENIED;
-            }
-            AJ_CloseMsg(&msg);
-            p.SetResult(SCStatus);
-            return;
-        }
-        SCStatus = ER_OK;
+                    /* Access control is on AJ_DeliverMsg */
+                    status = AJ_DeliverMsg(&msg);
+                    if (AJ_OK != status) {
+                        if (AJ_ERR_ACCESS == status) {
+                            SCStatus = ER_PERMISSION_DENIED;
+                        }
+                        AJ_CloseMsg(&msg);
+                        p.SetResult(SCStatus);
+                        return;
+                    }
+                    SCStatus = ER_OK;
 
-        p.SetResult(SCStatus);
-    };
+                    p.SetResult(SCStatus);
+                };
 
     Enqueue(func);
     return p.Wait(qcc::Event::WAIT_FOREVER, ER_FAIL);
@@ -451,9 +451,9 @@ QStatus TCBusAttachment::GetGuid(qcc::GUID128& guid)
     Promise<AJ_Status> p;
 
     auto func = [this, &tc_guid, &p] () {
-        AJ_Status status = AJ_GetLocalGUID(&tc_guid);
-        p.SetResult(status);
-    };
+                    AJ_Status status = AJ_GetLocalGUID(&tc_guid);
+                    p.SetResult(status);
+                };
 
     Enqueue(func);
 
@@ -480,34 +480,34 @@ QStatus TCBusAttachment::GetProperty(const char* peer, uint32_t mid, uint32_t pi
     Promise<RetVal> p;
 
     auto func = [this, &p, peer, mid, pid] () {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response = "";
-        propval = 0;
-        RetVal rv = { propval, ER_FAIL };
-        propid = pid;
+                    AJ_Status status;
+                    AJ_Message msg;
+                    SCStatus = ER_FAIL;
+                    response = "";
+                    propval = 0;
+                    RetVal rv = { propval, ER_FAIL };
+                    propid = pid;
 
-        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+                    AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
 
-        /* Access control is on AJ_MarshalPropertyArgs */
-        status = AJ_MarshalPropertyArgs(&msg, propid);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                rv.status = ER_PERMISSION_DENIED;
-            }
-            AJ_CloseMsg(&msg);
-            p.SetResult(rv);
-            return;
-        }
+                    /* Access control is on AJ_MarshalPropertyArgs */
+                    status = AJ_MarshalPropertyArgs(&msg, propid);
+                    if (AJ_OK != status) {
+                        if (AJ_ERR_ACCESS == status) {
+                            rv.status = ER_PERMISSION_DENIED;
+                        }
+                        AJ_CloseMsg(&msg);
+                        p.SetResult(rv);
+                        return;
+                    }
 
-        AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
+                    AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
 
-        message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
-            RetVal rv = { propval, SCStatus };
-            p.SetResult(rv);
-        };
-    };
+                    message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
+                                                             RetVal rv = { propval, SCStatus };
+                                                             p.SetResult(rv);
+                                                         };
+                };
 
     Enqueue(func);
 
@@ -521,32 +521,32 @@ QStatus TCBusAttachment::SetProperty(const char* peer, uint32_t mid, uint32_t pi
     Promise<QStatus> p;
 
     auto func = [this, &p, peer, mid, pid, val] () {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response = "";
-        propid = pid;
+                    AJ_Status status;
+                    AJ_Message msg;
+                    SCStatus = ER_FAIL;
+                    response = "";
+                    propid = pid;
 
-        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+                    AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
 
-        /* Access control is on AJ_MarshalPropertyArgs */
-        status = AJ_MarshalPropertyArgs(&msg, propid);
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                SCStatus = ER_PERMISSION_DENIED;
-            }
-            AJ_CloseMsg(&msg);
-            p.SetResult(SCStatus);
-            return;
-        }
+                    /* Access control is on AJ_MarshalPropertyArgs */
+                    status = AJ_MarshalPropertyArgs(&msg, propid);
+                    if (AJ_OK != status) {
+                        if (AJ_ERR_ACCESS == status) {
+                            SCStatus = ER_PERMISSION_DENIED;
+                        }
+                        AJ_CloseMsg(&msg);
+                        p.SetResult(SCStatus);
+                        return;
+                    }
 
-        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "i", val));
-        AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
+                    AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "i", val));
+                    AJ_VERIFY(AJ_OK == AJ_DeliverMsg(&msg));
 
-        message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
-            p.SetResult(SCStatus);
-        };
-    };
+                    message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
+                                                             p.SetResult(SCStatus);
+                                                         };
+                };
 
     Enqueue(func);
 
@@ -565,38 +565,38 @@ QStatus TCBusAttachment::GetAllProperties(const char* peer, uint32_t mid, const 
     Promise<RetVal> p;
 
     auto func = [this, &p, peer, mid, ifn, secure] () {
-        AJ_Status status;
-        AJ_Message msg;
-        SCStatus = ER_FAIL;
-        response = "";
-        properties.Clear();
-        RetVal rv;
+                    AJ_Status status;
+                    AJ_Message msg;
+                    SCStatus = ER_FAIL;
+                    response = "";
+                    properties.Clear();
+                    RetVal rv;
 
-        /* Need to explicitly turn encrypt flag on */
-        if (secure) {
-            AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, AJ_FLAG_ENCRYPTED, 25000));
-        } else {
-            AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
-        }
-        AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", ifn));
+                    /* Need to explicitly turn encrypt flag on */
+                    if (secure) {
+                        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, AJ_FLAG_ENCRYPTED, 25000));
+                    } else {
+                        AJ_VERIFY(AJ_OK == AJ_MarshalMethodCall(&bus, &msg, mid, peer, session, 0, 25000));
+                    }
+                    AJ_VERIFY(AJ_OK == AJ_MarshalArgs(&msg, "s", ifn));
 
-        /* Access control is on AJ_DeliverMsg */
-        status = AJ_DeliverMsg(&msg);
-        rv.status = ER_FAIL;
-        if (AJ_OK != status) {
-            if (AJ_ERR_ACCESS == status) {
-                rv.status = ER_PERMISSION_DENIED;
-            }
-            p.SetResult(rv);
-            AJ_CloseMsg(&msg);
-            return;
-        }
+                    /* Access control is on AJ_DeliverMsg */
+                    status = AJ_DeliverMsg(&msg);
+                    rv.status = ER_FAIL;
+                    if (AJ_OK != status) {
+                        if (AJ_ERR_ACCESS == status) {
+                            rv.status = ER_PERMISSION_DENIED;
+                        }
+                        p.SetResult(rv);
+                        AJ_CloseMsg(&msg);
+                        return;
+                    }
 
-        message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
-            RetVal rv = { properties, SCStatus };
-            p.SetResult(rv);
-        };
-    };
+                    message_handlers[AJ_REPLY_ID(mid)] = [this, &p] () {
+                                                             RetVal rv = { properties, SCStatus };
+                                                             p.SetResult(rv);
+                                                         };
+                };
 
     Enqueue(func);
     TCProperties defaultProperties;

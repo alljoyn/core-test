@@ -71,7 +71,44 @@ void TestPermissionConfigurationListener::PolicyChanged()
     policyChangedReceived = true;
 }
 
-QStatus PermissionMgmtTestHelper::CreateIdentityCertChain(BusAttachment& caBus, BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate* certChain, size_t chainCount, uint8_t* digest, size_t digestSize)
+QStatus PermissionMgmtTestHelper::SignManifests(BusAttachment& issuerBus, const qcc::CertificateX509& subjectCertificate, std::vector<Manifest>& manifests)
+{
+    for (Manifest manifest : manifests) {
+        QStatus status = SignManifest(issuerBus, subjectCertificate, manifest);
+        if (ER_OK != status) {
+            return status;
+        }
+    }
+
+    return ER_OK;
+}
+
+QStatus PermissionMgmtTestHelper::SignManifest(BusAttachment& issuerBus, const qcc::CertificateX509& subjectCertificate, Manifest& manifest)
+{
+    CredentialAccessor ca(issuerBus);
+    ECCPrivateKey privateKey;
+    QStatus status = ca.GetDSAPrivateKey(privateKey);
+    if (ER_OK != status) {
+        return status;
+    }
+
+    return manifest->Sign(subjectCertificate, &privateKey);
+}
+
+QStatus PermissionMgmtTestHelper::SignManifest(BusAttachment& issuerBus, const std::vector<uint8_t>& subjectThumbprint, Manifest& manifest)
+{
+    CredentialAccessor ca(issuerBus);
+    ECCPrivateKey privateKey;
+    QStatus status = ca.GetDSAPrivateKey(privateKey);
+    if (ER_OK != status) {
+        return status;
+    }
+
+    return manifest->Sign(subjectThumbprint, &privateKey);
+}
+
+
+QStatus PermissionMgmtTestHelper::CreateIdentityCertChain(BusAttachment& caBus, BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate* certChain, size_t chainCount, Manifest* manifest)
 {
     if (chainCount > 3) {
         return ER_INVALID_DATA;
@@ -130,9 +167,6 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCertChain(BusAttachment& caBus, 
     certChain[0].SetSubjectCN((const uint8_t*) subject.data(), subject.size());
     certChain[0].SetSubjectPublicKey(subjectPubKey);
     certChain[0].SetAlias(alias);
-    if (digest) {
-        certChain[0].SetDigest(digest, digestSize);
-    }
     certChain[0].SetValidity(&validity);
 
     /* use the issuer bus to sign the cert */
@@ -146,10 +180,19 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCertChain(BusAttachment& caBus, 
         return status;
     }
 
+    if (nullptr != manifest) {
+        /* use the issuer bus to sign the manifest */
+        status = SignManifest(issuerBus, certChain[0], *manifest);
+        if (ER_OK != status) {
+            return status;
+        }
+    }
+
+
     return ER_OK;
 }
 
-QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate& cert, uint8_t* digest, size_t digestSize)
+QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate& cert, Manifest* manifest)
 {
     qcc::GUID128 issuer(0);
     GetGUID(issuerBus, issuer);
@@ -162,9 +205,6 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, c
     cert.SetSubjectCN((const uint8_t*) subject.data(), subject.size());
     cert.SetSubjectPublicKey(subjectPubKey);
     cert.SetAlias(alias);
-    if (digest) {
-        cert.SetDigest(digest, digestSize);
-    }
     CertificateX509::ValidPeriod validity;
     BuildValidity(validity, expiredInSecs);
     cert.SetValidity(&validity);
@@ -183,17 +223,37 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, c
         return status;
     }
 
+    if (nullptr != manifest) {
+        /* use the issuer bus to sign the manifest */
+        status = SignManifest(issuerBus, cert, *manifest);
+        if (ER_OK != status) {
+            return status;
+        }
+    }
+
     return ER_OK;
+}
+
+QStatus PermissionMgmtTestHelper::GenerateManifest(BusAttachment& issuerBus, const PermissionPolicy::Rule* manifestRules, size_t manifestRuleCount, Manifest& unsignedManifest)
+{
+    QCC_UNUSED(issuerBus);
+
+    return unsignedManifest->SetRules(manifestRules, manifestRuleCount);
 }
 
 QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::String& der)
 {
     IdentityCertificate cert;
-    QStatus status = CreateIdentityCert(issuerBus, serial, subject, subjectPubKey, alias, expiredInSecs, cert, NULL, 0);
+    QStatus status = CreateIdentityCert(issuerBus, serial, subject, subjectPubKey, alias, expiredInSecs, cert, NULL);
     if (ER_OK != status) {
         return status;
     }
     return cert.EncodeCertificateDER(der);
+}
+
+QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate& cert, Manifest& manifest)
+{
+    return CreateIdentityCert(issuerBus, serial, subject, subjectPubKey, alias, expiredInSecs, cert, &manifest);
 }
 
 QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::String& alias, qcc::String& der)
