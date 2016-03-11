@@ -280,7 +280,7 @@ void TCBusAttachment::SetApplicationState(uint16_t state)
     qcc::Event e;
 
     auto func = [this, &e, state] () {
-                    AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_NULL, 0);
+                    AJ_SecuritySetClaimConfig(&bus, state, CLAIM_CAPABILITY_ECDHE_PSK | CLAIM_CAPABILITY_ECDHE_SPEKE | CLAIM_CAPABILITY_ECDHE_NULL, 0);
                     e.SetEvent();
                 };
 
@@ -363,10 +363,14 @@ QStatus TCBusAttachment::AuthenticatePeer(const char* host)
 {
     Promise<AJ_Status> p;
 
-    auto func = [this, &p, host] () {
-                    /* AuthCallback will set p's value */
-                    AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
-                };
+    auto func = [this, &p, host]() {
+        /* AuthCallback will set p's value (but it doesn't get called; see ASACORE-2716) */
+        AJ_Status status = AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
+        if (status != ER_OK) {
+            AJ_AlwaysPrintf(("ERROR: AJ_BusAuthenticatePeer failed with status: %x\n", status));
+            p.SetResult(status);
+        }
+    };
 
     Enqueue(func);
 
