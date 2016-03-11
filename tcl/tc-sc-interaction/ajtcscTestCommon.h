@@ -166,6 +166,7 @@ static AJ_Status DefaultAuthListener(uint32_t mechanism, uint32_t command, AJ_Cr
 static void DefaultAuthCallback(const void* context, AJ_Status status)
 {
     Promise<AJ_Status>* p = (Promise<AJ_Status>*) context;
+    AJ_AlwaysPrintf(("Auth status provided to DefaultAuthCallback: %x\n", status));
     p->SetResult(status);
 }
 
