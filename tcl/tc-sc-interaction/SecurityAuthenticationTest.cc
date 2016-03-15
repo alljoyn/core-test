@@ -932,7 +932,7 @@ TEST_F(SecurityAuthenticationTest, authenticate_test2_case4_ECDHE_ECDSA) {
 class SecurityAuthentication2AuthListener : public DefaultECDHEAuthListener {
   public:
     SecurityAuthentication2AuthListener() {
-        SetPSK((uint8_t*) psk_char, strlen(psk_char));
+        PermissionMgmtTestHelper::CallDeprecatedSetPSK((DefaultECDHEAuthListener*) this, (uint8_t*) psk_char, strlen(psk_char));
         SetPassword((uint8_t*)ecspeke_password, strlen(ecspeke_password));
     }
 
@@ -2063,7 +2063,7 @@ class SecurityAuthentication3AuthListener1 : public DefaultECDHEAuthListener {
     SecurityAuthentication3AuthListener1() {
         uint8_t incorrect_psk[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         uint8_t incorrect_password[16] = { 0, 0, 0, 0 };
-        SetPSK(incorrect_psk, sizeof(incorrect_psk));
+        PermissionMgmtTestHelper::CallDeprecatedSetPSK((DefaultECDHEAuthListener*) this, incorrect_psk, sizeof(incorrect_psk));
         SetPassword(incorrect_password, sizeof(incorrect_password));
         calledAuthMechanisms.clear();
     }
