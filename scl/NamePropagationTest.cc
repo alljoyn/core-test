@@ -413,8 +413,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest1) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdA) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -701,8 +701,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest2) {
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -911,8 +911,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeP2PSessionTest3) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdB) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerA.busSessionId, sessionIdB) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -1150,8 +1150,8 @@ TEST_F(NamePropagationTest, P2P_ValidateResultantNameTransferType) {
                     EXPECT_FALSE(optsJoiner.IsAllNames());
                 }
 
-                String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-                String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+                String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+                String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
                 /* BusAttachment A: Gets Presence NOC for B, SR.
                  * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -1652,8 +1652,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest1) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdA) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -1949,8 +1949,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest2) {
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
             EXPECT_EQ(sessionIdA, sessionIdC) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -2165,8 +2165,8 @@ TEST_F(NamePropagationTest, TwoRoutingNodeMPSessionTest3) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdB) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerA.busSessionId, sessionIdB) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -2451,8 +2451,8 @@ TEST_F(NamePropagationTest, MP_ValidateResultantNameTransferType) {
                     EXPECT_TRUE(optsJoiner.IsSessionNames());
                 }
 
-                String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-                String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
+                String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+                String standaloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
 
                 /* BusAttachment A: Gets Presence NOC for B, SR.
                  * Gets Presence NOC for C if protocol version <12 or EXCHANGE_ALL_NAMES nameTransfer was used.
@@ -2964,9 +2964,9 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest1) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdA) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find(".")) + ".1";
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -3271,9 +3271,9 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeP2PSessionTest2) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdB) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerA.busSessionId, sessionIdB) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find(".")) + ".1";
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * BusAttachment B: Gets Presence NOC for A, BR.
              */
@@ -3596,9 +3596,9 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSingleMPSessionTest) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdA) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find(".")) + ".1";
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
@@ -3901,9 +3901,9 @@ TEST_F(NamePropagationTest, ThreeRoutingNodeSeparateMPSessionTest) {
             EXPECT_NE(static_cast<SessionId>(0), sessionIdA) << "  SessionID should not be '0'";
             EXPECT_EQ(sessionPortListenerB.busSessionId, sessionIdA) << "  session ID's do not match";
 
-            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find('.')) + ".1";
-            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find('.')) + ".1";
+            String bundledRouter = BusPtrA->GetUniqueName().substr(0, BusPtrA->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter = BusPtrB->GetUniqueName().substr(0, BusPtrB->GetUniqueName().find(".")) + ".1";
+            String standAloneRouter2 = BusPtrD->GetUniqueName().substr(0, BusPtrD->GetUniqueName().find(".")) + ".1";
             /* BusAttachment A: Gets Presence NOC for B, SR.
              * BusAttachment B: Gets Presence NOC for A, BR.
              * No Absence NOCs must be received at this point.
