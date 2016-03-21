@@ -236,12 +236,12 @@ class LocalTestObject1 : public BusObject {
 
         static void AddResponse(LocalTestObject1& lto, uint32_t delay, Message& msg, MsgArg* args, size_t argCount)
         {
-            Timespec future;
+            Timespec<MonotonicTime> future;
             GetTimeNow(&future);
             future += delay;
             DelayedResponseInfo* respInfo = new DelayedResponseInfo(msg, args, argCount);
             delayedResponseLock1.Lock(MUTEX_CONTEXT);
-            delayedResponses1.insert(pair<uint64_t, DelayedResponseInfo*>(future.GetAbsoluteMillis(), respInfo));
+            delayedResponses1.insert(pair<uint64_t, DelayedResponseInfo*>(future.GetMillis(), respInfo));
             delayedResponseLock1.Unlock(MUTEX_CONTEXT);
 
             delayedResponseThreadLock1.Lock(MUTEX_CONTEXT);
@@ -271,9 +271,9 @@ class LocalTestObject1 : public BusObject {
 
             while (!done) {
                 delayedResponseLock1.Lock(MUTEX_CONTEXT);
-                Timespec now;
+                Timespec<MonotonicTime> now;
                 GetTimeNow(&now);
-                uint64_t nowms = now.GetAbsoluteMillis();
+                uint64_t nowms = now.GetMillis();
                 multimap<uint64_t, DelayedResponseInfo*>::iterator it = delayedResponses1.begin();
                 uint64_t nextms = it->first;
                 delayedResponseLock1.Unlock(MUTEX_CONTEXT);
@@ -288,7 +288,7 @@ class LocalTestObject1 : public BusObject {
 
                 delayedResponseLock1.Lock(MUTEX_CONTEXT);
                 GetTimeNow(&now);
-                nowms = now.GetAbsoluteMillis();
+                nowms = now.GetMillis();
                 it = delayedResponses1.begin();
                 while ((it != delayedResponses1.end()) && (nextms <= nowms)) {
                     Message msg = it->second->msg;
@@ -637,12 +637,12 @@ class LocalTestObject2 : public BusObject {
 
         static void AddResponse(LocalTestObject2& lto, uint32_t delay, Message& msg, MsgArg* args, size_t argCount)
         {
-            Timespec future;
+            Timespec<MonotonicTime> future;
             GetTimeNow(&future);
             future += delay;
             DelayedResponseInfo* respInfo = new DelayedResponseInfo(msg, args, argCount);
             delayedResponseLock2.Lock(MUTEX_CONTEXT);
-            delayedResponses2.insert(pair<uint64_t, DelayedResponseInfo*>(future.GetAbsoluteMillis(), respInfo));
+            delayedResponses2.insert(pair<uint64_t, DelayedResponseInfo*>(future.GetMillis(), respInfo));
             delayedResponseLock2.Unlock(MUTEX_CONTEXT);
 
             delayedResponseThreadLock2.Lock(MUTEX_CONTEXT);
@@ -672,9 +672,9 @@ class LocalTestObject2 : public BusObject {
 
             while (!done) {
                 delayedResponseLock2.Lock(MUTEX_CONTEXT);
-                Timespec now;
+                Timespec<MonotonicTime> now;
                 GetTimeNow(&now);
-                uint64_t nowms = now.GetAbsoluteMillis();
+                uint64_t nowms = now.GetMillis();
                 multimap<uint64_t, DelayedResponseInfo*>::iterator it = delayedResponses2.begin();
                 uint64_t nextms = it->first;
                 delayedResponseLock2.Unlock(MUTEX_CONTEXT);
@@ -689,7 +689,7 @@ class LocalTestObject2 : public BusObject {
 
                 delayedResponseLock2.Lock(MUTEX_CONTEXT);
                 GetTimeNow(&now);
-                nowms = now.GetAbsoluteMillis();
+                nowms = now.GetMillis();
                 it = delayedResponses2.begin();
                 while ((it != delayedResponses2.end()) && (nextms <= nowms)) {
                     Message msg = it->second->msg;
