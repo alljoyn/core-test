@@ -2880,3 +2880,114 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
 
     EXPECT_FALSE(appStateListener.stateChanged);
 }
+
+/*
+ * TestCase:
+ * Claiming with no signed manifests fails.
+ *
+ * Procedure:
+ * Attempt claim with ECDHE_NULL with valid cert chain but unsigned manifest
+ * Confirm that reply is ER_DIGEST_MISMATCH
+ */
+TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
+{
+    appStateListener.stateChanged = false;
+    //EnablePeerSecurity
+    securityManagerKeyListener = new DefaultECDHEAuthListener();
+    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
+
+    /* The State signal is only emitted if manifest template is installed */
+    SetManifestTemplate(securityManagerBus);
+
+    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
+        if (appStateListener.stateChanged) {
+            break;
+        }
+        qcc::Sleep(WAIT_MSECS);
+    }
+    printf("%d: Slept %d\n", __LINE__, msec);
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+
+    appStateListener.stateChanged = false;
+    TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
+    TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+
+    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
+        if (appStateListener.stateChanged) {
+            break;
+        }
+        qcc::Sleep(WAIT_MSECS);
+    }
+    printf("%d: Slept %d\n", __LINE__, msec);
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+
+    SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
+    PermissionConfigurator::ApplicationState applicationStateTC;
+    ASSERT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
+    ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+
+    //Create admin group key
+    KeyInfoNISTP256 securityManagerKey;
+    PermissionConfigurator& permissionConfigurator = securityManagerBus.GetPermissionConfigurator();
+    ASSERT_EQ(ER_OK, permissionConfigurator.GetSigningPublicKey(securityManagerKey));
+
+    //Random GUID used for the SecurityManager
+    GUID128 securityManagerGuid;
+
+    //Create identityCertChain
+    IdentityCertificate identityCertChain[1];
+
+    // peer public key used to generate the identity certificate chain
+    ECCPublicKey TCPublicKey;
+    ASSERT_EQ(ER_OK, sapWithTC.GetEccPublicKey(TCPublicKey));
+
+    // All Inclusive manifest
+    PermissionPolicy::Rule::Member member[1];
+    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+    const size_t manifestSize = 1;
+    PermissionPolicy::Rule manifest[manifestSize];
+    manifest[0].SetObjPath("*");
+    manifest[0].SetInterfaceName("*");
+    manifest[0].SetMembers(1, member);
+
+    Manifest manifestObj[1];
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
+
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
+                                                                  "0",
+                                                                  securityManagerGuid.ToString(),
+                                                                  &TCPublicKey,
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChain[0],
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
+
+    /* Re-generate manifest to remove signature. We can't reuse manifestObj because
+     * resetting the rules doesn't clear out the other fields.
+     */
+    Manifest unsignedManifestObj[1];
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
+                                                                manifest, manifestSize,
+                                                                unsignedManifestObj[0])) << " GenerateManifest failed.";
+
+    appStateListener.stateChanged = false;
+    /*
+     * Claim TC
+     * the certificate authority is self signed so the certificateAuthority
+     * key is the same as the adminGroup key.
+     * For this test the adminGroupId is a randomly generated GUID. As long as the
+     * GUID is consistent it's unimportant that the GUID is random.
+     * Use generated identity certificate signed by the securityManager
+     * Since we are only interested in claiming the peer we are using an all
+     * inclusive manifest.
+     */
+    EXPECT_EQ(ER_DIGEST_MISMATCH, sapWithTC.Claim(securityManagerKey,
+                                                  securityManagerGuid,
+                                                  securityManagerKey,
+                                                  identityCertChain, 1,
+                                                  unsignedManifestObj, ArraySize(unsignedManifestObj)));
+}

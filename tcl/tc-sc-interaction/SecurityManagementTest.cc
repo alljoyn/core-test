@@ -1341,6 +1341,8 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_succeeds_on_long_icc)
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
     EXPECT_EQ(ER_OK, SC2Bus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", SC2AuthListener));
 
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::SignManifest(managerBus, identityCertChain[0], manifestObj[0]));
+
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
         << "Failed to update Identity cert or manifest ";
@@ -1395,6 +1397,8 @@ TEST_F(SecurityManagementPolicyTest, Update_identity_single_icc_any_sign)
 
     EXPECT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
+
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::SignManifest(managerBus, identityCertChain[0], manifestObj[0]));
 
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
@@ -3015,4 +3019,73 @@ TEST_F(SecurityManagementPolicyTest, TCInstallManifestsAddsOne)
 
     ASSERT_EQ(ER_OK, sapWithTC.GetManifests(manifests));
     EXPECT_EQ(2U, manifests.size());
+}
+
+/*
+ * This test tries to UpdateIdentity with a single unsigned manifest, and it should fail.
+ */
+TEST_F(SecurityManagementPolicyTest, UpdateIdentityWithUnsignedManifestFails)
+{
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+
+    InstallMembershipOnManager();
+
+    ASSERT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
+    ASSERT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
+
+    /* Retrieve the consumer's identity chain and just re-use it. */
+    MsgArg identityArg;
+    ASSERT_EQ(ER_OK, sapWithTC.GetIdentity(identityArg));
+
+    size_t certChainCount = identityArg.v_array.GetNumElements();
+
+    std::unique_ptr<qcc::CertificateX509[]> identityCertificateChain(new (std::nothrow) qcc::CertificateX509[certChainCount]);
+    ASSERT_NE(nullptr, identityCertificateChain.get());
+
+    ASSERT_EQ(ER_OK, SecurityApplicationProxy::MsgArgToIdentityCertChain(identityArg, identityCertificateChain.get(), certChainCount));
+
+    Manifest newManifests[1];
+
+    PermissionPolicy::Rule::Member member[1];
+    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+    const size_t manifestSize = 1;
+    PermissionPolicy::Rule manifestRules[manifestSize];
+    manifestRules[0].SetObjPath("*");
+    manifestRules[0].SetInterfaceName("org.alljoyn.Test.Never.Exists");
+    manifestRules[0].SetMembers(1, member);
+
+    ASSERT_EQ(ER_OK, newManifests[0]->SetRules(manifestRules, ArraySize(manifestRules)));
+    /* No SignManifests call here. */
+
+    EXPECT_EQ(ER_DIGEST_MISMATCH, sapWithTC.UpdateIdentity(identityCertificateChain.get(),
+                                                           certChainCount,
+                                                           newManifests,
+                                                           ArraySize(newManifests)));
+}
+
+/*
+ * This test tries to install a single unsigned manifest, and verifies that it fails to do so.
+ */
+TEST_F(SecurityManagementPolicyTest, InstallUnsignedManifestFails)
+{
+    SecurityApplicationProxy sapWithTC(managerBus, TCBus.GetUniqueName().c_str(), managerToTCSessionId);
+
+    InstallMembershipOnManager();
+
+    ASSERT_EQ(ER_OK, managerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener));
+    ASSERT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
+
+    Manifest newManifests[1];
+
+    PermissionPolicy::Rule::Member member[1];
+    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
+    const size_t manifestSize = 1;
+    PermissionPolicy::Rule manifestRules[manifestSize];
+    manifestRules[0].SetObjPath("*");
+    manifestRules[0].SetInterfaceName("org.alljoyn.Test.Never.Exists");
+    manifestRules[0].SetMembers(1, member);
+
+    ASSERT_EQ(ER_OK, newManifests[0]->SetRules(manifestRules, ArraySize(manifestRules)));
+    /* No SignManifests call on newManifests[0]. */
+    EXPECT_EQ(ER_DIGEST_MISMATCH, sapWithTC.InstallManifests(newManifests, ArraySize(newManifests)));
 }
