@@ -2355,32 +2355,12 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 
     appStateListener.stateChanged = false;
 
-    // We first need a second bus attachment to claim the security manager bus
-    BusAttachment managerClaimingBus("ManagerClaimingBus");
-    EXPECT_EQ(ER_OK, managerClaimingBus.Start());
-    EXPECT_EQ(ER_OK, managerClaimingBus.Connect());
-    EXPECT_EQ(ER_OK, managerClaimingBus.RegisterKeyStoreListener(securityManagerKeyStoreListener));
-    EXPECT_EQ(ER_OK, managerClaimingBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
-    /* The State signal is only emitted if manifest template is installed */
-    SetManifestTemplate(managerClaimingBus);
-
-    SecurityApplicationProxy sapWithManagerClaimingBus(managerClaimingBus, securityManagerBus.GetUniqueName().c_str());
-
-    //Create identityCertChain for the secondary bus to claim the securityManagerBus
-    IdentityCertificate identityCertChainToClaimAdmin[1];
-
-    // All Inclusive manifest
-    member[0].Set("*", PermissionPolicy::Rule::Member::NOT_SPECIFIED, PermissionPolicy::Rule::Member::ACTION_PROVIDE | PermissionPolicy::Rule::Member::ACTION_MODIFY | PermissionPolicy::Rule::Member::ACTION_OBSERVE);
-    manifest[0].SetObjPath("*");
-    manifest[0].SetInterfaceName("*");
-    manifest[0].SetMembers(1, member);
-
-    //Manifest manifestObj[1];
-    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(managerClaimingBus,
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
                                                                 manifest, manifestSize,
                                                                 manifestObj[0])) << " GenerateManifest failed.";
 
-    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(managerClaimingBus,
+    IdentityCertificate identityCertChainToClaimAdmin[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
                                                                   securityManagerGuid.ToString(),
                                                                   securityManagerKey.GetPublicKey(),
@@ -2389,11 +2369,13 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                   identityCertChainToClaimAdmin[0],
                                                                   manifestObj[0])) << "Failed to create identity certificate.";
 
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.Claim(securityManagerKey,
-                                                     securityManagerGuid,
-                                                     securityManagerKey,
-                                                     identityCertChainToClaimAdmin, 1,
-                                                     manifestObj, ArraySize(manifestObj)));
+    SecurityApplicationProxy sapWithSecurityManager(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+
+    EXPECT_EQ(ER_OK, sapWithSecurityManager.Claim(securityManagerKey,
+                                                  securityManagerGuid,
+                                                  securityManagerKey,
+                                                  identityCertChainToClaimAdmin, 1,
+                                                  manifestObj, ArraySize(manifestObj)));
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
             break;
@@ -2403,14 +2385,12 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     printf("%d: Slept %d\n", __LINE__, msec);
 
     ASSERT_TRUE(appStateListener.stateChanged);
+    appStateListener.stateChanged = false;
+    
     PermissionConfigurator::ApplicationState applicationStateTC;
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.GetApplicationState(applicationStateTC));
+    EXPECT_EQ(ER_OK, sapWithSecurityManager.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
 
-    // After that we reload keystores
-    managerClaimingBus.ReloadKeyStore();
-    securityManagerBus.ReloadKeyStore();
-    EXPECT_EQ(ER_OK, managerClaimingBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
     EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
 
     // Create membership certificate
@@ -2426,7 +2406,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                     managerMembershipCertificate[0]));
 
     // Install membership certificate
-    EXPECT_EQ(ER_OK, sapWithManagerClaimingBus.InstallMembership(managerMembershipCertificate, 1));
+    EXPECT_EQ(ER_OK, sapWithSecurityManager.InstallMembership(managerMembershipCertificate, 1));
 
     //Create identityCertChain
     IdentityCertificate identityCertChain1[1];
@@ -2455,11 +2435,20 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                                   updatedManifestObj[0])) << "Failed to create identity certificate.";
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
+
+    // Wait for the pending "stateChanged" to past
+    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
+        if (appStateListener.stateChanged) {
+            break;
+        }
+        qcc::Sleep(WAIT_MSECS);
+    }
+
+    appStateListener.stateChanged = false;
+    
     // Call updateIdentity
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain1, 1,
                                               updatedManifestObj, ArraySize(updatedManifestObj)));
-
-    appStateListener.stateChanged = false;
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
