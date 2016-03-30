@@ -98,6 +98,7 @@ static String g_wellKnownName = ::org::alljoyn::alljoyn_test::DefaultWellKnownNa
 static Mutex passwordLock;
 static bool maskNOC = true;
 
+static qcc::Mutex ioLock;
 
 /* Predefined session ports. */
 SessionPort SESSION_PORT_MESSAGES_PP1 = 23;
@@ -111,7 +112,7 @@ SessionPort SESSION_PORT_RAW_PP2      = 30;
 SessionPort SESSION_PORT_RAW_PP3      = 31;
 
 /* Fetch data from console */
-char* get_data(char*inpbuf)
+char* get_data(char*inpbuf, uint16_t timeoutSeconds = 1)
 {
     char*p = NULL;
     fd_set rfds;
@@ -120,8 +121,8 @@ char* get_data(char*inpbuf)
 
     FD_ZERO(&rfds);
     FD_SET(0, &rfds);
-    //wait for 1 sec
-    tv.tv_sec = 0;
+
+    tv.tv_sec = timeoutSeconds;
     tv.tv_usec = 0;
 
     retval = select(1, &rfds, NULL, NULL, &tv);
@@ -135,7 +136,6 @@ char* get_data(char*inpbuf)
     FD_CLR(0, &rfds);
 
     return p;
-
 }
 
 static volatile bool g_interrupt = false;
@@ -321,18 +321,25 @@ class MySessionPortListenerWithPrompt : public SessionPortListener {
     bool AcceptSessionJoiner(SessionPort sessionPort, const char* joiner, const SessionOpts& opts) {
         QCC_UNUSED(sessionPort);
         QCC_UNUSED(opts);
+        const uint16_t TIMEOUT_SECONDS = 20;
+        char input[32];
+        bool accepting = false;
+
         g_msgBus->EnableConcurrentCallbacks();
-        printf("Joiner  [%s] wants to join on %d transport: y/n ?  ", joiner, opts.transports);
-        fflush(stdout);
-        char option;
-        if (scanf("%c", &option) != 1) {
-            printf("Expect y/n for answer \n");
-            fflush(stdout);
-            return false;
+
+        std::cout << "Joiner [" << joiner << "] wants to join on "
+                  << opts.transports << " transport. Accept? [y/n]: " << std::flush;
+
+        ioLock.Lock(MUTEX_CONTEXT);
+        if (get_data(input, TIMEOUT_SECONDS) != NULL) {
+            accepting = (input[0] == 'y');
+        } else {
+            std::cout << std::endl << "Timed out with no input." << std::endl;
         }
-        getchar();
-        if (option == 'y') { return true; }
-        return false;
+        ioLock.Unlock(MUTEX_CONTEXT);
+
+        std::cout << (accepting ? "Accepting" : "Rejecting") << " [" << joiner << "]" << std::endl;
+        return accepting;
     }
 
     void SessionJoined(SessionPort sessionPort, SessionId sessionId, const char* joiner)
@@ -468,17 +475,17 @@ class LocalTestObject : public BusObject {
         printf("Done ? else press 'm' [enter]: ");
         fflush(stdout);
 
-        while (get_data(option) == NULL);
+        while (get_data(option) == NULL) ;
 
         if (option[0] == 'm') {
             printf("Enter the destination id [NULL] :");
             fflush(stdout);
-            while (get_data(tempDest) == NULL);
+            while (get_data(tempDest) == NULL) ;
             if (tempDest[0] != '\0') { dest = tempDest; }
 
             printf("Enter flags - encryption (E), sessionless (S), broadcast (G): ESG [0] :");
             fflush(stdout);
-            while (get_data(tempflags) == NULL);
+            while (get_data(tempflags) == NULL) ;
             if (tempflags[0] != '\0') {
                 String tstr(tempflags);
                 size_t temp = tstr.find_first_of("E");
@@ -490,7 +497,7 @@ class LocalTestObject : public BusObject {
             }
             printf("Done ? else press 'm' [enter]: ");
             fflush(stdout);
-            while (get_data(option) == NULL);
+            while (get_data(option) == NULL) ;
 
             tflags = flags;
 
@@ -843,8 +850,8 @@ int TestAppMain(int argc, char** argv)
         printf("Which transport: local, tcp, udp, ip ? \n");
         printf("For local- Type 1, tcp- Type 4, udp- Type 256, ip- Type 261, all- 65535 \n");
         cin >> trans;
-
         getchar();
+
         status = g_msgBus->AdvertiseName(g_wellKnownName.c_str(), trans);
         if (ER_OK != status) {
             QCC_LogError(status, ("Sending org.alljoyn.Bus.Advertise failed "));
@@ -858,9 +865,13 @@ int TestAppMain(int argc, char** argv)
             char option[512];
             while (1) {
 
+                ioLock.Lock(MUTEX_CONTEXT);
                 if (get_data(option) == NULL) {
+                    ioLock.Unlock(MUTEX_CONTEXT);
+                    qcc::Sleep(10);  // Let other threads access stdin.
                     continue;
                 }
+                ioLock.Unlock(MUTEX_CONTEXT);
                 char*temp = NULL;
                 temp = strtok(option, " ");
                 if (!temp) {
@@ -1311,7 +1322,7 @@ int TestAppMain(int argc, char** argv)
                             printf("Enter flags(HESN) ttl  :");
                             fflush(stdout);
                             char tempOptions[50];
-                            while (get_data(tempOptions) == NULL);
+                            while (get_data(tempOptions) == NULL) ;
                             temp = strtok(tempOptions, " ");
                             if (temp) {
                                 String tstr(temp);
