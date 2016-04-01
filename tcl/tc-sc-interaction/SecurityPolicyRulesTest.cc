@@ -6926,7 +6926,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_5_SC)
     identityCertChain[0] = TCCert;
     identityCertChain[1] = CACert;
 
-    ASSERT_EQ(ER_OK, manifestObj[0]->Sign(identityCertChain[0], caKey.GetDSAPrivateKey()));
+    ASSERT_EQ(ER_OK, manifestObj[0]->ComputeThumbprintAndSign(identityCertChain[0], caKey.GetDSAPrivateKey()));
 
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
@@ -7145,7 +7145,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_5_TC)
     identityCertChain[0] = SCCert;
     identityCertChain[1] = CACert;
 
-    ASSERT_EQ(ER_OK, manifestObj[0]->Sign(identityCertChain[0], caKey.GetDSAPrivateKey()));
+    ASSERT_EQ(ER_OK, manifestObj[0]->ComputeThumbprintAndSign(identityCertChain[0], caKey.GetDSAPrivateKey()));
 
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
@@ -7388,7 +7388,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_6_SC)
     identityCertChain[0] = TCCert;
     identityCertChain[1] = CACert;
 
-    ASSERT_EQ(ER_OK, manifestObj[0]->Sign(identityCertChain[0], caKey.GetDSAPrivateKey()));
+    ASSERT_EQ(ER_OK, manifestObj[0]->ComputeThumbprintAndSign(identityCertChain[0], caKey.GetDSAPrivateKey()));
 
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithSC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
@@ -7607,7 +7607,7 @@ TEST_F(SecurityPolicyRulesTest, DISABLED_PolicyRules_DENY_6_TC)
     identityCertChain[0] = SCCert;
     identityCertChain[1] = CACert;
 
-    ASSERT_EQ(ER_OK, manifestObj[0]->Sign(identityCertChain[0], caKey.GetDSAPrivateKey()));
+    ASSERT_EQ(ER_OK, manifestObj[0]->ComputeThumbprintAndSign(identityCertChain[0], caKey.GetDSAPrivateKey()));
 
     // Call UpdateIdentity to install the cert chain
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain, certChainSize, manifestObj, ArraySize(manifestObj)))
