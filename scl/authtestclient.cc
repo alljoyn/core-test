@@ -832,7 +832,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
     ECCPrivateKey privateKey;
     status = ca.GetDSAPrivateKey(privateKey);
     QCC_ASSERT(ER_OK == status);
-    status = manifestObj[0]->Sign(adminCert, &privateKey);
+    status = manifestObj[0]->ComputeThumbprintAndSign(adminCert, &privateKey);
     QCC_ASSERT(ER_OK == status);
 
     printf("Claiming myself using Self signed IC, a new GUID128, a diff. CA pub key and an ASGA pub key (which is same as my pub key) \n");
@@ -932,7 +932,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
     certChain[2] = g_CACert;
 
     // Sign the manifest.
-    status = manifestObj[0]->Sign(leafCert, &privateKey);
+    status = manifestObj[0]->ComputeThumbprintAndSign(leafCert, &privateKey);
     QCC_ASSERT(ER_OK == status);
 
 
