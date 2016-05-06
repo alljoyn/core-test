@@ -1179,7 +1179,7 @@ TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_ECDHE_NULL_everything_fails)
 /* Broken by selective manifest sending change. Investigating fixing this test, and if it's
  * still relevant, is covered under ASACORE-2775.
  */
-TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_not_installed)
+TEST_F(SecurityDefaultPolicyTest, DefaultPolicy_MemberShipCertificate_not_installed)
 {
     InstallMemberShipOnManager();
 
@@ -1190,7 +1190,7 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
      * membership on SC then we Remove the membership.
      */
     DefaultRulesTestBusObject SCBusObject(SCBus, "/test", interfaceName);
-    EXPECT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, true));
+    ASSERT_EQ(ER_OK, SCBus.RegisterBusObject(SCBusObject, true));
     TCBus.RegisterObjects(AppObjects, AppObjects, true);
 
     /* install all permissive permission policy for SC*/
@@ -1199,6 +1199,11 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
     GeneratePermissivePolicy(SCPolicy, 1);
 
     SecurityApplicationProxy sapWithSC(managerBus, SCBus.GetUniqueName().c_str(), managerToSCSessionId);
+    {
+        PermissionPolicy defaultPolicy;
+        EXPECT_EQ(ER_OK, sapWithSC.GetDefaultPolicy(defaultPolicy));
+        EXPECT_EQ(ER_OK, UpdatePolicyWithValuesFromDefaultPolicy(defaultPolicy, SCPolicy));
+    }
     EXPECT_EQ(ER_OK, sapWithSC.UpdatePolicy(SCPolicy));
     /* After having a new policy installed, the target bus
        clears out all of its peer's secret and session keys, so the
@@ -1210,33 +1215,35 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
 
     SessionOpts opts;
     SessionId SCToTCSessionId;
-    EXPECT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
+    
+    printf("SCBus unique name: %s; TCBus unique name: %s\n", SCBus.GetUniqueName().c_str(), TCBus.GetUniqueName().c_str());
+    ASSERT_EQ(ER_OK, SCBus.JoinSession(TCBus.GetUniqueName().c_str(), TCSessionPort, NULL, SCToTCSessionId, opts));
 
     // 1. App. bus (TC) makes a method call, get property call, set property call,
     //   getall properties call on Peer A (SC).
     // verify: Method call, get property, set property, getall properties are successful.
     {
         // TC to SC
-        EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
+        ASSERT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
         // Verify Method call
         const char* s = "String that should be Echoed back.";
-        EXPECT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
+        ASSERT_EQ(ER_OK, TCBus.MethodCall(SCBus.GetUniqueName().c_str(), PRX_ECHO, s));
         EXPECT_STREQ(s, TCBus.GetResponse());
 
         // Verify Set/Get Property and GetAll Properties
         int32_t prop = 513;
-        EXPECT_EQ(ER_OK, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
+        ASSERT_EQ(ER_OK, TCBus.SetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, SCBusObject.ReadProp1());
 
         prop = 0;
-        EXPECT_EQ(ER_OK, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
+        ASSERT_EQ(ER_OK, TCBus.GetProperty(SCBus.GetUniqueName().c_str(), PRX_PROP1, prop));
         EXPECT_EQ(513, prop);
 
         TCProperties props;
-        EXPECT_EQ(ER_OK, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
-        EXPECT_EQ(ER_OK, props.GetElement("Prop1", prop));
+        ASSERT_EQ(ER_OK, TCBus.GetAllProperties(SCBus.GetUniqueName().c_str(), interfaceName, props));
+        ASSERT_EQ(ER_OK, props.GetElement("Prop1", prop));
         EXPECT_EQ(513, prop);
-        EXPECT_EQ(ER_OK, props.GetElement("Prop2", prop));
+        ASSERT_EQ(ER_OK, props.GetElement("Prop2", prop));
         EXPECT_EQ(17, prop);
     }
     //2. App. bus (TC) sends a signal to to Peer A.
@@ -1245,12 +1252,12 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
         // TC can Send Signal
         ChirpSignalReceiver chirpSignalReceiver;
 
-        EXPECT_EQ(ER_OK, SCBus.RegisterSignalHandler(&chirpSignalReceiver,
+        ASSERT_EQ(ER_OK, SCBus.RegisterSignalHandler(&chirpSignalReceiver,
                                                      static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
                                                      SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                                      NULL));
 
-        EXPECT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
+        ASSERT_EQ(ER_OK, TCBus.Signal(SCBus.GetUniqueName().c_str(), PRX_CHIRP, "Chirp this String out in the signal."));
 
         //Wait for a maximum of 2 sec for the Chirp Signal.
         for (int msec = 0; msec < 2000; msec += WAIT_MSECS) {
@@ -1260,10 +1267,10 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
             qcc::Sleep(WAIT_MSECS);
         }
         EXPECT_TRUE(chirpSignalReceiver.signalReceivedFlag) << "SC failed to receive the Signal from TC";
-        SCBus.UnregisterSignalHandler(&chirpSignalReceiver,
-                                      static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
-                                      SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
-                                      NULL);
+        ASSERT_EQ(ER_OK, SCBus.UnregisterSignalHandler(&chirpSignalReceiver,
+                                                       static_cast<MessageReceiver::SignalHandler>(&ChirpSignalReceiver::ChirpSignalHandler),
+                                                       SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
+                                                       NULL));
     }
 
     //3. Peer A (SC) makes a method call, get property call, set property call, getall
@@ -1272,26 +1279,26 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
     //         received by the app. bus. (TC)
     {
         ProxyBusObject proxy(SCBus, TCBus.GetUniqueName().c_str(), "/test", SCToTCSessionId, true);
-        EXPECT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
+        ASSERT_EQ(ER_OK, proxy.ParseXml(interface.c_str()));
         EXPECT_TRUE(proxy.ImplementsInterface(interfaceName)) << interface.c_str() << "\n" << interfaceName;
 
         // Verify Method call
         MsgArg arg("s", "String that should be Echoed back.");
         Message replyMsg(SCBus);
-        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
+        ASSERT_EQ(ER_PERMISSION_DENIED, proxy.MethodCall(interfaceName, "Echo", &arg, static_cast<size_t>(1), replyMsg));
         EXPECT_STREQ("org.alljoyn.Bus.Security.Error.PermissionDenied", replyMsg->GetErrorName());
 
         // Verify Set/Get Property and GetAll Properties
         MsgArg prop1Arg;
-        EXPECT_EQ(ER_OK, prop1Arg.Set("i", 513));
-        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
+        ASSERT_EQ(ER_OK, prop1Arg.Set("i", 513));
+        ASSERT_EQ(ER_PERMISSION_DENIED, proxy.SetProperty(interfaceName, "Prop1", prop1Arg));
         EXPECT_EQ(42, TCBus.ReadProp1());
 
         MsgArg prop1ArgOut;
-        EXPECT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
+        ASSERT_EQ(ER_PERMISSION_DENIED, proxy.GetProperty(interfaceName, "Prop1", prop1Arg));
 
         MsgArg props;
-        EXPECT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
+        ASSERT_EQ(ER_OK, proxy.GetAllProperties(interfaceName, props)) << "TC failed GetAllProperties call";;
         EXPECT_EQ((size_t)0, props.v_array.GetNumElements());
     }
     // 4. Peer A (SC) sends a signal to the app. bus (TC).
@@ -1301,7 +1308,7 @@ TEST_F(SecurityDefaultPolicyTest, DISABLED_DefaultPolicy_MemberShipCertificate_n
         TCBus.signalReceivedFlag = FALSE;
         MsgArg arg("s", "Chirp this String out in the signal.");
         // Signals are send and forget.  They will always return ER_OK.
-        EXPECT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
+        ASSERT_EQ(ER_OK, SCBusObject.Signal(TCBus.GetUniqueName().c_str(),
                                             SCToTCSessionId,
                                             *SCBus.GetInterface(interfaceName)->GetMember("Chirp"),
                                             &arg, 1, 0, 0));

@@ -85,26 +85,12 @@ QStatus PermissionMgmtTestHelper::SignManifests(BusAttachment& issuerBus, const 
 
 QStatus PermissionMgmtTestHelper::SignManifest(BusAttachment& issuerBus, const qcc::CertificateX509& subjectCertificate, Manifest& manifest)
 {
-    CredentialAccessor ca(issuerBus);
-    ECCPrivateKey privateKey;
-    QStatus status = ca.GetDSAPrivateKey(privateKey);
-    if (ER_OK != status) {
-        return status;
-    }
-
-    return manifest->ComputeThumbprintAndSign(subjectCertificate, &privateKey);
+    return issuerBus.GetPermissionConfigurator().ComputeThumbprintAndSignManifest(subjectCertificate, manifest);
 }
 
 QStatus PermissionMgmtTestHelper::SignManifest(BusAttachment& issuerBus, const std::vector<uint8_t>& subjectThumbprint, Manifest& manifest)
 {
-    CredentialAccessor ca(issuerBus);
-    ECCPrivateKey privateKey;
-    QStatus status = ca.GetDSAPrivateKey(privateKey);
-    if (ER_OK != status) {
-        return status;
-    }
-
-    return manifest->Sign(subjectThumbprint, &privateKey);
+    return issuerBus.GetPermissionConfigurator().SignManifest(subjectThumbprint, manifest);
 }
 
 
