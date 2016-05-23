@@ -366,7 +366,7 @@ QStatus TCBusAttachment::AuthenticatePeer(const char* host)
     auto func = [this, &p, host]() {
         /* AuthCallback will set p's value (but it doesn't get called; see ASACORE-2716) */
         AJ_Status status = AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
-        if (status != ER_OK) {
+        if (status != AJ_OK) {
             AJ_AlwaysPrintf(("ERROR: AJ_BusAuthenticatePeer failed with status: %x\n", status));
             p.SetResult(status);
         }
