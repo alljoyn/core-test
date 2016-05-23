@@ -40,6 +40,7 @@ static const char ServiceName[] = "org.alljoyn.Bus.eventaction.sample";
 static const char ServicePath[] = "/eventaction";
 static const uint16_t ServicePort = 50;
 static char buffer[60];
+static const size_t RETRY_LIMIT = 10u;
 
 /**
  * The interface name followed by the method signatures.
@@ -209,14 +210,6 @@ class EventsActionsTest : public testing::Test {
         //Instantiate ProxyBusObject on standard client for manipulation of thin client object.
         static SessionId s_sessionId = 0;
         ASSERT_TRUE((remoteObj = new ProxyBusObject(scBus, AJ_GetUniqueName(&tcBus), ServicePath, s_sessionId)) != NULL);
-
-        //Pull in the interface for the remote bus object.
-        const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
-        QCC_ASSERT(ifc);
-        remoteObj->AddInterface(*ifc);
-
-        //Specify the method to be called Asynchronously.
-        introspectMethod = ifc->GetMember("IntrospectWithDescription");
     }
 
     void TearDown() {
@@ -236,11 +229,18 @@ class EventsActionsTest : public testing::Test {
 
 TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
     //Local Variables for Unit Test 1
-    QStatus status;
     MyMessageReceiver msgReceiver;
     Message reply(scBus);
     messageReceived = FALSE;
     buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("IntrospectWithDescription");
 
     //set arguments for introspection method call
     MsgArg introspectArgs[1];
@@ -252,26 +252,29 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
     AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
 
     //Async Call for Introspection of Interface on tc Object.
-    EXPECT_EQ(ER_OK, status = remoteObj->MethodCallAsync(*introspectMethod,
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
                                         &msgReceiver,
                                         static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
                                         introspectArgs, numArgs,
                                         const_cast<void*>(static_cast<const void*>(introspectMethod)),
                                         WAIT_TIME));
 
+    size_t retryCount = 0u;
     // Message Loop
-    while (!messageReceived) {
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
         if (tcMsgStatus != AJ_OK) {
             if (tcMsgStatus == AJ_ERR_TIMEOUT) {
                 continue;
             }
         } else {
             tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
-            AJ_CloseMsg(&tcMsg);
-            }
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
 
         tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
     }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
@@ -311,11 +314,18 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
 TEST_F(EventsActionsTest, TC_Being_Introspected_With_Supported_Language_Tag) {
 
     //Local Variables for Unit Test
-    QStatus status;
     MyMessageReceiver msgReceiver;
     Message reply(scBus);
     messageReceived = FALSE;
     buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("IntrospectWithDescription");
 
     //set arguments for introspection method call
     MsgArg introspectArgs[1];
@@ -327,26 +337,29 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Supported_Language_Tag) {
     AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
 
     //Async Call for Introspection of Interface on tc Object.
-    EXPECT_EQ(ER_OK, status = remoteObj->MethodCallAsync(*introspectMethod,
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
                                         &msgReceiver,
                                         static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
                                         introspectArgs, numArgs,
                                         const_cast<void*>(static_cast<const void*>(introspectMethod)),
                                         WAIT_TIME));
 
+    size_t retryCount = 0u;
     // Message Loop
-    while (!messageReceived) {
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
         if (tcMsgStatus != AJ_OK) {
             if (tcMsgStatus == AJ_ERR_TIMEOUT) {
                 continue;
             }
         } else {
             tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
-            AJ_CloseMsg(&tcMsg);
-            }
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
 
         tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
     }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
@@ -385,11 +398,18 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Supported_Language_Tag) {
 
 TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unsupported_Language_Tag) {
     //Local Variables for Unit Test
-    QStatus status;
     MyMessageReceiver msgReceiver;
     Message reply(scBus);
     messageReceived = FALSE;
     buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("IntrospectWithDescription");
 
     //set arguments for introspection method call
     MsgArg introspectArgs[1];
@@ -401,26 +421,29 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unsupported_Language_Tag) {
     AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
 
     //Async Call for Introspection of Interface on tc Object.
-    EXPECT_EQ(ER_OK, status = remoteObj->MethodCallAsync(*introspectMethod,
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
                                         &msgReceiver,
                                         static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
                                         introspectArgs, numArgs,
                                         const_cast<void*>(static_cast<const void*>(introspectMethod)),
                                         WAIT_TIME));
 
+    size_t retryCount = 0u;
     // Message Loop
-    while (!messageReceived) {
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
         if (tcMsgStatus != AJ_OK) {
             if (tcMsgStatus == AJ_ERR_TIMEOUT) {
                 continue;
             }
         } else {
             tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
-            AJ_CloseMsg(&tcMsg);
-            }
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
 
         tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
     }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
@@ -462,11 +485,18 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_Empty_La
     AJ_RegisterObjectListWithDescriptions(AppObjects, 1, NULL);
 
     //Local Variables for Unit Test
-    QStatus status;
     MyMessageReceiver msgReceiver;
     Message reply(scBus);
     messageReceived = FALSE;
     buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("IntrospectWithDescription");
 
     //set arguments for introspection method call
     MsgArg introspectArgs[1];
@@ -478,26 +508,29 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_Empty_La
     AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
 
     //Async Call for Introspection of Interface on tc Object.
-    EXPECT_EQ(ER_OK, status = remoteObj->MethodCallAsync(*introspectMethod,
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
                                         &msgReceiver,
                                         static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
                                         introspectArgs, numArgs,
                                         const_cast<void*>(static_cast<const void*>(introspectMethod)),
                                         WAIT_TIME));
 
+    size_t retryCount = 0u;
     // Message Loop
-    while (!messageReceived) {
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
         if (tcMsgStatus != AJ_OK) {
             if (tcMsgStatus == AJ_ERR_TIMEOUT) {
                 continue;
             }
         } else {
             tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
-            AJ_CloseMsg(&tcMsg);
-            }
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
 
         tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
     }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
@@ -526,11 +559,18 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     AJ_RegisterObjectListWithDescriptions(AppObjects, 1, NULL);
 
     //Local Variables for Unit Test
-    QStatus status;
     MyMessageReceiver msgReceiver;
     Message reply(scBus);
     messageReceived = FALSE;
     buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::allseen::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("IntrospectWithDescription");
 
     //set arguments for introspection method call
     MsgArg introspectArgs[1];
@@ -542,26 +582,29 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
 
     //Async Call for Introspection of Interface on tc Object.
-    EXPECT_EQ(ER_OK, status = remoteObj->MethodCallAsync(*introspectMethod,
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
                                         &msgReceiver,
                                         static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
                                         introspectArgs, numArgs,
                                         const_cast<void*>(static_cast<const void*>(introspectMethod)),
                                         WAIT_TIME));
 
+    size_t retryCount = 0u;
     // Message Loop
-    while (!messageReceived) {
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
         if (tcMsgStatus != AJ_OK) {
             if (tcMsgStatus == AJ_ERR_TIMEOUT) {
                 continue;
             }
         } else {
             tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
-            AJ_CloseMsg(&tcMsg);
-            }
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
 
         tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
     }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
     "<node name=\"/eventaction\">\n"
@@ -579,6 +622,96 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     "  </signal>\n"
     "  <signal name=\"someSessionlessSignal\" sessionless=\"true\">\n"
     "  </signal>\n</interface>\n</node>\n";
+    //Compared XML recieved from the tc object to the expected XML output.
+    EXPECT_STREQ(expectedResultString, buf.c_str());
+
+    delete(remoteObj);
+}
+
+TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unified_Format) {
+    //Local Variables for Unit Test
+    MyMessageReceiver msgReceiver;
+    Message reply(scBus);
+    messageReceived = FALSE;
+    buf = "";
+
+    //Pull in the interface for the remote bus object.
+    const InterfaceDescription* ifc = scBus.GetInterface(org::freedesktop::DBus::Introspectable::InterfaceName);
+    ASSERT_NE(nullptr, ifc);
+    remoteObj->AddInterface(*ifc);
+
+    //Specify the method to be called Asynchronously.
+    introspectMethod = ifc->GetMember("Introspect");
+
+    // Message Loop Preparation
+    AJ_Message tcMsg;
+    AJ_Status tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
+
+    //Async Call for Introspection of Interface on tc Object.
+    ASSERT_EQ(ER_OK, remoteObj->MethodCallAsync(*introspectMethod,
+                                        &msgReceiver,
+                                        static_cast<MessageReceiver::ReplyHandler>(&MyMessageReceiver::IntrospectResponseHandler),
+                                        nullptr, 0u,
+                                        const_cast<void*>(static_cast<const void*>(introspectMethod)),
+                                        WAIT_TIME));
+
+    size_t retryCount = 0u;
+    // Message Loop
+    while (!messageReceived && (retryCount < RETRY_LIMIT)) {
+        retryCount++;
+        if (tcMsgStatus != AJ_OK) {
+            if (tcMsgStatus == AJ_ERR_TIMEOUT) {
+                continue;
+            }
+        } else {
+            tcMsgStatus = AJ_BusHandleBusMessage(&tcMsg);
+            EXPECT_EQ(AJ_OK, AJ_CloseMsg(&tcMsg));
+        }
+
+        tcMsgStatus = AJ_UnmarshalMsg(&tcBus, &tcMsg, TC_UNMARSHAL_TIMEOUT);
+    }
+    ASSERT_NE(RETRY_LIMIT, retryCount);
+
+    const char* expectedResultString =
+    "<node name=\"/eventaction\">\n"
+    "<annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Sample object description\"/>\n"
+    "<annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Sample object description\"/>\n"
+    "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
+    "  <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Sample interface\"/>\n"
+    "  <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Sample interface\"/>\n"
+    "  <method name=\"dummyMethod\">\n"
+    "    <arg name=\"foo\" type=\"i\" direction=\"in\"/>\n"
+    "  </method>\n"
+    "  <method name=\"joinMethod\">\n"
+    "    <arg name=\"inStr1\" type=\"s\" direction=\"in\">\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"First part of string\"/>\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: First part of string\"/>\n"
+    "    </arg>\n"
+    "    <arg name=\"inStr2\" type=\"s\" direction=\"in\">\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Second part of string\"/>\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Second part of string\"/>\n"
+    "    </arg>\n"
+    "    <arg name=\"outStr\" type=\"s\" direction=\"out\">\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Return result\"/>\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Return result\"/>\n"
+    "    </arg>\n"
+    "    <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Join two strings and return the result\"/>\n"
+    "    <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Join two strings and return the result\"/>\n"
+    "  </method>\n"
+    "  <signal name=\"someSignal\">\n"
+    "    <arg name=\"name\" type=\"s\">\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"EN: Some replacement value\"/>\n"
+    "      <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Some replacement value\"/>\n"
+    "    </arg>\n"
+    "  </signal>\n"
+    "  <signal name=\"someSessionlessSignal\">\n"
+    "    <annotation name=\"org.alljoyn.Bus.Signal.Sessionless\" value=\"true\" />\n"
+    "    <annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"An example sessionless signal\"/>\n"
+    "    <annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: An example sessionless signal\"/>\n"
+    "  </signal>\n"
+    "</interface>\n"
+    "</node>\n";
+
     //Compared XML recieved from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
