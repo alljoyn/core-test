@@ -102,7 +102,14 @@ void TCBusAttachment::Connect(const char* router)
 
     AJ_VERIFY(AJ_OK == AJ_FindBusAndConnect(&bus, router, TC_LEAFNODE_CONNECT_TIMEOUT));
     AJ_ClearCredentials(0);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
     AJ_BusSetAuthListenerCallback(&bus, authlistener);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 qcc::ThreadReturn TCBusAttachment::Run(void* arg)
@@ -366,7 +373,14 @@ QStatus TCBusAttachment::AuthenticatePeer(const char* host)
     auto func = [this, &p, host]() {
         /* AuthCallback will set p's value (but it doesn't get called; see ASACORE-2716) */
         AJ_Status status = AJ_BusAuthenticatePeer(&bus, host, authcallback, &p);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wenum-compare"
+#endif
         if (status != ER_OK) {
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             AJ_AlwaysPrintf(("ERROR: AJ_BusAuthenticatePeer failed with status: %x\n", status));
             p.SetResult(status);
         }
