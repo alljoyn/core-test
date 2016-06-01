@@ -142,7 +142,19 @@ class NamePropagationTest : public testing::Test {
         ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
         // validate that both alljoyn-daemons are running before running the tests
         size_t first = (BusPtrB->GetUniqueName()).find_first_of(":");
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         size_t last = (BusPtrB->GetUniqueName()).find_last_of(".");
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
         size_t npos = (last - first) - 1;
         qcc::String strTestA = (BusPtrA->GetUniqueName()).substr(1, npos);
         qcc::String strTestB = (BusPtrB->GetUniqueName()).substr(1, npos);
