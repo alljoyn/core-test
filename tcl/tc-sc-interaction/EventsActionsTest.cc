@@ -628,7 +628,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     delete(remoteObj);
 }
 
-TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unified_Format) {
+DISABLED_TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unified_Format) {
     //Local Variables for Unit Test
     MyMessageReceiver msgReceiver;
     Message reply(scBus);

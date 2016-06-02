@@ -2237,7 +2237,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
  * Procedure:
  * Verify that when the admin calls UpdateIdentity() on the app. Bus with a new manifest, the state notification is NOT emitted.
  */
-TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
+DISABLED_TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 {
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
@@ -2631,7 +2631,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
  * Procedure:
  * Verify that when the manifest template changes before Claiming, the State Notification is not received.
  */
-TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_manifest_change)
+DISABLED_TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_manifest_change)
 {
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
