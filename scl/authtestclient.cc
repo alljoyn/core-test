@@ -752,7 +752,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
         manifestTemplate[0].SetObjPath("*");
         manifestTemplate[0].SetInterfaceName("*");
         manifestTemplate[0].SetMembers(1, member);
-        status = pc1.SetPermissionManifest(manifestTemplate, manifestSize);
+        status = pc1.SetPermissionManifestTemplate(manifestTemplate, manifestSize);
     }
 
     //Self-Claim and install a membership for myself. I am the ASGA.

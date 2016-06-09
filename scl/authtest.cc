@@ -405,7 +405,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
         manifestTemplate[0].SetObjPath("*");
         manifestTemplate[0].SetInterfaceName("*");
         manifestTemplate[0].SetMembers(1, member);
-        status = PC.SetPermissionManifest(manifestTemplate, manifestSize);
+        status = PC.SetPermissionManifestTemplate(manifestTemplate, manifestSize);
     }
 
 
