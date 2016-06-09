@@ -178,7 +178,7 @@ class SecurityClaimApplicationTest : public testing::Test {
         manifestTemplate[0].SetObjPath("*");
         manifestTemplate[0].SetInterfaceName("*");
         manifestTemplate[0].SetMembers(1, member);
-        EXPECT_EQ(ER_OK, bus.GetPermissionConfigurator().SetPermissionManifest(manifestTemplate, manifestSize));
+        EXPECT_EQ(ER_OK, bus.GetPermissionConfigurator().SetPermissionManifestTemplate(manifestTemplate, manifestSize));
     }
 
     BusAttachment securityManagerBus;
@@ -853,17 +853,17 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
 
     Manifest manifestObj[1];
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::GenerateManifest(securityManagerBus,
-        manifest, manifestSize,
-        manifestObj[0])) << " GenerateManifest failed.";
+                                                                manifest, manifestSize,
+                                                                manifestObj[0])) << " GenerateManifest failed.";
 
     EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
-        "0",
-        securityManagerGuid.ToString(),
-        &TCPublicKey,
-        "Alias",
-        3600,
-        identityCertChain[0],
-        manifestObj[0])) << "Failed to create identity certificate.";
+                                                                  "0",
+                                                                  securityManagerGuid.ToString(),
+                                                                  &TCPublicKey,
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChain[0],
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
     /*
@@ -877,10 +877,10 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
      * inclusive manifest.
      */
     EXPECT_EQ(ER_OK, sapWithTC.Claim(securityManagerKey,
-        securityManagerGuid,
-        securityManagerKey,
-        identityCertChain, 1,
-        manifestObj, ArraySize(manifestObj)));
+                                     securityManagerGuid,
+                                     securityManagerKey,
+                                     identityCertChain, 1,
+                                     manifestObj, ArraySize(manifestObj)));
 
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged) {
@@ -2386,7 +2386,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
 
     ASSERT_TRUE(appStateListener.stateChanged);
     appStateListener.stateChanged = false;
-    
+
     PermissionConfigurator::ApplicationState applicationStateTC;
     EXPECT_EQ(ER_OK, sapWithSecurityManager.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
@@ -2445,7 +2445,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     }
 
     appStateListener.stateChanged = false;
-    
+
     // Call updateIdentity
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain1, 1,
                                               updatedManifestObj, ArraySize(updatedManifestObj)));
