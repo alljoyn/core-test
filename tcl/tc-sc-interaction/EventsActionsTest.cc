@@ -277,6 +277,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<description language=\"en\">Sample object description</description>\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
@@ -305,7 +307,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Empty_Language_Tag) {
     "    <description language=\"en\">An example sessionless signal</description>\n"
     "  </signal>\n</interface>\n</node>\n";
 
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
@@ -362,6 +364,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Supported_Language_Tag) {
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<description language=\"es\">ES: Sample object description</description>\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
@@ -390,7 +394,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Supported_Language_Tag) {
     "    <description language=\"es\">ES: An example sessionless signal</description>\n"
     "  </signal>\n</interface>\n</node>\n";
 
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
@@ -446,6 +450,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unsupported_Language_Tag) {
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<description language=\"en\">Sample object description</description>\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
@@ -474,7 +480,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unsupported_Language_Tag) {
     "    <description language=\"en\">An example sessionless signal</description>\n"
     "  </signal>\n</interface>\n</node>\n";
 
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
@@ -533,6 +539,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_Empty_La
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
     "  <method name=\"dummyMethod\">\n"
@@ -548,7 +556,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_Empty_La
     "  </signal>\n"
     "  <signal name=\"someSessionlessSignal\" sessionless=\"true\">\n"
     "  </signal>\n</interface>\n</node>\n";
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
@@ -607,6 +615,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<interface name=\"org.alljoyn.Bus.eventaction.sample\">\n"
     "  <method name=\"dummyMethod\">\n"
@@ -622,7 +632,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_No_Translator_With_English_
     "  </signal>\n"
     "  <signal name=\"someSessionlessSignal\" sessionless=\"true\">\n"
     "  </signal>\n</interface>\n</node>\n";
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
@@ -673,6 +683,8 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unified_Format) {
     ASSERT_NE(RETRY_LIMIT, retryCount);
 
     const char* expectedResultString =
+    "<!DOCTYPE node PUBLIC \"-//allseen//DTD ALLJOYN Object Introspection 1.1//EN\"\n"
+    "\"http://www.allseen.org/alljoyn/introspect-1.1.dtd\">\n"
     "<node name=\"/eventaction\">\n"
     "<annotation name=\"org.alljoyn.Bus.DocString.en\" value=\"Sample object description\"/>\n"
     "<annotation name=\"org.alljoyn.Bus.DocString.es\" value=\"ES: Sample object description\"/>\n"
@@ -712,7 +724,7 @@ TEST_F(EventsActionsTest, TC_Being_Introspected_With_Unified_Format) {
     "</interface>\n"
     "</node>\n";
 
-    //Compared XML recieved from the tc object to the expected XML output.
+    // Compare XML received from the tc object to the expected XML output.
     EXPECT_STREQ(expectedResultString, buf.c_str());
 
     delete(remoteObj);
