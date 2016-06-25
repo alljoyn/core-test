@@ -13,13 +13,12 @@
  *    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
+#include "ajtcscTestCommon.h"
 
 #include <iostream>
 
 #include <gtest/gtest.h>
 #include <qcc/Event.h>
-
-#include "ajtcscTestCommon.h"
 
 int CDECL_CALL main(int argc, char* argv[])
 {

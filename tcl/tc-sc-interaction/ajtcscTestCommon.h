@@ -13,6 +13,17 @@
  *    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
+#ifndef _AJTCSCTESTCOMMON_H
+#define _AJTCSCTESTCOMMON_H
+
+#if defined(QCC_OS_GROUP_WINDOWS)
+#if !defined(NDEBUG) && !defined(_DEBUG)
+#define _DEBUG
+#include <windows.h>
+#include <crtdbg.h>
+#undef _DEBUG // Once crtdbg is included, we no longer need _DEBUG
+#endif // !NDEBUG && !_DEBUG
+#endif // QCC_OS_GROUP_WINDOWS
 
 #include <gtest/gtest.h>
 
@@ -236,3 +247,5 @@ class TCBusAttachment : public qcc::Thread {
     int32_t propval;
     TCProperties properties;
 };
+
+#endif // _AJTCSCTESTCOMMON_H
