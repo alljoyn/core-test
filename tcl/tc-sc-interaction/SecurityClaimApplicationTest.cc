@@ -22,9 +22,15 @@
 #include "PermissionMgmtTest.h"
 #include "InMemoryKeyStore.h"
 
+#include <iostream>
+#include <istream>
+#include <streambuf>
+#include <string>
+
 using namespace ajn;
 using namespace qcc;
 using namespace std;
+
 
 /*
  * The unit test use many busy wait loops.  The busy wait loops were chosen
@@ -2598,7 +2604,13 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
 
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
+    AJ_PermissionRule r4 = { "/org/alljoyn/Security/Inteface/Unauthorized", "org.alljoyn.Security.Inteface.Unauthorized", UNAUTHORIZED, members, NULL };
+    AJ_PermissionRule r3 = { "/org/alljoyn/Security/Inteface/NonPrivileged", "org.alljoyn.Security.Inteface.NonPrivileged", NON_PRIVILEGED, members, &r4 };
+    AJ_PermissionRule r2 = { "/org/alljoyn/Security/Inteface/Privileged", "org.alljoyn.Security.Inteface.Privileged", PRIVILEGED, members, &r3 };
+    AJ_PermissionRule r1 = { "/org/alljoyn/Security/Inteface/PrivilegedByDefault", "org.alljoyn.Security.Inteface.PrivilegedByDefault", NOT_SET, members, &r2 };
+    AJ_PermissionRule rules[] = {
+        r1
+    };
 
     TCBus.SetPermissionManifest(rules);
     // Verify that the security manager saw the "Needs Update" notification
@@ -2622,6 +2634,92 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     EXPECT_EQ(PermissionConfigurator::NEED_UPDATE, appStateListener.states.back());
     appStateListener.states.pop();
 
+    //Test Recommended Security Level
+    AJ_PSTR tcManifestTemplate = nullptr;
+    sapWithTC.GetManifestTemplate(&tcManifestTemplate);
+    ASSERT_NE(tcManifestTemplate, nullptr);
+    printf("TC Manifest Template: %s\n\n", tcManifestTemplate);
+    /*
+     Print above produces:
+      <manifest>
+        <node name="/org/alljoyn/Security/Inteface/NonPrivileged">
+        <interface name="org.alljoyn.Security.Inteface.NonPrivileged">
+        <annotation name="org.alljoyn.Security.Level" value="NonPrivileged"/>
+        <any name="*">
+        <annotation name="org.alljoyn.Bus.Action" value="Provide"/>
+        </any>
+        </interface>
+        </node>
+        <node name="/org/alljoyn/Security/Inteface/Privileged">
+        <interface name="org.alljoyn.Security.Inteface.Privileged">
+        <annotation name="org.alljoyn.Security.Level" value="Privileged"/>
+        <any name="*">
+        <annotation name="org.alljoyn.Bus.Action" value="Provide"/>
+        </any>
+        </interface>
+        </node>
+        <node name="/org/alljoyn/Security/Inteface/PrivilegedByDefault">
+        <interface name="org.alljoyn.Security.Inteface.PrivilegedByDefault">
+        <annotation name="org.alljoyn.Security.Level" value="Privileged"/>
+        <any name="*">
+        <annotation name="org.alljoyn.Bus.Action" value="Provide"/>
+        </any>
+        </interface>
+        </node>
+        <node name="/org/alljoyn/Security/Inteface/Unauthorized">
+        <interface name="org.alljoyn.Security.Inteface.Unauthorized">
+        <annotation name="org.alljoyn.Security.Level" value="Unauthorized"/>
+        <any name="*">
+        <annotation name="org.alljoyn.Bus.Action" value="Provide"/>
+        </any>
+        </interface>
+        </node>
+      </manifest>
+    */
+    struct membuf : streambuf {
+        membuf(char* begin, char* end) {
+            this->setg(begin, begin, end);
+        }
+    };
+
+    membuf sbuf(tcManifestTemplate, tcManifestTemplate + strlen(tcManifestTemplate));
+    istream is(&sbuf);
+    string line;
+
+    struct AJ_RuleMapOnSecurityLevel {
+        AJ_PermissionRule rule;
+        const char* securityLevel;
+        bool found;
+    };
+
+    AJ_RuleMapOnSecurityLevel rulesToCheck[] = {
+        { r1, "Privileged", false },
+        { r2, "Privileged", false },
+        { r3, "NonPrivileged", false },
+        { r4, "Unauthorized", false }
+    };
+
+    while (getline(is, line)) {
+        for (int x : { 0, 1, 2, 3 }) {
+            AJ_RuleMapOnSecurityLevel& r = rulesToCheck[x];
+            if (line.find(r.rule.ifn) != string::npos) {
+                if (!getline(is, line)) {
+                    goto afterloop;
+                } else {
+                    if (line.find(r.securityLevel) != string::npos) {
+                        r.found = true;
+                    }
+                    goto outerloop;
+                }
+            }
+        }
+    outerloop:
+        continue;
+    }
+afterloop:
+    for (auto r:rulesToCheck) {
+        EXPECT_TRUE(r.found);
+    }
 }
 
 /*
@@ -2679,7 +2777,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
 
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
+    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, NULL } };
 
     TCBus.SetPermissionManifest(rules);
     appStateListener.stateChanged = false;
