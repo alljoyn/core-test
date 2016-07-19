@@ -2598,7 +2598,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
 
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
+    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, NULL } };
 
     TCBus.SetPermissionManifest(rules);
     // Verify that the security manager saw the "Needs Update" notification
@@ -2679,7 +2679,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
 
     // Change the manifest
     AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", members, NULL } };
+    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, NULL } };
 
     TCBus.SetPermissionManifest(rules);
     appStateListener.stateChanged = false;
