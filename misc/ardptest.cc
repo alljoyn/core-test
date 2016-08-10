@@ -209,7 +209,7 @@ class ThreadClass : public Thread {
         while ((!g_interrupt) && (IsRunning())) {
             uint32_t ms;
             g_lock.Lock();
-            ARDP_Run(m_handle, m_sock, true, &ms);
+            ARDP_Run(m_handle, m_sock, true, true, true, &ms);
             g_lock.Unlock();
             qcc::Sleep(200);
         }
