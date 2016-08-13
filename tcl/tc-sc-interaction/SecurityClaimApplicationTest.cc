@@ -34,6 +34,19 @@ using namespace std;
 #define WAIT_MSECS  5
 #define WAIT_SIGNAL 1000
 
+static const char* s_allowAllManifestTemplateXml =
+"<manifest>"
+"<node>"
+"<interface>"
+"<any>"
+"<annotation name = \"org.alljoyn.Bus.Action\" value = \"Modify\"/>"
+"<annotation name = \"org.alljoyn.Bus.Action\" value = \"Observe\"/>"
+"<annotation name = \"org.alljoyn.Bus.Action\" value = \"Provide\"/>"
+"</any>"
+"</interface>"
+"</node>"
+"</manifest>";
+
 static const char* g_password = "1234";
 static const char psk_hint[] = "<anonymous>";
 static uint8_t g_psk[128];
@@ -125,7 +138,7 @@ class SecurityClaimApplicationTest : public testing::Test {
         SCBus("SecurityClaimApplicationSC"),
         TCBus("SecurityClaimApplicationTC"),
         interfaceName("org.allseen.test.SecurityApplication.claim"),
-        securityManagerKeyListener(NULL),
+        securityManagerKeyListener(new DefaultECDHEAuthListener()),
         SCKeyListener(NULL)
     {
     }
@@ -202,7 +215,6 @@ class SecurityClaimApplicationTest : public testing::Test {
 TEST_F(SecurityClaimApplicationTest, IsUnclaimableByDefault)
 {
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     SecurityApplicationProxy saWithSecurityManager(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
@@ -233,7 +245,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -349,7 +360,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
 TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifier)
 {
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
@@ -441,7 +451,6 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
 TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityPublicKeyIdentifier)
 {
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
@@ -534,7 +543,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -678,7 +686,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     const uint8_t psk[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     PermissionMgmtTestHelper::CallDeprecatedSetPSK(securityManagerKeyListener, psk, sizeof(psk));
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK", securityManagerKeyListener);
 
@@ -794,7 +801,6 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
 {
     appStateListener.stateChanged = false;
     /* EnablePeerSecurity */
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerKeyListener->SetPassword((uint8_t*)g_password, strlen(g_password));
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_SPEKE", securityManagerKeyListener);
 
@@ -909,7 +915,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1030,7 +1035,6 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1174,7 +1178,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1348,7 +1351,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1544,7 +1546,6 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1638,7 +1639,6 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
     const uint8_t psk[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     PermissionMgmtTestHelper::CallDeprecatedSetPSK(securityManagerKeyListener, psk, sizeof(psk));
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK", securityManagerKeyListener);
 
@@ -1726,7 +1726,6 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -1881,7 +1880,6 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     EXPECT_FALSE(appStateListener.stateChanged);
@@ -2038,7 +2036,6 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     EXPECT_FALSE(appStateListener.stateChanged);
@@ -2242,7 +2239,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2481,7 +2477,6 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2636,7 +2631,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2706,7 +2700,6 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2882,7 +2875,6 @@ TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
-    securityManagerKeyListener = new DefaultECDHEAuthListener();
     securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener);
 
     /* The State signal is only emitted if manifest template is installed */
@@ -2979,4 +2971,202 @@ TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
                                                   securityManagerKey,
                                                   identityCertChain, 1,
                                                   unsignedManifestObj, ArraySize(unsignedManifestObj)));
+}
+
+class SecurityStartEndmanagementTest : public SecurityClaimApplicationTest
+{
+public:
+
+    static bool managementStarted;
+    static bool managementEnded;
+
+    SecurityApplicationProxy* m_sapWithManagedApp;
+    KeyInfoNISTP256 m_securityManagerKey;
+    GUID128 m_securityManagerGuid;
+    IdentityCertificate m_managedAppIdentityCertChain[2];
+    Manifest m_managedAppsManifest[1];
+
+    SecurityStartEndmanagementTest() :
+        SecurityClaimApplicationTest(),
+        m_sapWithManagedApp(nullptr)
+    { }
+
+    virtual void SetUp()
+    {
+        SecurityClaimApplicationTest::SetUp();
+
+        InitSecurityManagerManifests();
+        SetUpSecurityManager();
+        SetUpManagedApp();
+        ClaimSecurityManager();
+        SetUpSecurityApplicationProxy();
+        PrepareRemoteAppClaimingData();
+    }
+
+    virtual void TearDown()
+    {
+        DestroySecurityManagerManifests();
+        delete m_sapWithManagedApp;
+
+        SecurityClaimApplicationTest::TearDown();
+    }
+
+    void ReestablishConnections()
+    {
+        ASSERT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA"));
+        ASSERT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener));
+        ASSERT_EQ(ER_OK, m_sapWithManagedApp->SecureConnection(true));
+    }
+
+private:
+
+    IdentityCertificate m_securityManagerIdentityCertChain[1];
+    MembershipCertificate m_adminGroupMembershipCert;
+    char* m_securityManagerManifests[1];
+
+    static void StartManagement();
+    static void EndManagement();
+
+    void SetUpSecurityManager()
+    {
+        ASSERT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener));
+
+        PermissionConfigurator& configurator = securityManagerBus.GetPermissionConfigurator();
+
+        ASSERT_EQ(ER_OK, configurator.GetSigningPublicKey(m_securityManagerKey));
+        ASSERT_EQ(ER_OK, configurator.SetManifestTemplateFromXml(s_allowAllManifestTemplateXml));
+    }
+
+    void SetUpManagedApp()
+    {
+        ASSERT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
+        TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
+        TCBus.bus.startManagementCallback = SecurityStartEndmanagementTest::StartManagement;
+        TCBus.bus.endManagementCallback = SecurityStartEndmanagementTest::EndManagement;
+    }
+
+    void SetUpSecurityApplicationProxy()
+    {
+        PermissionConfigurator::ApplicationState applicationStateTC;
+
+        m_sapWithManagedApp = new SecurityApplicationProxy(securityManagerBus, TCBus.GetUniqueName().c_str());
+
+        ASSERT_EQ(ER_OK, m_sapWithManagedApp->GetApplicationState(applicationStateTC));
+        ASSERT_EQ(PermissionConfigurator::CLAIMABLE, applicationStateTC);
+    }
+
+    void PrepareRemoteAppClaimingData()
+    {
+        ECCPublicKey TCPublicKey;
+
+        ASSERT_EQ(ER_OK, m_sapWithManagedApp->GetEccPublicKey(TCPublicKey));
+        ASSERT_EQ(ER_OK, m_managedAppsManifest[0]->SetRules(s_allowAllManifestTemplateXml));
+        ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(
+            securityManagerBus,
+            "1",
+            m_securityManagerGuid.ToString(),
+            &TCPublicKey,
+            "AppAlias",
+            3600,
+            m_managedAppIdentityCertChain[0],
+            m_managedAppsManifest[0])) << "Failed to create identity certificate.";
+
+        m_managedAppIdentityCertChain[1] = m_securityManagerIdentityCertChain[0];
+    }
+
+    void ClaimSecurityManager()
+    {
+        PermissionConfigurator& configurator = securityManagerBus.GetPermissionConfigurator();
+
+
+        PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus, securityManagerBus, m_securityManagerIdentityCertChain[0]);
+        ASSERT_EQ(ER_OK, configurator.SignManifest(s_allowAllManifestTemplateXml, m_securityManagerIdentityCertChain[0], &m_securityManagerManifests[0]));
+        ASSERT_EQ(ER_OK, configurator.Claim(
+            m_securityManagerKey,
+            m_securityManagerGuid,
+            m_securityManagerKey,
+            m_securityManagerIdentityCertChain, ArraySize(m_securityManagerIdentityCertChain),
+            (const char**)m_securityManagerManifests, ArraySize(m_securityManagerManifests)));
+        ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::CreateAdminGroupMembershipCert(
+            securityManagerBus,
+            securityManagerBus.GetUniqueName().c_str(),
+            m_securityManagerKey.GetPublicKey(),
+            m_securityManagerGuid,
+            m_adminGroupMembershipCert));
+        ASSERT_EQ(ER_OK, configurator.InstallMembership(&m_adminGroupMembershipCert, 1U));
+    }
+
+    void InitSecurityManagerManifests()
+    {
+        for (auto securityManagerManifest : m_securityManagerManifests) {
+            securityManagerManifest = nullptr;
+        }
+    }
+
+    void DestroySecurityManagerManifests()
+    {
+        for (auto securityManagerManifest : m_securityManagerManifests) {
+            PermissionConfigurator::DestroyManifest(securityManagerManifest);
+        }
+    }
+};
+
+bool SecurityStartEndmanagementTest::managementEnded = false;
+bool SecurityStartEndmanagementTest::managementStarted = false;
+
+void SecurityStartEndmanagementTest::StartManagement()
+{
+    managementStarted = true;
+}
+
+void SecurityStartEndmanagementTest::EndManagement()
+{
+    managementEnded = true;
+}
+
+TEST_F(SecurityStartEndmanagementTest, shouldCallStartManagementAfterClaim)
+{
+    SecurityStartEndmanagementTest::managementStarted = false;
+
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->Claim(
+        m_securityManagerKey,
+        m_securityManagerGuid,
+        m_securityManagerKey,
+        m_managedAppIdentityCertChain, ArraySize(m_managedAppIdentityCertChain),
+        m_managedAppsManifest, ArraySize(m_managedAppsManifest)));
+
+    EXPECT_TRUE(SecurityStartEndmanagementTest::managementStarted);
+}
+
+TEST_F(SecurityStartEndmanagementTest, shouldCallEndManagementAfterResetIfManagementStarted)
+{
+    SecurityStartEndmanagementTest::managementEnded = false;
+
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->Claim(
+        m_securityManagerKey,
+        m_securityManagerGuid,
+        m_securityManagerKey,
+        m_managedAppIdentityCertChain, ArraySize(m_managedAppIdentityCertChain),
+        m_managedAppsManifest, ArraySize(m_managedAppsManifest)));
+    ASSERT_TRUE(SecurityStartEndmanagementTest::managementStarted);
+    ReestablishConnections();
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->Reset());
+
+    EXPECT_TRUE(SecurityStartEndmanagementTest::managementEnded);
+}
+
+TEST_F(SecurityStartEndmanagementTest, shouldNotCallEndManagementAfterResetIfManagementNotStarted)
+{
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->Claim(
+        m_securityManagerKey,
+        m_securityManagerGuid,
+        m_securityManagerKey,
+        m_managedAppIdentityCertChain, ArraySize(m_managedAppIdentityCertChain),
+        m_managedAppsManifest, ArraySize(m_managedAppsManifest)));
+    ReestablishConnections();
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->EndManagement());
+    SecurityStartEndmanagementTest::managementEnded = false;
+    ASSERT_EQ(ER_OK, m_sapWithManagedApp->Reset());
+
+    EXPECT_FALSE(SecurityStartEndmanagementTest::managementEnded);
 }

@@ -270,12 +270,17 @@ class PermissionMgmtTestHelper {
     static QStatus CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate& cert, Manifest* manifest);
     static QStatus CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::String& der);
 
+    static void CreateIdentityCert(BusAttachment& issuerBus, BusAttachment& receiverBus, qcc::IdentityCertificate& cert);
+
     static QStatus CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::String& alias, qcc::String& der);
 
     static QStatus CreateMembershipCert(const qcc::String& serial, BusAttachment& signingBus, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::GUID128& guild, bool delegate, uint32_t expiredInSecs, qcc::MembershipCertificate& cert);
     static QStatus CreateMembershipCert(const qcc::String& serial, BusAttachment& signingBus, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::GUID128& guild, bool delegate, uint32_t expiredInSecs, qcc::String& der);
     static QStatus CreateMembershipCert(const qcc::String& serial, BusAttachment& signingBus, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::GUID128& guild, bool delegate, qcc::String& der);
     static QStatus CreateMembershipCert(const qcc::String& serial, BusAttachment& signingBus, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::GUID128& guild, qcc::String& der);
+
+    static QStatus CreateAdminGroupMembershipCert(BusAttachment& securityManagerBus, const char* certificateSubject, const qcc::ECCPublicKey* subjectPubKey, const qcc::GUID128& adminGroupGuid, qcc::MembershipCertificate& membershipCertificate);
+
     static bool IsPermissionDeniedError(QStatus status, Message& msg);
     static QStatus ReadClaimResponse(Message& msg, qcc::ECCPublicKey* pubKey);
     static QStatus GenerateManifest(PermissionPolicy::Rule** retRules, size_t* count);

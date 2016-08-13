@@ -40,8 +40,12 @@
 #include "PermissionMgmtTest.h"
 #include "BusInternal.h"
 
+#define ONE_HOUR_CERTIFICATE_EXPIRY_IN_SECONDS 3600
+#define DEFAULT_CERTIFICATE_SERIAL "1234"
+
 using namespace ajn;
 using namespace qcc;
+
 
 const char* BasePermissionMgmtTest::INTERFACE_NAME = "org.allseen.Security.PermissionMgmt";
 const char* BasePermissionMgmtTest::ONOFF_IFC_NAME = "org.allseenalliance.control.OnOff";
@@ -195,6 +199,7 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, c
     CertificateX509::ValidPeriod validity;
     BuildValidity(validity, expiredInSecs);
     cert.SetValidity(&validity);
+    cert.SetCA(issuerStr == subject);
 
     /* use the issuer bus to sign the cert */
     PermissionConfigurator& pc = issuerBus.GetPermissionConfigurator();
@@ -236,6 +241,24 @@ QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, c
         return status;
     }
     return cert.EncodeCertificateDER(der);
+}
+
+void PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, BusAttachment& receiverBus, qcc::IdentityCertificate& cert)
+{
+    GUID128 receiverGuid;
+    ECCPublicKey receiverPublicKey;
+
+    ASSERT_EQ(ER_OK, GetGUID(receiverBus, receiverGuid));
+    ASSERT_EQ(ER_OK, RetrieveDSAPublicKeyFromKeyStore(receiverBus, &receiverPublicKey));
+    ASSERT_EQ(ER_OK, CreateIdentityCert(
+        issuerBus,
+        "0",
+        receiverGuid.ToString(),
+        &receiverPublicKey,
+        receiverBus.GetUniqueName(),
+        ONE_HOUR_CERTIFICATE_EXPIRY_IN_SECONDS,
+        cert,
+        nullptr));
 }
 
 QStatus PermissionMgmtTestHelper::CreateIdentityCert(BusAttachment& issuerBus, const qcc::String& serial, const qcc::String& subject, const qcc::ECCPublicKey* subjectPubKey, const qcc::String& alias, uint32_t expiredInSecs, qcc::IdentityCertificate& cert, Manifest& manifest)
@@ -288,6 +311,19 @@ QStatus PermissionMgmtTestHelper::CreateMembershipCert(const String& serial, Bus
 QStatus PermissionMgmtTestHelper::CreateMembershipCert(const String& serial, BusAttachment& signingBus, const qcc::String& subject, const ECCPublicKey* subjectPubKey, const qcc::GUID128& guild, qcc::String& der)
 {
     return CreateMembershipCert(serial, signingBus, subject, subjectPubKey, guild, false, der);
+}
+
+QStatus ajn::PermissionMgmtTestHelper::CreateAdminGroupMembershipCert(BusAttachment& securityManagerBus, const char* certificateSubject, const ECCPublicKey* subjectPubKey, const GUID128& adminGroupGuid, MembershipCertificate& membershipCertificate)
+{
+    return CreateMembershipCert(
+        DEFAULT_CERTIFICATE_SERIAL,
+        securityManagerBus,
+        certificateSubject,
+        subjectPubKey,
+        adminGroupGuid,
+        true,
+        ONE_HOUR_CERTIFICATE_EXPIRY_IN_SECONDS,
+        membershipCertificate);
 }
 
 QStatus BasePermissionMgmtTest::InterestInChannelChangedSignal(BusAttachment* bus)
