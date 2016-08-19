@@ -871,6 +871,7 @@ int TestAppMain(int argc, char** argv)
         getchar();
 
         status = g_msgBus->AdvertiseName(g_wellKnownName.c_str(), trans);
+
         if (ER_OK != status) {
             QCC_LogError(status, ("Sending org.alljoyn.Bus.Advertise failed "));
             return status;
@@ -1546,9 +1547,40 @@ int TestAppMain(int argc, char** argv)
                     printf("signal\n");
                     printf("help\n");
                     fflush(stdout);
+                } else if (strcmp(temp, "linktimeout") == 0) {
+                    SessionId sessionId = 0;
+                    uint32_t timeout = 0;
+                    QStatus status = ER_OK;
+
+                    temp = strtok(NULL, " ");
+                    if (!temp) {
+                        printf("ERROR - linktimeout sessionId timeout[seconds]\n");
+                        fflush(stdout);
+                        status = ER_FAIL;
+                    } else {
+                        sessionId = static_cast<SessionId>(StringToU32(temp, 0, 0));
+                        status = ER_OK;
+                    }
+
+                    if (status == ER_OK) {
+                        temp = strtok(NULL, " ");
+                        if (temp) {
+                            timeout = static_cast<uint32_t>(StringToU32(temp, 0, 0));
+                        } else {
+                            printf("ERROR\n");
+                        }
+                    }
+
+                    if (status == ER_OK) {
+                        printf("Changing link timeout to %u for session %u\n", timeout, sessionId);
+                        status = g_msgBus->SetLinkTimeout(sessionId, timeout);
+
+                        if (ER_OK != status) {
+                            QCC_LogError(status, ("Link timeout change failed"));
+                        }
+                        fflush(stdout);
+                    }
                 }
-
-
             } //End of while loop
 
         } else {
