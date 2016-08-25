@@ -14,6 +14,8 @@
  *    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  ******************************************************************************/
 
+#include <set>
+
 #include "ajtcscTestCommon.h"
 #include <alljoyn/ApplicationStateListener.h>
 #include <alljoyn/SecurityApplicationProxy.h>
@@ -106,12 +108,20 @@ class StateNotification_ApplicationStateListener : public ApplicationStateListen
     }
 
     virtual void State(const char* busName, const qcc::KeyInfoNISTP256& publicKeyInfo, PermissionConfigurator::ApplicationState state) {
+        if (acceptedBusNames.find(busName) == acceptedBusNames.end()) {
+            AJ_AlwaysPrintf(("Unknown bus name: %s. Skipping state announcement.\n", busName));
+            return;
+        }
+
+        AJ_AlwaysPrintf(("Received state announcement from %s. New state: %x.\n", busName, state));
+
         busNames.push(busName);
         publicKeys.push(publicKeyInfo);
         states.push(state);
         stateChanged = true;
     }
 
+    set<String> acceptedBusNames;
     queue<String> busNames;
     queue<KeyInfoNISTP256> publicKeys;
     queue<PermissionConfigurator::ApplicationState> states;
@@ -149,7 +159,8 @@ class SecurityClaimApplicationTest : public testing::Test {
 
         TCBus.Connect(routingNodePrefix.c_str());
         TCBus.Start();
-        EXPECT_EQ(ER_OK, securityManagerBus.RegisterApplicationStateListener(appStateListener));
+
+        SetUpApplicationStateListener();
     }
 
     void TearDown() {
@@ -168,6 +179,14 @@ class SecurityClaimApplicationTest : public testing::Test {
         delete SCKeyListener;
     }
 
+    void SetUpApplicationStateListener()
+    {
+        appStateListener.acceptedBusNames.insert(securityManagerBus.GetUniqueName());
+        appStateListener.acceptedBusNames.insert(SCBus.GetUniqueName());
+        appStateListener.acceptedBusNames.insert(TCBus.GetUniqueName());
+        ASSERT_EQ(ER_OK, securityManagerBus.RegisterApplicationStateListener(appStateListener));
+    }
+
     void SetManifestTemplate(BusAttachment& bus)
     {
         // All Inclusive manifest template
@@ -179,6 +198,18 @@ class SecurityClaimApplicationTest : public testing::Test {
         manifestTemplate[0].SetInterfaceName("*");
         manifestTemplate[0].SetMembers(1, member);
         EXPECT_EQ(ER_OK, bus.GetPermissionConfigurator().SetPermissionManifestTemplate(manifestTemplate, manifestSize));
+    }
+
+    void WaitForStateChange()
+    {
+        uint32_t msec = 0;
+        for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
+            if (appStateListener.stateChanged) {
+                break;
+            }
+            qcc::Sleep(WAIT_MSECS);
+        }
+        AJ_AlwaysPrintf(("Slept %u milliseconds.\n", msec));
     }
 
     BusAttachment securityManagerBus;
@@ -193,8 +224,6 @@ class SecurityClaimApplicationTest : public testing::Test {
 
     DefaultECDHEAuthListener* securityManagerKeyListener;
     DefaultECDHEAuthListener* SCKeyListener;
-
-    int msec;
 
     StateNotification_ApplicationStateListener appStateListener;
 };
@@ -239,13 +268,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
 
@@ -253,13 +276,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -323,13 +340,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -540,26 +551,14 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -569,13 +568,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(SCBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -650,13 +643,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_ad
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -685,13 +672,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -699,13 +680,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_PSK");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -767,13 +742,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_PSK_session_successful)
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -801,26 +770,14 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_SPEKE"));
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -882,13 +839,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -915,26 +866,14 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -996,13 +935,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -1036,26 +969,14 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -1117,13 +1038,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -1180,13 +1095,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_claiming_non_claimable)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -1267,13 +1176,7 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -1283,13 +1186,7 @@ TEST_F(SecurityClaimApplicationTest, fail_claimer_security_not_enabled)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(SCBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     //Create admin group key
     KeyInfoNISTP256 caKey;
@@ -1354,13 +1251,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     //Create admin group key
     KeyInfoNISTP256 securityManagerKey;
@@ -1402,7 +1293,7 @@ TEST_F(SecurityClaimApplicationTest, fail_when_peer_being_claimed_is_not_securit
                                                                   manifestObj[0])) << "Failed to create identity certificate.";
 
     appStateListener.stateChanged = false;
-    printf("TC NAME %s\n", TCBus.GetUniqueName().c_str());
+    AJ_AlwaysPrintf(("TC NAME %s\n", TCBus.GetUniqueName().c_str()));
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     /*
      * Claim TC
@@ -1550,26 +1441,14 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -1579,13 +1458,7 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(SCBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -1612,13 +1485,7 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     EXPECT_TRUE(claimThread1.status == ER_OK || claimThread2.status == ER_OK);
     EXPECT_TRUE(claimThread1.status == ER_PERMISSION_DENIED || claimThread2.status == ER_PERMISSION_DENIED);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(ER_OK, sapWithTC.GetApplicationState(applicationStateTC));
@@ -1645,26 +1512,14 @@ TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_secu
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
 
@@ -1732,26 +1587,14 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -1832,13 +1675,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
 
     EXPECT_FALSE(appStateListener.stateChanged);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
@@ -1889,13 +1726,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     // fail if not true!
     ASSERT_TRUE(appStateListener.stateChanged);
@@ -1918,13 +1749,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
 
@@ -1989,13 +1814,14 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
+    uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
             break;
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    AJ_AlwaysPrintf(("%d: Slept %u milliseconds.\n", __LINE__, msec));
 
     EXPECT_TRUE(appStateListener.stateChanged);
 
@@ -2046,12 +1872,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2074,12 +1895,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
 
@@ -2138,13 +1954,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
     EXPECT_EQ(ER_OK, sapWithTC.SecureConnection(true));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
@@ -2161,13 +1971,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2204,13 +2008,14 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
     EXPECT_EQ(ER_OK, sapWithTC.Reset());
 
+    uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMABLE) {
             break;
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    AJ_AlwaysPrintf(("%d: Slept %u milliseconds.\n", __LINE__, msec));
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2248,13 +2053,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2273,13 +2072,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2337,13 +2130,15 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                      securityManagerKey,
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
+
+    uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
             break;
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    AJ_AlwaysPrintf(("%d: Slept %u milliseconds.\n", __LINE__, msec));
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2376,13 +2171,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
                                                   securityManagerKey,
                                                   identityCertChainToClaimAdmin, 1,
                                                   manifestObj, ArraySize(manifestObj)));
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
     appStateListener.stateChanged = false;
@@ -2437,12 +2226,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
 
     // Wait for the pending "stateChanged" to past
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
@@ -2450,13 +2234,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     EXPECT_EQ(ER_OK, sapWithTC.UpdateIdentity(identityCertChain1, 1,
                                               updatedManifestObj, ArraySize(updatedManifestObj)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_FALSE(appStateListener.stateChanged);
 }
@@ -2487,13 +2265,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2512,13 +2284,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2576,13 +2342,15 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
                                      securityManagerKey,
                                      identityCertChain, 1,
                                      manifestObj, ArraySize(manifestObj)));
+
+    uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMED) {
             break;
         }
         qcc::Sleep(WAIT_MSECS);
     }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    AJ_AlwaysPrintf(("%d: Slept %u milliseconds.\n", __LINE__, msec));
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2603,13 +2371,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     TCBus.SetPermissionManifest(rules);
     // Verify that the security manager saw the "Needs Update" notification
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
@@ -2621,7 +2383,6 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::NEED_UPDATE, appStateListener.states.back());
     appStateListener.states.pop();
-
 }
 
 /*
@@ -2642,13 +2403,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2667,13 +2422,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2683,13 +2432,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
 
     TCBus.SetPermissionManifest(rules);
     appStateListener.stateChanged = false;
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_FALSE(appStateListener.stateChanged);
 }
@@ -2712,26 +2455,14 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     appStateListener.stateChanged = false;
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     SecurityApplicationProxy sapWithTC(securityManagerBus, TCBus.GetUniqueName().c_str());
     PermissionConfigurator::ApplicationState applicationStateTC;
@@ -2791,7 +2522,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
                                                                   3600,
                                                                   identityCertChain[0],
                                                                   manifestObj2[0])) << "Failed to create identity certificate.";
-    printf("\n Before calling claim");
+    AJ_AlwaysPrintf(("\n Before calling claim"));
     appStateListener.stateChanged = false;
     /* Provide bogus key info so Claim will fail. */
     KeyInfoNISTP256 bogusKey(securityManagerKey);
@@ -2802,13 +2533,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_on_claim_fail)
                                                       identityCertChain, 1,
                                                       manifestObj2, ArraySize(manifestObj2)));
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_FALSE(appStateListener.stateChanged);
 }
@@ -2828,13 +2553,7 @@ TEST_F(SecurityClaimApplicationTest, not_claimable_state_signal)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_NOT_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
@@ -2859,13 +2578,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
 
     // Setup the test peer
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     EXPECT_FALSE(appStateListener.stateChanged);
 }
@@ -2888,13 +2601,7 @@ TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
@@ -2902,13 +2609,7 @@ TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL");
     TCBus.SetApplicationState(APP_STATE_CLAIMABLE);
 
-    for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
-        if (appStateListener.stateChanged) {
-            break;
-        }
-        qcc::Sleep(WAIT_MSECS);
-    }
-    printf("%d: Slept %d\n", __LINE__, msec);
+    WaitForStateChange();
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
