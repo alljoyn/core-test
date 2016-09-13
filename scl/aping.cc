@@ -19,6 +19,9 @@
 #include <stdio.h>
 #include <vector>
 #include <map>
+#include <fstream>
+#include <string>
+#include <streambuf>
 
 #include <qcc/Debug.h>
 #include <qcc/Environ.h>
@@ -53,7 +56,7 @@ const char* DefaultWellKnownName = "some.name";
 }
 
 /** Static top level message bus object */
-static BusAttachment* g_msgBus = NULL;
+static BusAttachment* g_msgBus = nullptr;
 static String g_wellKnownName = ::org::alljoyn::alljoyn_test::DefaultWellKnownName;
 static const char* g_findPrefix = ::org::alljoyn::alljoyn_test::DefaultWellKnownName;
 
@@ -63,6 +66,7 @@ static bool g_keep_retrying_in_failure = false;
 static uint32_t g_concurrent_threads = 4;
 static uint32_t g_sleepTime = 10000; //Default duration to run
 static uint32_t g_asyncPingTimeout = 10000; // Timeout value passed to ping method call
+static string g_customRouterConfig;
 
 static Mutex g_lock;
 
@@ -161,19 +165,20 @@ static void usage(void)
 {
     cout << endl << "Usage: aping " << endl << endl <<
         "Options:" << endl <<
-        "   -?           = Print this help message" << endl <<
-        "   -h           = Print this help message" << endl <<
-        "   -n <name>    = Well-known name to advertise" << endl <<
-        "   -s           = Send pings continuously (stress mode)" << endl <<
-        "   -f <prefix>  = FindAdvertisedName prefix" << endl <<
-        "   -u           = Advertise/Discover over UDP" << endl <<
-        "   -t           = Advertise/Discover over TCP" << endl <<
-        "   -l           = Advertise/Discover over LOCAL" << endl <<
-        "   -dpr <ms>    = Number of ms to delay between two ping attempts" << endl <<
-        "   -fa          = Retry ping even during failure" << endl <<
-        "   -ct  #       = Set concurrency level" << endl <<
-        "   -sleep  #    = Sleep Time" << endl <<
-        "   -timeout  #  = AsyncPing timeout" << endl;
+        "   -?               = Print this help message" << endl <<
+        "   -h               = Print this help message" << endl <<
+        "   -n <name>        = Well-known name to advertise" << endl <<
+        "   -s               = Send pings continuously (stress mode)" << endl <<
+        "   -f <prefix>      = FindAdvertisedName prefix" << endl <<
+        "   -u               = Advertise/Discover over UDP" << endl <<
+        "   -t               = Advertise/Discover over TCP" << endl <<
+        "   -l               = Advertise/Discover over LOCAL" << endl <<
+        "   -dpr <ms>        = Number of ms to delay between two ping attempts" << endl <<
+        "   -fa              = Retry ping even during failure" << endl <<
+        "   -ct  #           = Set concurrency level" << endl <<
+        "   -sleep  #        = Sleep Time" << endl <<
+        "   -timeout  #      = AsyncPing timeout" << endl <<
+        "   -router <config> = Router config file path (for bundled router)" << endl;
 }
 
 int TestAppMain(int argc, char** argv)
@@ -246,7 +251,7 @@ int TestAppMain(int argc, char** argv)
                 usage();
                 return 1;
             } else {
-                g_concurrent_threads = qcc::StringToU32(argv[i], 0);;
+                g_concurrent_threads = qcc::StringToU32(argv[i], 0);
             }
         } else if (0 == strcmp("-sleep", argv[i])) {
             ++i;
@@ -255,27 +260,61 @@ int TestAppMain(int argc, char** argv)
                 usage();
                 return 1;
             } else {
-                g_sleepTime = qcc::StringToU32(argv[i], 0);;
+                g_sleepTime = qcc::StringToU32(argv[i], 0);
             }
-        }  else {
-            status = ER_FAIL;
+        }  else if (0 == strcmp("-router", argv[i])) {
+            ++i;
+            if (i == argc) {
+                cout << "option \"-router\" requires a parameter" << endl;
+                usage();
+                return 1;
+            } else {
+#ifndef ROUTER
+                cout << "Ignoring option \"-router\" for standalone router" << endl;
+#else
+                ifstream in(argv[i]);
+                if (!in) {
+                    cout << "Error: failed to open router config file " << argv[i] << endl;
+                    return 1;
+                } else {
+                    g_customRouterConfig = string(istreambuf_iterator<char>(in), istreambuf_iterator<char>());
+                }
+#endif
+            }
+        } else {
             cout << "Unknown option " << argv[i] << endl;
             usage();
             return 1;
         }
     }
 
+    if (AllJoynInit() != ER_OK) {
+        return 1;
+    }
+#ifdef ROUTER
+    if (g_customRouterConfig.empty()) {
+        status = AllJoynRouterInit();
+    } else {
+        status = AllJoynRouterInitWithConfig(g_customRouterConfig.c_str());
+    }
+    if (status != ER_OK) {
+        AllJoynShutdown();
+        return 1;
+    }
+#endif
+
     /* Get env vars */
     Environ* env = Environ::GetAppEnviron();
     qcc::String clientArgs = env->Find("BUS_ADDRESS");
 
+    MyBusListener myBusListener;
     /* Create message bus */
     g_msgBus = new BusAttachment("ajoin", true, g_concurrent_threads);
-    if (g_msgBus != NULL) {
+    if (g_msgBus != nullptr) {
         status = g_msgBus->Start();
         if (ER_OK != status) {
             QCC_LogError(status, ("BusAttachment::Start failed"));
-            return 1;
+            goto Exit;
         }
 
         /* Connect to the daemon */
@@ -286,10 +325,9 @@ int TestAppMain(int argc, char** argv)
         }
         if (ER_OK != status) {
             QCC_LogError(status, ("BusAttachment::Connect failed"));
-            return 1;
+            goto Exit;
         }
 
-        MyBusListener myBusListener;
         g_msgBus->RegisterBusListener(myBusListener);
 
         /* Register local objects and connect to the daemon */
@@ -300,24 +338,22 @@ int TestAppMain(int argc, char** argv)
             QStatus status = g_msgBus->RequestName(g_wellKnownName.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
             if (status != ER_OK) {
                 QCC_LogError(status, ("RequestName(%s) failed. ", g_wellKnownName.c_str()));
-                return 1;
+                goto Exit;
             }
 
             /* Begin Advertising the well-known name */
             status = g_msgBus->AdvertiseName(g_wellKnownName.c_str(), transportOpts);
             if (ER_OK != status) {
                 QCC_LogError(status, ("Advertise name(%s) failed ", g_wellKnownName.c_str()));
-                return 1;
+                goto Exit;
             }
 
             status = g_msgBus->FindAdvertisedNameByTransport(g_findPrefix ? g_findPrefix : "com", transportOpts);
             if (status != ER_OK) {
                 QCC_LogError(status, ("FindAdvertisedName failed "));
-                return 1;
+                goto Exit;
             }
         }
-
-        uint32_t startTime = GetTimestamp();
 
         uint32_t currentTime = GetTimestamp();
         while (!g_interrupt) {
@@ -335,12 +371,15 @@ int TestAppMain(int argc, char** argv)
         if (g_interrupt) {
             cout << "Ctrl-C has been issued. Exiting..." << endl;
         }
+    }
 
-        /* Clean up msg bus */
+Exit:
+    if (g_msgBus != nullptr) {
         g_msgBus->Stop();
         g_msgBus->Join();
         cout << "Deleting the bus attachment..." << endl;
         delete g_msgBus;
+        g_msgBus = nullptr;
         cout << "Done." << endl;
     }
 
@@ -353,30 +392,16 @@ int TestAppMain(int argc, char** argv)
 
     cout << "Elapsed time is " << (GetTimestamp() - startTime) << " milliseconds" << endl;
 
+#ifdef ROUTER
+    AllJoynRouterShutdown();
+#endif
+    AllJoynShutdown();
     return (int) status;
 }
 
 /** Main entry point */
 int CDECL_CALL main(int argc, char** argv)
 {
-    QStatus status = AllJoynInit();
-    if (ER_OK != status) {
-        return 1;
-    }
-#ifdef ROUTER
-    status = AllJoynRouterInit();
-    if (ER_OK != status) {
-        AllJoynShutdown();
-        return 1;
-    }
-#endif
-
     int ret = TestAppMain(argc, argv);
-
-#ifdef ROUTER
-    AllJoynRouterShutdown();
-#endif
-    AllJoynShutdown();
-
     return ret;
 }
