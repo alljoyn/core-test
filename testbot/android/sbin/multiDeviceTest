@@ -5893,10 +5893,10 @@ function runWifiSuite() {
     #checkValidationApk $CLIENT
     
 	# Run jni simple service and client test
-	#runJniSimpleInWifi
+	runJniSimpleInWifi
 
 	# Jni chat between two devices
-	#runJniChatInWifi
+	runJniChatInWifi
 
 	# Sessionless service and client test
 	runSessionlessInWifi
