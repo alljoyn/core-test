@@ -41,6 +41,7 @@
 static const uint8_t WAIT_TIME = 5;
 static const uint32_t PING_DELAY_TIME = 6000;
 static const uint32_t FIND_NAME_TIME = 5000;
+static const uint32_t SESSION_DEALY_TIME = 10000;
 
 using namespace std;
 using namespace qcc;
@@ -250,8 +251,9 @@ TEST_F(R2RTest, Presence_NegativeDetectionAdvertiseCancel) {
     status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    unsigned int msec;
     // wait for to find name
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if ((listener.nameFound) && (listener.nameMatched)) {
             break;
         }
@@ -265,7 +267,7 @@ TEST_F(R2RTest, Presence_NegativeDetectionAdvertiseCancel) {
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
     // wait for advertised name to go away
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if (!listener.nameFound) {
             break;
         }
@@ -438,7 +440,6 @@ TEST_F(R2RTest, Advertisement_NoFoundNameAfterLost) {
 
     // bind port
     R2RTestSessionListener sessionPortListenerA;
-    sessionPortListenerA.port = sessionPortListenerA.port;
 
     status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
@@ -459,8 +460,9 @@ TEST_F(R2RTest, Advertisement_NoFoundNameAfterLost) {
     status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    unsigned int msec;
     // wait for to find name
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if ((listener.nameFound) && (listener.nameMatched)) {
             break;
         }
@@ -474,7 +476,7 @@ TEST_F(R2RTest, Advertisement_NoFoundNameAfterLost) {
     status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
     // wait for to find name, 5 second max
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
             break;
         }
@@ -488,7 +490,7 @@ TEST_F(R2RTest, Advertisement_NoFoundNameAfterLost) {
     BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_TCP);
 
     // wait for the found name signal to complete
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if (!listener.nameFound) {
             break;
         }
@@ -537,7 +539,6 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesDurringSession) {
 
     // bind port
     R2RTestSessionListener sessionPortListenerA;
-    sessionPortListenerA.port = sessionPortListenerA.port;
 
     status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
@@ -558,8 +559,9 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesDurringSession) {
     status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    unsigned int msec;
     // wait for to find name
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if ((listener.nameFound) && (listener.nameMatched)) {
             break;
         }
@@ -573,7 +575,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesDurringSession) {
     status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
     // wait for to find name, 5 second max
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
             break;
         }
@@ -587,7 +589,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesDurringSession) {
     BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
 
     // wait for the found name signal to complete
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if (!listener.nameFound) {
             break;
         }
@@ -641,7 +643,6 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
 
     // bind port
     R2RTestSessionListener sessionPortListenerA;
-    sessionPortListenerA.port = sessionPortListenerA.port;
 
     status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
@@ -662,8 +663,9 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    unsigned int msec = 0;
     // wait for to find name
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if ((listener.nameFound) && (listener.nameMatched)) {
             break;
         }
@@ -676,8 +678,9 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     SessionId sessionId = 0;
     status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
+
     // wait for to find name, 5 second max
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
             break;
         }
@@ -691,7 +694,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
 
     // wait for the found name signal to complete
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if (!listener.nameFound) {
             break;
         }
@@ -703,7 +706,13 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     status = BusPtrB->LeaveSession(sessionId);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
-    qcc::Sleep(1000);
+    //Wait for SessionLost
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
+        if (sessionPortListenerA.sessionLost) {
+            break;
+        }
+        qcc::Sleep(WAIT_TIME);
+    }
 
     // ping unique name with second bus
     status = BusPtrB->Ping(BusPtrA->GetUniqueName().c_str(), PING_DELAY_TIME);
@@ -734,13 +743,11 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
 
     BusAttachment* BusPtrC = new BusAttachment("busAttachmentC", true);
 
-
     // start busC connection external sample daemon
     status = BusPtrC->Start();
     ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
     status = BusPtrC->Connect("unix:abstract=alljoyn");
     ASSERT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
-
 
     // initialize listener callback
     R2RTestFindNameListener listener;
@@ -753,7 +760,6 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
 
     // bind port
     R2RTestSessionListener sessionPortListenerA(BusPtrA);
-    sessionPortListenerA.port = sessionPortListenerA.port;
 
     status = BusPtrA->BindSessionPort(sessionPortListenerA.port, opts, sessionPortListenerA);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
@@ -774,8 +780,9 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
     status = BusPtrB->FindAdvertisedName(listener.NameToMatch.c_str());
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
 
+    unsigned int msec;
     // wait for to find name
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if ((listener.nameFound) && (listener.nameMatched)) {
             break;
         }
@@ -789,7 +796,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
     status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
     // wait for to find name, 5 second max
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
             break;
         }
@@ -805,7 +812,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
     status = BusPtrC->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
     // wait for to find name, 5 second max
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
             break;
         }
@@ -819,7 +826,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
     BusPtrA->CancelAdvertiseName(listener.NameToMatch.c_str(), TRANSPORT_ANY);
 
     // wait for the found name signal to complete
-    for (unsigned int msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
+    for (msec = 0; msec < FIND_NAME_TIME; msec += WAIT_TIME) {
         if (!listener.nameFound) {
             break;
         }
@@ -834,7 +841,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterExit) {
     delete BusPtrC;
 
     //Wait for SessionLost on A
-    for (unsigned int msec = 0; msec < 5000; msec += WAIT_TIME) {
+    for (msec = 0; msec < SESSION_DEALY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionLost) {
             break;
         }
