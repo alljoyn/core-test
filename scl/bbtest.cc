@@ -100,6 +100,8 @@ static bool maskNOC = true;
 
 static qcc::Mutex* ioLock = NULL;
 
+static const uint32_t c_inputSize = 512;
+
 /* Predefined session ports. */
 SessionPort SESSION_PORT_MESSAGES_PP1 = 23;
 SessionPort SESSION_PORT_MESSAGES_PP2 = 24;
@@ -112,9 +114,45 @@ SessionPort SESSION_PORT_RAW_PP2      = 30;
 SessionPort SESSION_PORT_RAW_PP3      = 31;
 
 /* Fetch data from console */
-char* get_data(char*inpbuf, uint16_t timeoutSeconds = 0)
+char* get_data(char* inpbuf, uint16_t timeoutSeconds = 0)
 {
-    char*p = NULL;
+#ifdef QCC_OS_GROUP_WINDOWS
+    Timespec<MonotonicTime> now;
+    GetTimeNow(&now);
+    uint64_t start = now.seconds;
+
+    INPUT_RECORD record = { };
+    DWORD events = 0;
+    DWORD peekDuration;
+
+    while (1) {
+        if (!PeekConsoleInput(GetStdHandle(STD_INPUT_HANDLE), &record, 1, &events)) {
+            QCC_LogError(ER_FAIL, ("PeekConsoleInput failed with error %u", ::GetLastError()));
+            QCC_ASSERT(!"PeekConsoleInput failed");
+            return NULL;
+        }
+        if (events > 0) {
+            if (record.EventType == KEY_EVENT) {
+                /* Read the line from stdin */
+                char* p = fgets(inpbuf, c_inputSize, stdin);
+                inpbuf[strlen(inpbuf) - 1] = '\0';
+                return p;
+            }
+            /* Remove the last event */
+            ReadConsoleInput(GetStdHandle(STD_INPUT_HANDLE), &record, 1, &events);
+            peekDuration = 0;
+        } else {
+            peekDuration = 100;
+        }
+        /* Keep peeking until 'timeoutSeconds' expires */
+        GetTimeNow(&now);
+        if ((now.seconds - start) > timeoutSeconds) {
+            return NULL;
+        }
+        qcc::Sleep(peekDuration);
+    }
+#else
+    char* p = NULL;
     fd_set rfds;
     struct timeval tv;
     int retval;
@@ -127,7 +165,7 @@ char* get_data(char*inpbuf, uint16_t timeoutSeconds = 0)
 
     retval = select(1, &rfds, NULL, NULL, &tv);
     if (retval) {
-        p = fgets(inpbuf, 512, stdin);
+        p = fgets(inpbuf, c_inputSize, stdin);
         inpbuf[strlen(inpbuf) - 1] = '\0';
         FD_CLR(0, &rfds);
         return p;
@@ -136,6 +174,7 @@ char* get_data(char*inpbuf, uint16_t timeoutSeconds = 0)
     FD_CLR(0, &rfds);
 
     return p;
+#endif
 }
 
 void pollForDataWithLock(char* inputBuf, uint16_t timeoutSeconds = 0)
@@ -336,7 +375,7 @@ class MySessionPortListenerWithPrompt : public SessionPortListener {
         QCC_UNUSED(sessionPort);
         QCC_UNUSED(opts);
         const uint16_t TIMEOUT_SECONDS = 20;
-        char input[32];
+        char input[c_inputSize];
         bool accepting = false;
 
         g_msgBus->EnableConcurrentCallbacks();
@@ -470,9 +509,9 @@ class LocalTestObject : public BusObject {
     {
         QStatus status = ER_OK;
 
-        char tempDest[20];
-        char tempflags[20];
-        char option[2];
+        char tempDest[c_inputSize];
+        char tempflags[c_inputSize];
+        char option[c_inputSize];
 
         SessionId sessionid, tsessionid = 0;
         char*dest = NULL;
@@ -881,7 +920,7 @@ int TestAppMain(int argc, char** argv)
         status = ER_OK;
 
         if (ER_OK == status) {
-            char option[512];
+            char option[c_inputSize];
             while (1) {
 
                 ioLock->Lock(MUTEX_CONTEXT);
@@ -1340,7 +1379,7 @@ int TestAppMain(int argc, char** argv)
                         if (temp && (temp[0] == 'm')) {
                             printf("Enter flags(HESN) ttl  :");
                             fflush(stdout);
-                            char tempOptions[50];
+                            char tempOptions[c_inputSize];
                             pollForDataWithLock(tempOptions);
 
                             temp = strtok(tempOptions, " ");
