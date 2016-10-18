@@ -97,8 +97,9 @@ static const uint8_t c_maxWKNPrefixLength = 205;
 // i.  to make life simpler and
 // ii. allow the test program to be compiled against older AllJoyn versions
 // TRANSPORT_TCP is used as the default.
+// But it can be changed to UDP by using command line option "-u".
 
-static const ajn::TransportMask c_transportToUse = ajn::TRANSPORT_TCP;
+static ajn::TransportMask c_transportToUse = ajn::TRANSPORT_TCP;
 
 // Options that can be configured via command-line
 static runmode_t g_runMode = RM_ADVERTISE;
@@ -623,6 +624,7 @@ static void displayUsage(void)
         std::endl << "                             \t(valid only in discovering mode)" <<
         std::endl << "  -time-offset <miliseconds> \tOffset generated timestamps (min: - 32768ms & max: 32767ms)" <<
         std::endl << "  -connect-spec <spec>       \tExplicitly connect to the spec provided" <<
+        std::endl << "  -u                         \tUse UDP transport (default transport is TCP)" <<
         std::endl << "  -h                         \tDisplay usage" <<
         std::endl;
 }
@@ -760,6 +762,8 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
             g_hangAround = true;
         } else if (0 == strcmp("-quiet-advt",  argv[i])) {
             g_advertiseQuietly = true;
+        } else if (0 == strcmp("-u",  argv[i])) {
+            c_transportToUse = ajn::TRANSPORT_UDP;
         } else {
             std::cout << "Unknown option: " << argv[i] << std::endl << std::endl;
             displayUsage();
