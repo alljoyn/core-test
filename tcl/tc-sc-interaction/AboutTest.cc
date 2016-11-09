@@ -453,8 +453,8 @@ TEST_F(AboutTest, TC_Withdrawing_Annnouncement) {
 
     // Wait until the announcement has been received by scBus
     uint16_t remainingWaitTime = WAIT_TIME;
-    while (0 >= testAboutListener->GetNumAnnouncementsReceived() &&
-           0 < remainingWaitTime) {
+    while ((1 > testAboutListener->GetNumAnnouncementsReceived()) &&
+           (0 < remainingWaitTime)) {
         AJ_Sleep(100);
         remainingWaitTime -= 100;
     }
@@ -477,8 +477,8 @@ TEST_F(AboutTest, TC_Withdrawing_Annnouncement) {
 
     // Wait to see if the Announcement is received (it has been cancelled)
     remainingWaitTime = WAIT_TIME;
-    while (0 >= throwAwayAboutListener.GetNumAnnouncementsReceived() &&
-           0 < remainingWaitTime) {
+    while ((0 >= throwAwayAboutListener.GetNumAnnouncementsReceived()) &&
+           (0 < remainingWaitTime)) {
         AJ_Sleep(100);
         remainingWaitTime -= 100;
     }
@@ -491,9 +491,9 @@ TEST_F(AboutTest, TC_Withdrawing_Annnouncement) {
 
     // Wait until both interested parties have received the announcement
     remainingWaitTime = WAIT_TIME;
-    while (1 >= testAboutListener->GetNumAnnouncementsReceived() &&
-           0 >= throwAwayAboutListener.GetNumAnnouncementsReceived() &&
-           0 < remainingWaitTime) {
+    while (((2 > testAboutListener->GetNumAnnouncementsReceived()) ||
+           (1 > throwAwayAboutListener.GetNumAnnouncementsReceived())) &&
+           (0 < remainingWaitTime)) {
         AJ_Sleep(100);
         remainingWaitTime -= 100;
     }
