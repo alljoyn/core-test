@@ -97,8 +97,9 @@ static const uint8_t c_maxWKNPrefixLength = 205;
 // i.  to make life simpler and
 // ii. allow the test program to be compiled against older AllJoyn versions
 // TRANSPORT_TCP is used as the default.
+// But it can be changed to UDP by using command line option "-u".
 
-static const ajn::TransportMask c_transportToUse = ajn::TRANSPORT_TCP;
+static ajn::TransportMask g_transportToUse = ajn::TRANSPORT_TCP;
 
 // Options that can be configured via command-line
 static runmode_t g_runMode = RM_ADVERTISE;
@@ -208,7 +209,7 @@ static qcc::Mutex g_lostAdvLock;
 class DiscoverBL : public ajn::BusListener {
     void FoundAdvertisedName(const char* name, ajn::TransportMask transport, const char* namePrefix) {
         QCC_UNUSED(namePrefix);
-        if (ajn::TRANSPORT_ANY != c_transportToUse && c_transportToUse != transport) {
+        if (ajn::TRANSPORT_ANY != g_transportToUse && g_transportToUse != transport) {
             // Got a FoundAdvertisedName for a transport that this test program
             // is not interested in. Ignore.
             return;
@@ -266,7 +267,7 @@ class DiscoverBL : public ajn::BusListener {
 
     void LostAdvertisedName(const char* name, ajn::TransportMask transport, const char* prefix) {
         QCC_UNUSED(prefix);
-        if (ajn::TRANSPORT_ANY != c_transportToUse && c_transportToUse != transport) {
+        if (ajn::TRANSPORT_ANY != g_transportToUse && g_transportToUse != transport) {
             // Got a LostAdvertisedName for a transport that this test program
             // is not interested in. Ignore.
             return;
@@ -369,12 +370,12 @@ int TestAppMain(const int argc, const char* argv[])
             // Even though the usual sequence of events is to request a name,
             // and then advertise it, this program intentionally does the reverse
             status = g_ajBus->AdvertiseName(g_advertiseQuietly ? ("quiet@" + nameToAdvertise).c_str() : nameToAdvertise.c_str(),
-                                            c_transportToUse);
+                                            g_transportToUse);
 
             if (ER_OK != status) {
                 // No point in proceeding further, when name wasn't successfully
                 // advertised
-                QCC_LogError(status, ("BusAttachment::AdvertiseName failed for name: %s transport: 0x%x", nameToAdvertise.c_str(), c_transportToUse));
+                QCC_LogError(status, ("BusAttachment::AdvertiseName failed for name: %s transport: 0x%x", nameToAdvertise.c_str(), g_transportToUse));
                 return EXIT_SOFTWARE;
             }
 
@@ -405,10 +406,10 @@ int TestAppMain(const int argc, const char* argv[])
                 } else {
                     // Done waiting the necessary amount of time
                     status = g_ajBus->CancelAdvertiseName(nameToAdvertise.c_str(),
-                                                          c_transportToUse);
+                                                          g_transportToUse);
 
                     if (ER_OK != status) {
-                        QCC_LogError(status, ("BusAttachment::CancelAdvertiseName failed for name: %s, transport: 0x%x", nameToAdvertise.c_str(), c_transportToUse));
+                        QCC_LogError(status, ("BusAttachment::CancelAdvertiseName failed for name: %s, transport: 0x%x", nameToAdvertise.c_str(), g_transportToUse));
                     }
 
                     status = g_ajBus->ReleaseName(nameToAdvertise.c_str());
@@ -453,10 +454,10 @@ int TestAppMain(const int argc, const char* argv[])
                                                               g_fixedNameAdvertisement);
 
                     status = g_ajBus->CancelAdvertiseName(nameAdvertised.c_str(),
-                                                          c_transportToUse);
+                                                          g_transportToUse);
 
                     if (ER_OK != status) {
-                        QCC_LogError(status, ("BusAttachment::CancelAdvertiseName failed for name: %s transport: 0x%x", nameAdvertised.c_str(), c_transportToUse));
+                        QCC_LogError(status, ("BusAttachment::CancelAdvertiseName failed for name: %s transport: 0x%x", nameAdvertised.c_str(), g_transportToUse));
                     }
 
                     status = g_ajBus->ReleaseName(nameAdvertised.c_str());
@@ -500,10 +501,10 @@ int TestAppMain(const int argc, const char* argv[])
         // Api duration computation doesn't need the fancy MyGetTimestamp64()
         g_findStartTimestamp = qcc::GetTimestamp64();
 
-        status = g_ajBus->FindAdvertisedNameByTransport(g_wellKnownNamePrefix.c_str(), c_transportToUse);
+        status = g_ajBus->FindAdvertisedNameByTransport(g_wellKnownNamePrefix.c_str(), g_transportToUse);
         if (ER_OK != status) {
             // No point in proceeding further, when FindAdvertiseName wasn't ok
-            QCC_LogError(status, ("BusAttachment::FindAdvertisedNameByTransport failed for prefix: %s, transport: 0x%x", g_wellKnownNamePrefix.c_str(), c_transportToUse));
+            QCC_LogError(status, ("BusAttachment::FindAdvertisedNameByTransport failed for prefix: %s, transport: 0x%x", g_wellKnownNamePrefix.c_str(), g_transportToUse));
             return EXIT_SOFTWARE;
         }
 
@@ -532,9 +533,9 @@ int TestAppMain(const int argc, const char* argv[])
             std::cout << g_advtdiscovTTL << "ms have elapsed while discovering. Exiting..." << std::endl;
         } else {
             // All names have been discovered
-            status = g_ajBus->CancelFindAdvertisedNameByTransport(g_wellKnownNamePrefix.c_str(), c_transportToUse);
+            status = g_ajBus->CancelFindAdvertisedNameByTransport(g_wellKnownNamePrefix.c_str(), g_transportToUse);
             if (ER_OK != status) {
-                QCC_LogError(status, ("BusAttachment::CancelFindAdvertisedNameByTransport failed for name: %s, transport: 0x%x", g_wellKnownNamePrefix.c_str(), c_transportToUse));
+                QCC_LogError(status, ("BusAttachment::CancelFindAdvertisedNameByTransport failed for name: %s, transport: 0x%x", g_wellKnownNamePrefix.c_str(), g_transportToUse));
             }
         }
     }
@@ -623,6 +624,7 @@ static void displayUsage(void)
         std::endl << "                             \t(valid only in discovering mode)" <<
         std::endl << "  -time-offset <miliseconds> \tOffset generated timestamps (min: - 32768ms & max: 32767ms)" <<
         std::endl << "  -connect-spec <spec>       \tExplicitly connect to the spec provided" <<
+        std::endl << "  -u                         \tUse UDP transport (default transport is TCP)" <<
         std::endl << "  -h                         \tDisplay usage" <<
         std::endl;
 }
@@ -760,6 +762,8 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
             g_hangAround = true;
         } else if (0 == strcmp("-quiet-advt",  argv[i])) {
             g_advertiseQuietly = true;
+        } else if (0 == strcmp("-u",  argv[i])) {
+            g_transportToUse = ajn::TRANSPORT_UDP;
         } else {
             std::cout << "Unknown option: " << argv[i] << std::endl << std::endl;
             displayUsage();
