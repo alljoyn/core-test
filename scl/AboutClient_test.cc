@@ -23,14 +23,16 @@
 #include <alljoyn/Session.h>
 #include <alljoyn/SessionListener.h>
 
-#include <qcc/String.h>
 #include <qcc/time.h>
 #include <qcc/Debug.h>
+#include <qcc/String.h>
+#include <qcc/StringUtil.h>
 #include <qcc/Thread.h>
 
 #include <signal.h>
 #include <stdio.h>
- #include <iomanip>
+#include <iomanip>
+#include <limits>
 #include <map>
 
 
@@ -291,16 +293,18 @@ static void usage(void)
 {
     cout << "Usage: AboutClient_test \n" << endl;
     cout << "Options:" << endl;
-    cout << "   -f <interface-name> = Interface name to be found" << endl;
-    cout << "   -s                  = Join session accept announcement is received" << endl;
-    cout << "   -time <time of execution> = Assign time limit of the for the program to execute in miliseconds." << endl;
-    cout << "\n\t\t(com.example.about.feature.interface.sample by default)" << endl;
+    cout << "   -f <interface-name>       = Interface name to be found" << endl;
+    cout << "                               (com.example.about.feature.interface.sample by default)." << endl;
+    cout << "   -s                        = Join session accept announcement is received." << endl;
+    cout << "   -c <number-of-threads>    = Concurrency. Maximum number of threads handling callbacks (default is 50)." << endl;
+    cout << "   -time <time-of-execution> = Assign time limit of the for the program to execute in milliseconds." << endl;
 }
 
 
 int CDECL_CALL main(int argc, char** argv)
 {
     uint32_t executionTime = 0;
+    uint32_t concurrency = 50;
 
     for (int i = 1; i < argc; ++i) {
         if (0 == strcmp("-h", argv[i])) {
@@ -325,8 +329,22 @@ int CDECL_CALL main(int argc, char** argv)
                 executionTime = atoi(argv[i]);
             }
         } else if (0 == strcmp("-s", argv[i])) {
-            ++i;
             joinsession = true;
+        } else if (0 == strcmp("-c", argv[i])) {
+            ++i;
+            if (i == argc) {
+                cout << "option " << argv[i - 1] << " requires a parameter" << endl;
+                usage();
+                exit(1);
+            } else {
+                const uint32_t badValue = numeric_limits<uint32_t>::max();
+                concurrency = qcc::StringToU32(argv[i], 0, badValue);
+                if (concurrency == badValue) {
+                    cout << "Wrong value of option " << argv[i - 1] << endl;
+                    usage();
+                    exit(1);
+                }
+            }
         } else {
             cout << "Unknown option " << argv[i] << endl;
             usage();
@@ -351,7 +369,7 @@ int CDECL_CALL main(int argc, char** argv)
 
     QStatus status;
 
-    g_bus = new BusAttachment("AboutServiceTest", true);
+    g_bus = new BusAttachment("AboutServiceTest", true, concurrency);
 
     status = g_bus->Start();
     if (ER_OK == status) {
