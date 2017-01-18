@@ -37,9 +37,9 @@ using namespace qcc;
 using namespace ajn;
 
 /** Static top level message bus object */
-static BusAttachment* g_msgBus = NULL;
-static ThreadPool*threadPool = NULL;
-static Event*g_discoverEvent = NULL;
+static BusAttachment* g_msgBus = nullptr;
+static ThreadPool* threadPool = nullptr;
+static Event* g_discoverEvent = nullptr;
 static volatile bool g_interrupt = false;
 
 static bool UDP = false;
@@ -121,8 +121,6 @@ class MyBusListener : public BusListener, public SessionPortListener, public Ses
         printf("\n SessionLost(%08x) \n", sessionId);
         g_server_complete = true;
     }
-
-
 };
 
 /** Static bus listener */
@@ -133,7 +131,6 @@ class FileTransfer : public Runnable, public BusObject {
   public:
 
     FileTransfer(const InterfaceDescription::Member* my_signal_member, const InterfaceDescription::Member* my_ftp_over_member, SessionId sessionId, String fileName) :
-        //BusObject(::org::alljoyn::file_transfer::ObjectPath),
         BusObject("/a/b"),
         my_signal_member(my_signal_member),
         my_ftp_over_member(my_ftp_over_member),
@@ -143,8 +140,7 @@ class FileTransfer : public Runnable, public BusObject {
     virtual void Run(void) {
 
         QStatus status = ER_OK;
-        uint8_t*buf = NULL;
-        buf = new uint8_t[g_payload];
+        uint8_t* buf = new uint8_t[g_payload];
 
         uint8_t flags = 0;
         srand(1);
@@ -152,11 +148,11 @@ class FileTransfer : public Runnable, public BusObject {
         if (strcmp(fileName.c_str(), "throughput") != 0) {
 
             MsgArg msgbuf;
-            FILE*inpf = NULL;
+            FILE* inpf = nullptr;
             inpf = fopen(g_FileName.c_str(), "rb");
             int num;
 
-            if (inpf == NULL) {
+            if (inpf == nullptr) {
                 QCC_LogError(ER_FAIL, ("Cannot open File - %s ", g_FileName.c_str()));
                 status = ER_FAIL;
             }
@@ -165,13 +161,12 @@ class FileTransfer : public Runnable, public BusObject {
                 printf("\nStarting file transfer using signals..\n");
                 uint32_t t_payload = g_payload;
                 while (!feof(inpf)) {
-
                     if (g_random) {
                         t_payload = 1 + (rand() % g_payload);
                     }
                     num = fread(buf, 1, t_payload, inpf);
                     msgbuf.Set("ay", num, buf);
-                    status = Signal(NULL, sessionId, *my_signal_member, &msgbuf, 1, 0, flags);
+                    status = Signal(nullptr, sessionId, *my_signal_member, &msgbuf, 1, 0, flags);
                     if (ER_OK != status) {
                         QCC_LogError(status, ("Error sending signal. File transfer aborted."));
                         break;
@@ -180,11 +175,10 @@ class FileTransfer : public Runnable, public BusObject {
                 fclose(inpf);
 
                 //Send the my_ftp_over  signal
-                status = Signal(NULL, sessionId, *my_ftp_over_member, NULL, 0, 0, 0);
+                status = Signal(nullptr, sessionId, *my_ftp_over_member, nullptr, 0, 0, 0);
                 if (ER_OK != status) {
                     QCC_LogError(status, ("Error sending my_ftp_over signal. DISASTER!"));
                 }
-
             }
         } else if (strcmp(fileName.c_str(), "throughput") == 0) {
             /* Throughput check. */
@@ -198,7 +192,7 @@ class FileTransfer : public Runnable, public BusObject {
                 arg[1].Set("ay", t_payload, buf);
 
                 arg[0].Set("i", i);
-                status = Signal(NULL, sessionId, *my_signal_member, arg, 2, g_rate, flags);
+                status = Signal(nullptr, sessionId, *my_signal_member, arg, 2, g_rate, flags);
                 if (ER_OK != status) {
                     QCC_LogError(status, ("Error sending signal. Throughput check aborted."));
                     break;
@@ -209,15 +203,12 @@ class FileTransfer : public Runnable, public BusObject {
                 }
             }
             //Send the my_ftp_over  signal
-            status = Signal(NULL, sessionId, *my_ftp_over_member, NULL, 0, 0, 0);
+            status = Signal(nullptr, sessionId, *my_ftp_over_member, nullptr, 0, 0, 0);
             if (ER_OK != status) {
                 QCC_LogError(status, ("Error sending my_ftp_over signal. DISASTER!"));
             }
-
         }
-
         delete buf;
-
     }
 
   private:
@@ -225,7 +216,6 @@ class FileTransfer : public Runnable, public BusObject {
     const InterfaceDescription::Member* my_ftp_over_member;
     SessionId sessionId;
     String fileName;
-
 };
 
 
@@ -260,7 +250,6 @@ class LocalTestObject : public BusObject {
         if (ER_OK != status) {
             QCC_LogError(status, ("Failed to register method handlers for LocalTestObject."));
         }
-
     }
 
     void ObjectRegistered(void)
@@ -279,13 +268,14 @@ class LocalTestObject : public BusObject {
 
         /* Check if the file exists. */
         if (strcmp(fileName.c_str(), "throughput") != 0) {
-            FILE*tmp = NULL;
+            FILE* tmp = nullptr;
             tmp = fopen(g_FileName.c_str(), "rb");
-            if (tmp == NULL) {
+            if (tmp == nullptr) {
                 status = ER_NONE;
+                QCC_LogError(status, ("TransferFile: file '%s' could not be opened.", fileName.c_str()));
+            } else {
+                fclose(tmp);
             }
-            //close the file pointer whatsover
-            fclose(tmp);
         }
 
         MsgArg arg;
@@ -306,7 +296,7 @@ class LocalTestObject : public BusObject {
 
         /* If everything is ok, spawn a new thread here. */
         if (status == ER_OK) {
-            Ptr<FileTransfer> runnable = NULL;
+            Ptr<FileTransfer> runnable = nullptr;
             if (strcmp(fileName.c_str(), "throughput") != 0) {
                 /* Spawn the file transfer thread. */
                 runnable = NewPtr<FileTransfer>(my_signal_member, my_ftp_over_member, msg->GetSessionId(), fileName);
@@ -316,10 +306,8 @@ class LocalTestObject : public BusObject {
                 runnable = NewPtr<FileTransfer>(my_throughput_signal_member, my_ftp_over_member, msg->GetSessionId(), fileName);
                 g_msgBus->RegisterBusObject(*runnable);
             }
-
             status = threadPool->Execute(runnable);
         }
-
     }
 
   private:
@@ -328,7 +316,6 @@ class LocalTestObject : public BusObject {
     const InterfaceDescription::Member* my_ftp_over_member;
     const InterfaceDescription::Member* my_sender_ok_member;
     String fileName;
-
 };
 
 /* For the client */
@@ -356,19 +343,19 @@ class ClientObject : public MessageReceiver {
             status =  g_msgBus->RegisterSignalHandler(this,
                                                       static_cast<MessageReceiver::SignalHandler>(&ClientObject::FileSignalHandler),
                                                       my_signal_member,
-                                                      NULL);
+                                                      nullptr);
         } else {
             printf("Registering signal handler for my_throughput_signal. \n");
             status =  g_msgBus->RegisterSignalHandler(this,
                                                       static_cast<MessageReceiver::SignalHandler>(&ClientObject::ThroughputSignalHandler),
                                                       my_throughput_signal_member,
-                                                      NULL);
+                                                      nullptr);
         }
 
         status =  g_msgBus->RegisterSignalHandler(this,
                                                   static_cast<MessageReceiver::SignalHandler>(&ClientObject::FTPOverSignalHandler),
                                                   my_ftp_over_member,
-                                                  NULL);
+                                                  nullptr);
 
         if (status != ER_OK) {
             QCC_LogError(status, ("Failed to register signal handler for %s.name", ::org::alljoyn::file_transfer::InterfaceName));
@@ -406,7 +393,6 @@ class ClientObject : public MessageReceiver {
         uint32_t i(msg->GetArg(0)->v_int32);
         uint32_t length = msg->GetArg(1)->v_scalarArray.numElements;
 
-
         if (!g_ttl) {
             if (count != i) {
                 printf("Missing signal and infinite ttl. Danger !  expected: %u, got  %u\n", count, i);
@@ -426,7 +412,6 @@ class ClientObject : public MessageReceiver {
             }
             count = i + 1;
         }
-
     }
 
     void FTPOverSignalHandler(const InterfaceDescription::Member*member,
@@ -446,10 +431,8 @@ class ClientObject : public MessageReceiver {
         }
     }
 
-
-
   public:
-    FILE*opf;
+    FILE* opf;
     const InterfaceDescription::Member* my_signal_member;
     const InterfaceDescription::Member* my_throughput_signal_member;
     const InterfaceDescription::Member* my_ftp_over_member;
@@ -619,21 +602,21 @@ int CDECL_CALL main(int argc, char**argv)
 
     g_msgBus->RegisterBusListener(g_busListener);
 
-    InterfaceDescription* Intf = NULL;
+    InterfaceDescription* Intf = nullptr;
     status = g_msgBus->CreateInterface(::org::alljoyn::file_transfer::InterfaceName, Intf);
     if (ER_OK != status) {
         QCC_LogError(status, ("Cannot create interface on bus attachment."));
         return status;
     }
 
-    Intf->AddSignal("my_ftp_signal", "ay", NULL, 0);
-    Intf->AddSignal("my_throughput_signal", "iay", NULL, 0);
-    Intf->AddSignal("my_ftp_over", NULL, NULL, 0);
-    Intf->AddSignal("my_sender_ok", NULL, NULL, 0);
+    Intf->AddSignal("my_ftp_signal", "ay", nullptr, 0);
+    Intf->AddSignal("my_throughput_signal", "iay", nullptr, 0);
+    Intf->AddSignal("my_ftp_over", nullptr, nullptr, 0);
+    Intf->AddSignal("my_sender_ok", nullptr, nullptr, 0);
     Intf->AddMethod("my_ftp_start", "s", "s", "i,o", 0);
     Intf->Activate();
 
-    LocalTestObject*testObj = NULL;
+    LocalTestObject* testObj = nullptr;
     if (server) {
         /* Start the thread pool. */
         threadPool = new ThreadPool("FTPSERVERTHREAD", 2);
@@ -732,7 +715,7 @@ int CDECL_CALL main(int argc, char**argv)
             QCC_LogError(status, ("Error talking to the service."));
         } else if (ER_OK == status) {
 
-            char*value = NULL;
+            char* value = nullptr;
             const MsgArg* arg((reply->GetArg(0)));
             arg->Get("s", &value);
 
@@ -768,6 +751,10 @@ int CDECL_CALL main(int argc, char**argv)
     /* Clean up msg bus */
     if (g_msgBus) {
         delete g_msgBus;
+    }
+
+    if (testObj) {
+        delete testObj;
     }
 
     /* Clean up the thread pool. */
