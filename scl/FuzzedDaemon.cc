@@ -257,7 +257,7 @@ int TestAppMain() {
     //Create a RemoteEndpoint using a pipe
     TestPipe stream;
     TestPipe* pStream = &stream;
-    RemoteEndpoint rep(*g_msgBus, falsiness, qcc::String::Empty, pStream);
+    RemoteEndpoint rep(*g_msgBus, falsiness, pStream);
     uint8_t* buf = NULL;
     size_t actualBytes = 0;
 
