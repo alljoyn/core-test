@@ -1,22 +1,22 @@
 /******************************************************************************
  *    Copyright (c) Open Connectivity Foundation (OCF), AllJoyn Open Source
  *    Project (AJOSP) Contributors and others.
- *    
+ *
  *    SPDX-License-Identifier: Apache-2.0
- *    
+ *
  *    All rights reserved. This program and the accompanying materials are
  *    made available under the terms of the Apache License, Version 2.0
  *    which accompanies this distribution, and is available at
  *    http://www.apache.org/licenses/LICENSE-2.0
- *    
+ *
  *    Copyright (c) Open Connectivity Foundation and Contributors to AllSeen
  *    Alliance. All rights reserved.
- *    
+ *
  *    Permission to use, copy, modify, and/or distribute this software for
  *    any purpose with or without fee is hereby granted, provided that the
  *    above copyright notice and this permission notice appear in all
  *    copies.
- *    
+ *
  *    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
  *    WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
  *    WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
@@ -25,7 +25,7 @@
  *    PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
  *    TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  *    PERFORMANCE OF THIS SOFTWARE.
-******************************************************************************/
+ ******************************************************************************/
 
 // These are a set of tests which involve RouterNode-to-RouterNode scenarios
 // launch alljoyn-daemon before running tests
@@ -691,7 +691,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     SessionId sessionId = 0;
     status = BusPtrB->JoinSession(listener.NameToMatch.c_str(), sessionPortListenerA.port, NULL, sessionId, opts);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
-    
+
     // wait for to find name, 5 second max
     for (msec = 0; msec < SESSION_DELAY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionJoined) {
@@ -718,7 +718,7 @@ TEST_F(R2RTest, Presence_DetectionTwoNodesAfterLeaveSession) {
     //Leave Session
     status = BusPtrB->LeaveSession(sessionId);
     EXPECT_EQ(ER_OK, status) << "  Actual Status: " << QCC_StatusText(status);
-    
+
     //Wait for SessionLost
     for (msec = 0; msec < SESSION_DELAY_TIME; msec += WAIT_TIME) {
         if (sessionPortListenerA.sessionLost) {
