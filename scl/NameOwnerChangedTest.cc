@@ -164,8 +164,8 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
     void NameOwnerChanged(const char* name, const char* oldOwner, const char* newOwner) {
         printf("NameOwnerChanged(name=%s,oldOwner=%s,newOwner=%s)\n", name, oldOwner, newOwner);
         this->alias = name;
-        this->oldOwner = oldOwner;
-        this->newOwner = newOwner;
+        this->oldOwner = (oldOwner == nullptr ? "" : oldOwner);
+        this->newOwner = (newOwner == nullptr ? "" : newOwner);
         ++signalled;
     }
 
@@ -215,6 +215,17 @@ class NameOwnerChangedTest : public testing::Test, public BusListener, public Se
         }
         if (ER_OK == status) {
             status = otherBus->AdvertiseName("other.bus.alias", TRANSPORT_ANY);
+        }
+        if (qcc::String(connectSpec) != "null:") {
+            size_t first = (otherBus->GetUniqueName()).find_first_of(":");
+            size_t last = (otherBus->GetUniqueName()).find_last_of_std(".");
+            size_t npos = (last - first) - 1;
+            qcc::String strTestA = (bus->GetUniqueName()).substr(1, npos);
+            qcc::String strTestB = (otherBus->GetUniqueName()).substr(1, npos);
+            if (strTestA == strTestB) {
+                cout << "This test is invalid as alljoyn-daemon is not active!" << endl;
+                status = ER_INVALID_APPLICATION_STATE;
+            }
         }
         return status;
     }
