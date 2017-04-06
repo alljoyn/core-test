@@ -752,7 +752,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
     QCC_ASSERT(status == ER_OK);
 
     //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore");
     QCC_ASSERT(status == ER_OK);
 
     //Set manifest template, ASACORE-2341 if no manifest template set, then no SLS emitted
@@ -978,7 +978,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
 
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore");
     QCC_ASSERT(status == ER_OK);
 
     //Install a Policy

@@ -641,7 +641,7 @@ class SecurityPolicyRulesTest : public testing::Test {
                                                                         3600,
                                                                         SCMembershipCertificate[0]
                                                                         ));
-        EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, false));
+        EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL));
         EXPECT_EQ(ER_OK, sapWithSC.InstallMembership(SCMembershipCertificate, 1));
 
         qcc::MembershipCertificate TCMembershipCertificate[1];
@@ -5693,7 +5693,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_1_SC)
     EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
 
     /* We should be using a ECDHE_NULL based session */
-    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL));
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
 
     SessionOpts opts;
@@ -5845,7 +5845,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_1_TC)
 
     /* We should be using a ECDHE_NULL based session */
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
-    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL));
 
     SessionOpts opts;
     SessionId TCToSCSessionId;
@@ -6018,7 +6018,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_2_SC)
     EXPECT_EQ(ER_OK, sapWithTC.UpdatePolicy(TCPolicy));
 
     /* We should be using a ECDHE_NULL based session */
-    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL));
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
 
     SessionOpts opts;
@@ -6170,7 +6170,7 @@ TEST_F(SecurityPolicyRulesTest, PolicyRules_DENY_2_TC)
 
     /* We should be using a ECDHE_NULL based session */
     EXPECT_EQ(ER_OK, TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL"));
-    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", managerAuthListener, NULL));
 
     SessionOpts opts;
     SessionId TCToSCSessionId;
