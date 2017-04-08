@@ -896,7 +896,7 @@ void SecurityWildCardPolicyRulesTest::SetUp()
                                                                     3600,
                                                                     SCMembershipCertificate[0]
                                                                     ));
-    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL, false));
+    EXPECT_EQ(ER_OK, SCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", managerAuthListener, NULL));
     EXPECT_EQ(ER_OK, sapWithSC.InstallMembership(SCMembershipCertificate, 1));
 
     qcc::MembershipCertificate TCMembershipCertificate[1];

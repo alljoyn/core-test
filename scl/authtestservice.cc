@@ -201,7 +201,7 @@ int CDECL_CALL main() {
     status = g_msgBus->Connect();
     QCC_ASSERT(status == ER_OK);
 
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA ALLJOYN_ECDHE_PSK", new MyAuthListener(), "nara-service-test-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL ALLJOYN_ECDHE_ECDSA ALLJOYN_ECDHE_PSK", new MyAuthListener(), "nara-service-test-keystore");
     QCC_ASSERT(status == ER_OK);
 
     status = g_msgBus->RequestName("innocent.app", DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);

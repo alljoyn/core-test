@@ -382,10 +382,10 @@ int CDECL_CALL main(int argc, char* argv[]) {
     QCC_ASSERT(status == ER_OK);
 
     if (g_server) {
-        status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authserver-keystore", false);
+        status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authserver-keystore");
         QCC_ASSERT(status == ER_OK);
     } else {
-        status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authclient-keystore", false);
+        status = g_msgBus->EnablePeerSecurity(authMechanism.c_str(), new MyAuthListener(), "authclient-keystore");
         QCC_ASSERT(status == ER_OK);
     }
 
@@ -471,14 +471,14 @@ int CDECL_CALL main(int argc, char* argv[]) {
         char option[2];
         int i = scanf("%s", option);
         QCC_UNUSED(i);
-        status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authserver-keystore", false);
+        status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authserver-keystore");
         QCC_ASSERT(status == ER_OK);
     } else {
         printf("Press Y to EnablePeerSecurity for app-app \n");
         char option[2];
         int i = scanf("%s", option);
         QCC_UNUSED(i);
-        status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authclient-keystore", false);
+        status = g_msgBus->EnablePeerSecurity(iauthMechanism.c_str(), new MyAuthListener(), "authclient-keystore");
         QCC_ASSERT(status == ER_OK);
     }
 
