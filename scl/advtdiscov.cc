@@ -129,6 +129,7 @@ static bool g_advertiseSequentially = false;
 static bool g_fixedNameAdvertisement = false; // append timestamp by default
 static bool g_hangAround = false; // Wait for 45s before exiting the advertiser
 static bool g_advertiseQuietly = false;
+static bool g_advertiseBeforeRWKN = true;
 
 // Number of threads to use while creating discoverer BusAttachment
 //
@@ -363,6 +364,8 @@ int TestAppMain(const int argc, const char* argv[])
         (g_hangAround ? "enabled" : "disabled") << std::endl <<
             "INFO: Flag to advertise quietly is " <<
         (g_advertiseQuietly ? "enabled" : "disabled") << std::endl <<
+            "INFO: Flag to advertise WKN before requesting WKN is " <<
+        (g_advertiseBeforeRWKN ? "enabled" : "disabled") << std::endl <<
             std::endl;
 
         // Store the timestamps at which each name is advertised
@@ -380,25 +383,41 @@ int TestAppMain(const int argc, const char* argv[])
                                                        g_advtdiscovTTL,
                                                        g_fixedNameAdvertisement);
 
-            // Even though the usual sequence of events is to request a name,
-            // and then advertise it, this program intentionally does the reverse
-            status = g_ajBus->AdvertiseName(g_advertiseQuietly ? ("quiet@" + nameToAdvertise).c_str() : nameToAdvertise.c_str(),
-                                            g_transportToUse);
+            if (g_advertiseBeforeRWKN) {
+                // Even though the usual sequence of events is to request a name,
+                // and then advertise it, this program intentionally does the reverse
+                status = g_ajBus->AdvertiseName(g_advertiseQuietly ? ("quiet@" + nameToAdvertise).c_str() : nameToAdvertise.c_str(),
+                                                g_transportToUse);
 
-            if (ER_OK != status) {
-                // No point in proceeding further, when name wasn't successfully
-                // advertised
-                QCC_LogError(status, ("BusAttachment::AdvertiseName failed for name: %s transport: 0x%x", nameToAdvertise.c_str(), g_transportToUse));
-                return EXIT_SOFTWARE;
-            }
-
-            status = g_ajBus->RequestName(nameToAdvertise.c_str(),
-                                          DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
-
-            if (ER_OK != status) {
-                // No point in proceeding further, when one didn't get the name
-                QCC_LogError(status, ("BusAttachment::RequestName failed for name: %s", nameToAdvertise.c_str()));
-                return EXIT_SOFTWARE;
+                if (ER_OK != status) {
+                    // No point in proceeding further, when name wasn't successfully
+                    // advertised
+                    QCC_LogError(status, ("BusAttachment::AdvertiseName failed for name: %s transport: 0x%x", nameToAdvertise.c_str(), g_transportToUse));
+                    return EXIT_SOFTWARE;
+                }
+                status = g_ajBus->RequestName(nameToAdvertise.c_str(),
+                                              DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
+                if (ER_OK != status) {
+                    // No point in proceeding further, when one didn't get the name
+                    QCC_LogError(status, ("BusAttachment::RequestName failed for name: %s", nameToAdvertise.c_str()));
+                    return EXIT_SOFTWARE;
+                }
+            } else {
+                status = g_ajBus->RequestName(nameToAdvertise.c_str(),
+                                              DBUS_NAME_FLAG_REPLACE_EXISTING | DBUS_NAME_FLAG_DO_NOT_QUEUE);
+                if (ER_OK != status) {
+                    // No point in proceeding further, when one didn't get the name
+                    QCC_LogError(status, ("BusAttachment::RequestName failed for name: %s", nameToAdvertise.c_str()));
+                    return EXIT_SOFTWARE;
+                }
+                status = g_ajBus->AdvertiseName(g_advertiseQuietly ? ("quiet@" + nameToAdvertise).c_str() : nameToAdvertise.c_str(),
+                                                g_transportToUse);
+                if (ER_OK != status) {
+                    // No point in proceeding further, when name wasn't successfully
+                    // advertised
+                    QCC_LogError(status, ("BusAttachment::AdvertiseName failed for name: %s transport: 0x%x", nameToAdvertise.c_str(), g_transportToUse));
+                    return EXIT_SOFTWARE;
+                }
             }
 
             std::cout << "Advertising the name (index = " << (uint16_t) i << "): " << nameToAdvertise.c_str() <<
@@ -637,6 +656,8 @@ static void displayUsage(void)
         std::endl << "                             \t(valid only in discovering mode)" <<
         std::endl << "  -time-offset <miliseconds> \tOffset generated timestamps (min: - 32768ms & max: 32767ms)" <<
         std::endl << "  -connect-spec <spec>       \tExplicitly connect to the spec provided" <<
+        std::endl << "  -rkwn-before-advertise     \tRequest WKN before advertising WKN" <<
+        std::endl << "                             \t(valid only in advertising mode)" <<
         std::endl << "  -u                         \tUse UDP transport (default transport is TCP)" <<
         std::endl << "  -h                         \tDisplay usage" <<
         std::endl;
@@ -777,6 +798,8 @@ static void parseCmdLineArgs(const int argc, const char* argv[])
             g_advertiseQuietly = true;
         } else if (0 == strcmp("-u",  argv[i])) {
             g_transportToUse = ajn::TRANSPORT_UDP;
+        } else if (0 == strcmp("-rkwn-before-advertise",  argv[i])) {
+            g_advertiseBeforeRWKN = false;
         } else {
             std::cout << "Unknown option: " << argv[i] << std::endl << std::endl;
             displayUsage();
