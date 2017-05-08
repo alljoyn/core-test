@@ -7,22 +7,22 @@
 /******************************************************************************
  *    Copyright (c) Open Connectivity Foundation (OCF), AllJoyn Open Source
  *    Project (AJOSP) Contributors and others.
- *    
+ *
  *    SPDX-License-Identifier: Apache-2.0
- *    
+ *
  *    All rights reserved. This program and the accompanying materials are
  *    made available under the terms of the Apache License, Version 2.0
  *    which accompanies this distribution, and is available at
  *    http://www.apache.org/licenses/LICENSE-2.0
- *    
+ *
  *    Copyright (c) Open Connectivity Foundation and Contributors to AllSeen
  *    Alliance. All rights reserved.
- *    
+ *
  *    Permission to use, copy, modify, and/or distribute this software for
  *    any purpose with or without fee is hereby granted, provided that the
  *    above copyright notice and this permission notice appear in all
  *    copies.
- *    
+ *
  *    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
  *    WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
  *    WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
@@ -31,7 +31,7 @@
  *    PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
  *    TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  *    PERFORMANCE OF THIS SOFTWARE.
-******************************************************************************/
+ ******************************************************************************/
 #include <qcc/platform.h>
 
 #include <signal.h>
@@ -81,7 +81,7 @@ static KeyInfoNISTP256 g_cakeyInfo;
 static KeyInfoNISTP256 g_asgakeyInfo;
 static ECCPrivateKey g_caPrivateKey;
 static ECCPublicKey g_caPublicKey;
-static GUID128 g_asgaGUID;
+static GUID128 g_asgaGUID(0);
 static String g_wellKnownName = "";
 static qcc::CertificateX509 g_CACert;
 
@@ -679,14 +679,6 @@ class MyAuthListener : public AuthListener {
 int CDECL_CALL main(int argc, char* argv[]) {
 
     QStatus status = ER_OK;
-    setCAKeys();
-    //GUID used by ASGA and this GUID should be persistent.
-    GUID128 asgaGUID("123456785484");
-    setASGAGUID(asgaGUID);
-
-    //Populate the CA Cert;
-    CreateCACert();
-    convertPEMtoDER();
 
     if (AllJoynInit() != ER_OK) {
         return 1;
@@ -722,11 +714,27 @@ int CDECL_CALL main(int argc, char* argv[]) {
         }
     }
 
+    setCAKeys();
+    //GUID used by ASGA and this GUID should be persistent.
+    GUID128 asgaGUID("123456785484");
+    setASGAGUID(asgaGUID);
+
+    //Populate the CA Cert;
+    CreateCACert();
+    convertPEMtoDER();
+
     /* Create message bus */
     g_msgBus = new BusAttachment("security-manager", true);
     status = g_msgBus->Start();
     QCC_ASSERT(status == ER_OK);
     status = g_msgBus->Connect();
+    QCC_ASSERT(status == ER_OK);
+
+    status = g_msgBus->RegisterApplicationStateListener(appStateListener);
+    QCC_ASSERT(status == ER_OK);
+
+    //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore");
     QCC_ASSERT(status == ER_OK);
 
     printf("Testing PermissionConfigurator functions.. \n");
@@ -747,13 +755,6 @@ int CDECL_CALL main(int argc, char* argv[]) {
     status = pc1.GetSigningPublicKey(keyInfo);
     printf("Before calling EPS, calling GetSigningPublicKey  %s \n", QCC_StatusText(status));
     printf("End of testing PermissionConfigurator functions.. \n\n\n\n\n");
-
-    status = g_msgBus->RegisterApplicationStateListener(appStateListener);
-    QCC_ASSERT(status == ER_OK);
-
-    //I have enabled peer security for NULL mechanism only. This is because, the master secret immediately expires after successful auth.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_NULL", new MyAuthListener(), "security-manager-keystore", false);
-    QCC_ASSERT(status == ER_OK);
 
     //Set manifest template, ASACORE-2341 if no manifest template set, then no SLS emitted
     // All Inclusive manifest template
@@ -870,8 +871,9 @@ int CDECL_CALL main(int argc, char* argv[]) {
     }
 
     printf("Waiting for State notification from service.. \n");
-    while (!g_recd)
+    while (!g_recd) {
         qcc::Sleep(200);
+    }
 
     //Create a security proxy for service side
     SecurityApplicationProxy securityAppProxy(*g_msgBus, g_appUniqueName.c_str(), g_sessionId);
@@ -978,7 +980,7 @@ int CDECL_CALL main(int argc, char* argv[]) {
 
     //The problem is, the session between service and client could be NULL based or PASK baded during Claiming. However, that is not enough for doing management operations.
     // For management operations, you need a ECDSA based session. Hence, call EPS again with ECDSA enabled.
-    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore", false);
+    status = g_msgBus->EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", new MyAuthListener(), "security-manager-keystore");
     QCC_ASSERT(status == ER_OK);
 
     //Install a Policy
