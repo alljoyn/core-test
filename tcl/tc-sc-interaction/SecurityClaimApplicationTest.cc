@@ -1866,13 +1866,13 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
  * Verify that when admin resets the app. bus, the state notification is emitted
  *     and is received by the secondary bus.
  * Verify that Secondary bus gets the state notification.
- * The state should be "Claimable"
+ * The state should be "NOT_CLAIMABLE" since there is no default policy
  * publickey algorithm = 0
  * publickey curveIdentifier = 0
  * publickey xCo-ordinate and yCo-ordinate are populated and are non-empty and
  *     are preserved and are same as before.
  */
-TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_claimed_then_reset_peer)
+TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_then_reset_peer)
 {
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
@@ -1922,7 +1922,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     ECCPublicKey TCPublicKey = *(appStateListener.publicKeys.front().GetPublicKey());
     appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.front());
+    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
 
     //verify we read all the signals
@@ -1999,7 +1999,39 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     appStateListener.states.pop();
 
     //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0) << "The Notification State signal was sent more times than expected.";
+    EXPECT_TRUE(appStateListener.busNames.empty() && appStateListener.publicKeys.empty() && appStateListener.states.empty()) << "The Notification State signal was sent more times than expected.";
+
+    //Create certificate for secruityManager
+    IdentityCertificate identityCertChainToClaimAdmin[1];
+    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
+                                                                  "0",
+                                                                  securityManagerGuid.ToString(),
+                                                                  securityManagerKey.GetPublicKey(),
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChainToClaimAdmin[0],
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
+
+    SecurityApplicationProxy sapWithManagerBus(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+    appStateListener.stateChanged = false;
+
+    //claim the admin first, this is necessary for admin to be able to install membership certs and do reset
+    EXPECT_EQ(ER_OK, sapWithManagerBus.Claim(securityManagerKey,
+                                                  securityManagerGuid,
+                                                  securityManagerKey,
+                                                  identityCertChainToClaimAdmin, 1,
+                                                  manifestObj, ArraySize(manifestObj)));
+    WaitForStateChange();
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+    appStateListener.stateChanged = false;
+
+    EXPECT_EQ(sapWithManagerBus.GetUniqueName(), appStateListener.busNames.front());
+    appStateListener.busNames.pop();
+    appStateListener.publicKeys.pop();
+    appStateListener.states.pop();
+
+    EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
 
     String membershipSerial = "1";
     qcc::MembershipCertificate managerMembershipCertificate[1];
@@ -2012,15 +2044,22 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
                                                                     3600,
                                                                     managerMembershipCertificate[0]
                                                                     ));
-    SecurityApplicationProxy sapWithManagerBus(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+
     EXPECT_EQ(ER_OK, sapWithManagerBus.InstallMembership(managerMembershipCertificate, 1));
+    WaitForStateChange();
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+    appStateListener.stateChanged = false;
+    EXPECT_EQ(sapWithManagerBus.GetUniqueName(), appStateListener.busNames.front());
+    appStateListener.busNames.pop();
+    appStateListener.publicKeys.pop();
+    appStateListener.states.pop();
 
     // After that we reload keystores
     securityManagerBus.ReloadKeyStore();
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
     EXPECT_EQ(ER_OK, sapWithTC.Reset());
-
     uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMABLE) {
@@ -2032,7 +2071,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
-    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
+    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.back());
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetCurve());
@@ -2041,11 +2080,12 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     EXPECT_TRUE(memcmp(TCPublicKey.GetX(), appStateListener.publicKeys.back().GetPublicKey()->GetX(), qcc::ECC_COORDINATE_SZ) == 0);
     EXPECT_TRUE(memcmp(TCPublicKey.GetY(), appStateListener.publicKeys.back().GetPublicKey()->GetY(), qcc::ECC_COORDINATE_SZ) == 0);
     appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
+
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.back());
     appStateListener.states.pop();
 
     //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0) << "The Notification State signal was sent more times than expected.";
+    EXPECT_TRUE(appStateListener.busNames.empty() && appStateListener.publicKeys.empty() && appStateListener.states.empty()) << "The Notification State signal was sent more times than expected.";
 }
 
 /*
