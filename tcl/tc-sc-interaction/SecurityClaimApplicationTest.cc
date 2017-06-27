@@ -148,8 +148,8 @@ class SecurityClaimApplicationTest : public testing::Test {
         SCBus("SecurityClaimApplicationSC"),
         TCBus("SecurityClaimApplicationTC"),
         interfaceName("org.allseen.test.SecurityApplication.claim"),
-        securityManagerKeyListener(NULL),
-        SCKeyListener(NULL)
+        securityManagerKeyListener(nullptr),
+        SCKeyListener(nullptr)
     {
     }
 
@@ -262,16 +262,16 @@ TEST_F(SecurityClaimApplicationTest, IsUnclaimableByDefault)
 
 
 /*
- * Claim using ECDHE_NULL
- * Verify that claim is succesful using an ECDHE_NULL based session, where the
+ * Claim using ECDHE_nullptr
+ * Verify that claim is succesful using an ECDHE_nullptr based session, where the
  * CA public key and the group public key are the same.
  *
  * Test Case:
- * Claim using ECDHE_NULL
+ * Claim using ECDHE_nullptr
  * caPublic key == adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
  */
-TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
+TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_nullptr_session_successful)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
@@ -365,7 +365,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_session_successful)
  * Verify that claim fails.
  *
  * Test Case:
- * Claim using ECDHE_NULL
+ * Claim using ECDHE_nullptr
  * Claim using empty caPublicKeyIdentifier.
  * caPublic key == adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
@@ -395,7 +395,7 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
      */
     KeyInfoNISTP256 caKey;
     caKey = securityManagerKey;
-    caKey.SetKeyId(NULL, 0);
+    caKey.SetKeyId(nullptr, 0);
     //Random GUID used for the SecurityManager
     GUID128 securityManagerGuid;
 
@@ -452,12 +452,12 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_caPublicKeyIdentifi
 }
 
 /*
- * Claim using ECDHE_NULL
- * Verify that claim is succesful using an ECDHE_NULL based session, where the
+ * Claim using ECDHE_nullptr
+ * Verify that claim is succesful using an ECDHE_nullptr based session, where the
  * CA public key and the group public key are the same.
  *
  * Test Case:
- * Claim using ECDHE_NULL
+ * Claim using ECDHE_nullptr
  * Claim using empty adminGroupSecurityPublicKeyIdentifier.
  * caPublic key == adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
@@ -488,7 +488,7 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
      * For this test the adminGroupAuthorityKeyIdentifier should be null
      * This is the KeyId of the securityManagerKey.
      */
-    securityManagerKey.SetKeyId(NULL, 0);
+    securityManagerKey.SetKeyId(nullptr, 0);
 
     //Random GUID used for the SecurityManager
     GUID128 securityManagerGuid;
@@ -546,15 +546,15 @@ TEST_F(SecurityClaimApplicationTest, claim_fails_using_empty_adminGroupSecurityP
 }
 
 /*
- * Claim using ECDHE_NULL
- * Verify that Claim is successful using an ECDHE_NULL based session, where the
+ * Claim using ECDHE_nullptr
+ * Verify that Claim is successful using an ECDHE_nullptr based session, where the
  * CA public key and the admin security group public key are different.
  *
  * Test Case:
  * caPublicKey != adminGroupSecurityPublicKey
  * Identity = Single certificate signed by CA
  */
-TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_NULL_caKey_not_same_as_adminGroupKey)
+TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_nullptr_caKey_not_same_as_adminGroupKey)
 {
     appStateListener.stateChanged = false;
     //EnablePeerSecurity
@@ -867,7 +867,7 @@ TEST_F(SecurityClaimApplicationTest, Claim_using_ECDHE_SPEKE_session_successful)
  * Try to claim an already claimed application with the same set of parameters
  * as before.
  *
- * We will make a successful ECDHE_NULL claim then claim again.
+ * We will make a successful ECDHE_nullptr claim then claim again.
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim)
 {
@@ -970,7 +970,7 @@ TEST_F(SecurityClaimApplicationTest, fail_second_claim)
  * Try to claim an already claimed application with a different set of
  * parameters as before.
  *
- * We will make a successful ECDHE_NULL claim then claim again.
+ * We will make a successful ECDHE_nullptr claim then claim again.
  */
 TEST_F(SecurityClaimApplicationTest, fail_second_claim_with_different_parameters)
 {
@@ -1487,8 +1487,8 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
     ClaimThread1 claimThread1;
     ClaimThread2 claimThread2;
 
-    claimThread1.Start(this, NULL);
-    claimThread2.Start(this, NULL);
+    claimThread1.Start(this, nullptr);
+    claimThread2.Start(this, nullptr);
 
     claimThread1.Join();
     claimThread2.Join();
@@ -1511,7 +1511,7 @@ TEST_F(SecurityClaimApplicationTest, two_peers_claim_application_simultaneously)
  *
  * Test Case:
  * Claimer has security enabled for ECDHE_PSK
- * Claimant has security enabled for ECDHE_NULL
+ * Claimant has security enabled for ECDHE_nullptr
  */
 TEST_F(SecurityClaimApplicationTest, fail_when_admin_and_peer_use_different_security_mechanisms)
 {
@@ -1670,7 +1670,7 @@ TEST_F(SecurityClaimApplicationTest, fail_if_incorrect_publickey_used_in_identit
  *
  * Procedure:
  * Application does not have a keystore.
- * Application bus calls enable peer security with ECDHE_NULL authentication mechanism.
+ * Application bus calls enable peer security with ECDHE_nullptr authentication mechanism.
  * Bus does an add match rule for the state notification.
  * Verify that Bus gets the state notification.
  * The state should be "Claimable"
@@ -1695,8 +1695,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
@@ -1708,7 +1708,7 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal)
  *
  * Procedure:
  * Application does not have a keystore.
- * Application bus calls enable peer security with ECDHE_NULL authentication mechanism.
+ * Application bus calls enable peer security with ECDHE_nullptr authentication mechanism.
  *
  * Secondary bus does an add match rule for the state notification.
  *
@@ -1748,8 +1748,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
@@ -1772,8 +1772,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     //EXPECT_EQ(TCPublicKey, publicKeys.front().GetPublicKey());
     ECCPublicKey TCPublicKey = *(appStateListener.publicKeys.front().GetPublicKey());
     appStateListener.publicKeys.pop();
@@ -1842,8 +1842,8 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetY());
 
     EXPECT_TRUE(memcmp(TCPublicKey.GetX(), appStateListener.publicKeys.back().GetPublicKey()->GetX(), qcc::ECC_COORDINATE_SZ) == 0);
     EXPECT_TRUE(memcmp(TCPublicKey.GetY(), appStateListener.publicKeys.back().GetPublicKey()->GetY(), qcc::ECC_COORDINATE_SZ) == 0);
@@ -1866,13 +1866,13 @@ TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_pe
  * Verify that when admin resets the app. bus, the state notification is emitted
  *     and is received by the secondary bus.
  * Verify that Secondary bus gets the state notification.
- * The state should be "Claimable"
+ * The state should be "NOT_CLAIMABLE" since there is no default policy
  * publickey algorithm = 0
  * publickey curveIdentifier = 0
  * publickey xCo-ordinate and yCo-ordinate are populated and are non-empty and
  *     are preserved and are same as before.
  */
-TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_claimed_then_reset_peer)
+TEST_F(SecurityClaimApplicationTest, get_application_state_signal_for_claimed_then_reset_peer)
 {
     //EnablePeerSecurity
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
@@ -1893,8 +1893,8 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
@@ -1918,11 +1918,12 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     ECCPublicKey TCPublicKey = *(appStateListener.publicKeys.front().GetPublicKey());
     appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.front());
+    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.front());
     appStateListener.states.pop();
 
     //verify we read all the signals
@@ -1953,7 +1954,7 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
                                                                 manifest, manifestSize,
                                                                 manifestObj[0])) << " GenerateManifest failed.";
 
-    EXPECT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
                                                                   "0",
                                                                   securityManagerGuid.ToString(),
                                                                   &TCPublicKey,
@@ -1992,14 +1993,47 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetY());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetX());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetY());
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::CLAIMED, appStateListener.states.back());
     appStateListener.states.pop();
 
     //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0) << "The Notification State signal was sent more times than expected.";
+    EXPECT_TRUE(appStateListener.busNames.empty() && appStateListener.publicKeys.empty() && appStateListener.states.empty()) << "The Notification State signal was sent more times than expected.";
+
+    //Create certificate for secruityManager
+    IdentityCertificate identityCertChainToClaimAdmin[1];
+    ASSERT_EQ(ER_OK, PermissionMgmtTestHelper::CreateIdentityCert(securityManagerBus,
+                                                                  "0",
+                                                                  securityManagerGuid.ToString(),
+                                                                  securityManagerKey.GetPublicKey(),
+                                                                  "Alias",
+                                                                  3600,
+                                                                  identityCertChainToClaimAdmin[0],
+                                                                  manifestObj[0])) << "Failed to create identity certificate.";
+
+    SecurityApplicationProxy sapWithManagerBus(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+    appStateListener.stateChanged = false;
+
+    //claim the admin first, this is necessary for admin to be able to install membership certs and do reset
+    ASSERT_EQ(ER_OK, sapWithManagerBus.Claim(securityManagerKey,
+                                                  securityManagerGuid,
+                                                  securityManagerKey,
+                                                  identityCertChainToClaimAdmin, 1,
+                                                  manifestObj, ArraySize(manifestObj)));
+    WaitForStateChange();
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+    appStateListener.stateChanged = false;
+
+    EXPECT_EQ(sapWithManagerBus.GetUniqueName(), appStateListener.busNames.front());
+    appStateListener.busNames.pop();
+    appStateListener.publicKeys.pop();
+    appStateListener.states.pop();
+
+    EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, nullptr, true));
 
     String membershipSerial = "1";
     qcc::MembershipCertificate managerMembershipCertificate[1];
@@ -2012,15 +2046,22 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
                                                                     3600,
                                                                     managerMembershipCertificate[0]
                                                                     ));
-    SecurityApplicationProxy sapWithManagerBus(securityManagerBus, securityManagerBus.GetUniqueName().c_str());
+
     EXPECT_EQ(ER_OK, sapWithManagerBus.InstallMembership(managerMembershipCertificate, 1));
+    WaitForStateChange();
+
+    ASSERT_TRUE(appStateListener.stateChanged);
+    appStateListener.stateChanged = false;
+    EXPECT_EQ(sapWithManagerBus.GetUniqueName(), appStateListener.busNames.front());
+    appStateListener.busNames.pop();
+    appStateListener.publicKeys.pop();
+    appStateListener.states.pop();
 
     // After that we reload keystores
     securityManagerBus.ReloadKeyStore();
 
     TCBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA");
     EXPECT_EQ(ER_OK, sapWithTC.Reset());
-
     uint32_t msec;
     for (msec = 0; msec < WAIT_SIGNAL; msec += WAIT_MSECS) {
         if (appStateListener.stateChanged && appStateListener.states.back() == PermissionConfigurator::CLAIMABLE) {
@@ -2032,20 +2073,22 @@ TEST_F(SecurityClaimApplicationTest, DISABLED_get_application_state_signal_for_c
 
     ASSERT_TRUE(appStateListener.stateChanged);
 
-    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
+    EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.back());
     appStateListener.busNames.pop();
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.back().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.back().GetPublicKey()->GetY());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetX());
+    ASSERT_TRUE(nullptr != appStateListener.publicKeys.back().GetPublicKey()->GetY());
     EXPECT_TRUE(memcmp(TCPublicKey.GetX(), appStateListener.publicKeys.back().GetPublicKey()->GetX(), qcc::ECC_COORDINATE_SZ) == 0);
     EXPECT_TRUE(memcmp(TCPublicKey.GetY(), appStateListener.publicKeys.back().GetPublicKey()->GetY(), qcc::ECC_COORDINATE_SZ) == 0);
     appStateListener.publicKeys.pop();
-    EXPECT_EQ(PermissionConfigurator::CLAIMABLE, appStateListener.states.back());
+
+    EXPECT_EQ(PermissionConfigurator::NOT_CLAIMABLE, appStateListener.states.back());
     appStateListener.states.pop();
 
     //verify we read all the signals
-    EXPECT_TRUE(appStateListener.busNames.size() == 0 && appStateListener.publicKeys.size() == 0 && appStateListener.states.size() == 0) << "The Notification State signal was sent more times than expected.";
+    EXPECT_TRUE(appStateListener.busNames.empty() && appStateListener.publicKeys.empty() && appStateListener.states.empty()) << "The Notification State signal was sent more times than expected.";
 }
 
 /*
@@ -2061,7 +2104,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
     securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
+    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, nullptr, true);
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2193,7 +2236,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_after_update_identity)
     EXPECT_EQ(ER_OK, sapWithSecurityManager.GetApplicationState(applicationStateTC));
     EXPECT_EQ(PermissionConfigurator::CLAIMED, applicationStateTC);
 
-    EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, NULL, true));
+    EXPECT_EQ(ER_OK, securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_ECDSA", securityManagerKeyListener, nullptr, true));
 
     // Create membership certificate
     String membershipSerial = "1";
@@ -2273,7 +2316,7 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
     securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
+    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, nullptr, true);
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2378,8 +2421,8 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     //PermissionConfigurator& TCPermissionConfigurator = TCBus.GetPermissionConfigurator();
 
     // Change the manifest
-    AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, NULL } };
+    AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, nullptr } };
+    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, nullptr } };
 
     TCBus.SetPermissionManifest(rules);
     // Verify that the security manager saw the "Needs Update" notification
@@ -2390,8 +2433,8 @@ TEST_F(SecurityClaimApplicationTest, get_state_signal_after_manifest_changes)
     EXPECT_EQ(TCBus.GetUniqueName(), appStateListener.busNames.front());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetAlgorithm());
     EXPECT_EQ(0, appStateListener.publicKeys.front().GetCurve());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetX());
-    EXPECT_TRUE(NULL != appStateListener.publicKeys.front().GetPublicKey()->GetY());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetX());
+    EXPECT_TRUE(nullptr != appStateListener.publicKeys.front().GetPublicKey()->GetY());
     appStateListener.busNames.pop();
     appStateListener.publicKeys.pop();
     EXPECT_EQ(PermissionConfigurator::NEED_UPDATE, appStateListener.states.back());
@@ -2411,7 +2454,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     // the DSA Key Pair should be generated as soon as Enable PeerSecurity is
     // called.
     securityManagerKeyListener = new DefaultECDHEAuthListener();
-    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, NULL, true);
+    securityManagerBus.EnablePeerSecurity("ALLJOYN_ECDHE_NULL", securityManagerKeyListener, nullptr, true);
 
     /* The State signal is only emitted if manifest template is installed */
     SetManifestTemplate(securityManagerBus);
@@ -2440,8 +2483,8 @@ TEST_F(SecurityClaimApplicationTest, no_state_signal_before_claim_and_after_mani
     ASSERT_TRUE(appStateListener.stateChanged);
 
     // Change the manifest
-    AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, NULL } };
-    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, NULL } };
+    AJ_PermissionMember members[] = { { (char*) "*", AJ_MEMBER_TYPE_ANY, AJ_ACTION_PROVIDE, nullptr } };
+    AJ_PermissionRule rules[] = { { (char*) "*", (char*) "*", PRIVILEGED, members, nullptr } };
 
     TCBus.SetPermissionManifest(rules);
     appStateListener.stateChanged = false;
@@ -2601,7 +2644,7 @@ TEST_F(SecurityClaimApplicationTest, no_state_notification_when_peer_security_of
  * Claiming with no signed manifests fails.
  *
  * Procedure:
- * Attempt claim with ECDHE_NULL with valid cert chain but unsigned manifest
+ * Attempt claim with ECDHE_nullptr with valid cert chain but unsigned manifest
  * Confirm that reply is ER_DIGEST_MISMATCH
  */
 TEST_F(SecurityClaimApplicationTest, ClaimWithUnsignedManifestFails)
