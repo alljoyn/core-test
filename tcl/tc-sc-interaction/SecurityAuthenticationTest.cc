@@ -2097,6 +2097,12 @@ class SecurityAuthentication3AuthListener1 : public DefaultECDHEAuthListener {
         DefaultECDHEAuthListener::AuthenticationComplete(authMechanism, peerName, success);
     }
 
+    void TriedAuthenticationMechanism(const char* authMechanism, const char* peerName, bool success) {
+        calledAuthMechanisms.insert(authMechanism);
+        DefaultECDHEAuthListener::TriedAuthenticationMechanism(authMechanism, peerName, success);
+    }
+
+
     std::set<qcc::String> calledAuthMechanisms;
 };
 
@@ -2655,11 +2661,11 @@ TEST_F(SecurityAuthenticationTest3, authenticate_test5_peer1_tries_to_secure_ses
 
         /*
          * All auth mechanisms with higher priority than ECDHE_NULL should have failed, and we check that authentication fell back on ECDHE_NULL.
-         * Ideally we would check that each failed auth mechanism was called, and in the correct order, but the AuthenticationComplete
-         * callback is not called reliably when authentication falls back to another mechanism.
-         * The bug https://jira.allseenalliance.org/browse/ASACORE-2716 tracks this issue.
-         * By setting ER_DEBUG_AUTH_KEY_EXCHANGER=15 and viewing the tracing code, we can manually confirm that all mechanisms are being tried.
+         * we also check that each failed auth mechanism was called.
          */
+        EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_ECDSA") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_ECDSA auth mechanism to be tried, but it wasn't.";
+        EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_PSK") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_PSK auth mechanism to be tried, but it wasn't.";
+        EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_SPEKE") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_SPEKE auth mechanism to be tried, but it wasn't.";
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_NULL") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_NULL auth mechanism to be tried, but it wasn't.";
     }
 }
@@ -2668,10 +2674,8 @@ TEST_F(SecurityAuthenticationTest3, authenticate_test5_peer1_tries_to_secure_ses
  * see description for authenticate_test5_peer1_tries_to_secure_session
  * This is the same test except the list of auth mechanisms is limited to ECDHE
  * and Peer2 is used for authentication instead of Peer1
- *
- * Disabled. See https://jira.allseenalliance.org/browse/ASACORE-2718 for details.
  */
-TEST_F(SecurityAuthenticationTest3, DISABLED_authenticate_test5_peer2_tries_to_secure_session_only_ECDHE) {
+TEST_F(SecurityAuthenticationTest3, authenticate_test5_peer2_tries_to_secure_session_only_ECDHE) {
     BaseAuthenticationTest5(busUsedAsCA);
     uint32_t sessionId;
     SessionOpts opts;
@@ -2686,17 +2690,8 @@ TEST_F(SecurityAuthenticationTest3, DISABLED_authenticate_test5_peer2_tries_to_s
         EXPECT_EQ(ER_OK, TCBus.AuthenticatePeer(SCBus.GetUniqueName().c_str()));
 
         /*
-         * This test fails because not all auth mechanisms get tried before falling back to ECDHE_NULL. The trace from the SC shows
-         * that ECDHE_SPEKE gets tried, then ECDHE_NULL gets tried. When ECDHE_SPEKE is not in the list, the trace shows that ECDSA
-         * gets tried, then NULL.  So the behavior seems to be: try the mechanism with the higest integer value in PeerState.h, then
-         * fall back to ECDHE_NULL. The test was broken before ECHDE_SPEKE was added (because ECDHE_PSK was not being attempted), but
-         * showed up when a new auth mechanism with lower priority than ECDSA was added with a higher integer value in PeerState.h.
-         * Auth mechanism priority should be indpendent of the integer value, but previously the priority and integer values agreed
-         * (i.e., higher integer = higher priority). There are two issues here: 1. the order that auth mechanisms are tried is not as
-         * expected, and 2. not all mechanisms getting tried before falling back to ECDHE_NULL.
-         * The bug https://jira.allseenalliance.org/browse/ASACORE-2718 tracks this issue.
+         * The TC AuthenticationPeer would fall back directly to ECDHE_NULL.
          */
-        EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_ECDSA") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_ECDSA auth mechanism to be tried, but it wasn't.";
         EXPECT_TRUE(SCAuthListener.calledAuthMechanisms.find("ALLJOYN_ECDHE_NULL") != SCAuthListener.calledAuthMechanisms.end()) << "Expected ECDHE_NULL auth mechanism to be tried, but it wasn't.";
     }
 }
