@@ -69,7 +69,7 @@ using namespace ajn;
 static BusAttachment* g_msgBus = NULL;
 static SessionId g_sessionId = 0;
 static bool g_server = true;
-static TransportMask g_transport = TRANSPORT_NONE;
+static TransportMask g_transport = TRANSPORT_ANY;
 static bool g_waitTillClaimed = false;
 static String g_proxyName;
 static bool g_encryption = false;
