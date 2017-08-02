@@ -618,32 +618,6 @@ class LocalTestObject : public BusObject {
         return status;
     }
 
-    /* Most Probably you wont need it */
-    QStatus IntrospectObject(SessionId sessionid) {
-        QStatus status = ER_OK;
-        char t_path[50]; printf("\n Enter the path ");
-        if (scanf("%s", t_path) != 1) {
-            status = ER_FAIL;
-            printf("Expect string for object path\n");
-            fflush(stdout);
-            return status;
-        }
-        char t_name[50]; printf("\n Enter the name ");
-        if (scanf("%s", t_name) != 1) {
-            status = ER_FAIL;
-            printf("Expect string for name\n");
-            fflush(stdout);
-            return status;
-        }
-
-        ProxyBusObject remoteObj = ProxyBusObject(bus, t_name, t_path, sessionid);
-        status = remoteObj.IntrospectRemoteObject();
-        if (ER_OK != status) {
-            QCC_LogError(status, ("Introspection of %s (path=%s) failed\n", g_wellKnownName.c_str(), ::org::alljoyn::alljoyn_test::ObjectPath));
-        }
-        return status;
-    }
-
 
     QStatus SubscribeNameChangedSignal(void) {
 
@@ -1464,44 +1438,6 @@ int TestAppMain(int argc, char** argv)
                         }
                     }
 
-                } else if ((strcmp(temp, "introspectasync") == 0)  || (strcmp(temp, "introspect") == 0)) {
-//INTROSPECT or INTROSPECTASYNC
-                    //bool introspectasync=false;
-                    //if(strcmp(temp, "introspectasync") == 0) introspectasync=true;
-
-                    /* introspect wkn objectpath sessionid m*/
-                    //char wkn[50];
-                    //SessionId sessionId=0;
-                    //char objectPath[50];
-                    //QStatus status = ER_OK;
-                    //ProxyBusObject *remoteObj = NULL;
-
-                    //temp = strtok(NULL, " ");
-                    //if(!temp) {
-                    //     printf("ERROR - intospect wkn objectpath sessionid m \n");
-                    //     fflush(stdout);
-                    //     status = ER_FAIL;
-                    //} else {
-                    //   strcpy(wkn, temp);
-                    //   status = ER_OK;
-                    //}
-
-                    //if(status == ER_OK) {
-                    //     temp = strtok(NULL, " ");
-                    //     if(!temp) {
-                    //       printf("ERROR - introspect wkn objectpath sessionid m \n");
-                    //       fflush(stdout);
-                    //       status = ER_FAIL;
-                    //     } else {
-                    //       strcpy(objectPath, temp);
-                    //       status = ER_OK;
-                    //     }
-                    //}
-                    //if(status  == ER_OK) {
-                    //     temp = strtok(NULL, " ");
-                    //     if(temp) sessionId = static_cast<SessionId>(StringToU32(temp, 0, 0));
-                    // }
-
                 } else if ((strcmp(temp, "createproxy") == 0)) {
                     /* createproxy wellknownname objectpath sessionid */
 //CREATE PROXY BUS OBJECT
@@ -1646,11 +1582,6 @@ int TestAppMain(int argc, char** argv)
         }
     }
 
-    /* Clean up msg bus */
-    if (g_msgBus) {
-        delete g_msgBus;
-    }
-
     printf("\n %s exiting with status %d (%s)\n", argv[0], status, QCC_StatusText(status));
 
     return (int) status;
@@ -1673,6 +1604,17 @@ int CDECL_CALL main(int argc, char** argv)
     ioLock = new qcc::Mutex();
 
     int ret = TestAppMain(argc, argv);
+
+    /* Clean up msg bus */
+    if (g_msgBus != nullptr) {
+        if (g_msgBus->IsConnected()) {
+            g_msgBus->Disconnect();
+        }
+        if (g_msgBus->Stop() == ER_OK) {
+            g_msgBus->Join();
+        }
+        delete g_msgBus;
+    }
 
     delete ioLock;
 #ifdef ROUTER
